@@ -820,34 +820,6 @@ function OverviewTabContent({ customerId, customerName, onCopilotSubmit, takeove
                         <p className="text-[13px] font-semibold text-[#111827]">{profile.totalAUM}</p>
                       </div>
                     </div>
-                    {/* Stats */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="rounded-lg bg-[#F9FAFB] border border-[#E4E7EC] p-2.5">
-                        <p className="mb-1 text-[10px] text-[#667085]">Fraud Risk Score</p>
-                        <p className={cn("text-[15px] font-bold leading-none mb-1.5",
-                          profile.fraudRiskScore >= 70 ? "text-[#E32926]" :
-                          profile.fraudRiskScore >= 40 ? "text-[#A37A00]" : "text-[#208337]")}>
-                          {profile.fraudRiskScore} <span className="text-[11px] font-normal text-[#98A2B3]">/ 100</span>
-                        </p>
-                        <div className="h-1.5 rounded-full bg-[#E4E7EC] overflow-hidden">
-                          <div
-                            className={cn("h-full rounded-full",
-                              profile.fraudRiskScore >= 70 ? "bg-[#E32926]" :
-                              profile.fraudRiskScore >= 40 ? "bg-[#A37A00]" : "bg-[#208337]")}
-                            style={{ width: `${profile.fraudRiskScore}%` }}
-                          />
-                        </div>
-                      </div>
-                      <div className="rounded-lg bg-[#F9FAFB] border border-[#E4E7EC] p-2.5">
-                        <p className="mb-1 text-[10px] text-[#667085]">Prior Disputes</p>
-                        <p className="text-[15px] font-bold leading-none text-[#111827]">
-                          {profile.priorDisputeCount === 0 ? "None" : profile.priorDisputeCount}
-                        </p>
-                        <p className={cn("mt-1 text-[10px]", profile.cardBlocked ? "text-[#E32926] font-medium" : "text-[#667085]")}>
-                          Card: {profile.cardBlocked ? "BLOCKED" : "NOT blocked"}
-                        </p>
-                      </div>
-                    </div>
                     {/* Tags */}
                     {profile.tags.length > 0 && (
                       <div className="flex flex-wrap gap-1.5">

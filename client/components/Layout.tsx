@@ -673,7 +673,16 @@ const FLOATING_PANEL_BASE_Z_INDEX = 300;
 const COPILOT_DOCK_BREAKPOINT = 1280;
 const COMBINED_INTERACTION_PANEL_BREAKPOINT = 1024;
 const COMBINED_INTERACTION_PANEL_CANVAS_BREAKPOINT = 1280;
-const CALL_DISPOSITION_OPTIONS = ["Resolved", "Escalated", "Follow-up needed"] as const;
+const CALL_DISPOSITION_OPTIONS = [
+  "Resolved",
+  "Escalated",
+  "Follow-up needed",
+  "Transferred",
+  "No answer / Voicemail",
+  "Customer callback requested",
+  "Wrong number",
+  "Duplicate case",
+] as const;
 
 function getDeskCanvasPopunderMinWidth(view: DeskCanvasView) {
   return view === "copilot"
@@ -1372,6 +1381,7 @@ function CallControlsPopunder({
   onLaunchCall,
   onEndCall,
   onSelectDisposition,
+  onCancelDisposition,
   onInteractStart,
   isJoiningCall = false,
   joiningCallCustomerName = "",
@@ -1387,6 +1397,7 @@ function CallControlsPopunder({
   onLaunchCall: () => void;
   onEndCall: () => void;
   onSelectDisposition: (disposition: (typeof CALL_DISPOSITION_OPTIONS)[number]) => void;
+  onCancelDisposition?: () => void;
   onInteractStart?: () => void;
   isJoiningCall?: boolean;
   joiningCallCustomerName?: string;
@@ -1400,6 +1411,7 @@ function CallControlsPopunder({
   const [accountNumber, setAccountNumber] = useState(initialAccountNumber);
   const [isTestingAudio, setIsTestingAudio] = useState(false);
   const [audioLevels, setAudioLevels] = useState({ mic: 42, speaker: 58 });
+  const [selectedDisposition, setSelectedDisposition] = useState<string | null>(null);
 
   useEffect(() => {
     if (mode !== "setup") {
@@ -1423,7 +1435,7 @@ function CallControlsPopunder({
     if (typeof window === "undefined") return;
 
     const width = mode === "controls" ? size.width : CALL_POPUNDER_WIDTH;
-    const height = mode === "setup" ? 320 : mode === "connecting" ? 296 : mode === "controls" ? size.height : 284;
+    const height = mode === "setup" ? 320 : mode === "connecting" ? 296 : mode === "controls" ? size.height : 420;
     const nextPosition = {
       x: Math.min(
         Math.max(CALL_POPUNDER_MARGIN, position.x),
@@ -1443,7 +1455,7 @@ function CallControlsPopunder({
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent) => {
       const width = mode === "controls" ? size.width : CALL_POPUNDER_WIDTH;
-    const height = mode === "setup" ? 320 : mode === "connecting" ? 296 : mode === "controls" ? size.height : 284;
+    const height = mode === "setup" ? 320 : mode === "connecting" ? 296 : mode === "controls" ? size.height : 420;
 
       if (isDraggingRef.current) {
         const nextX = event.clientX - dragOffsetRef.current.x;
@@ -1508,10 +1520,12 @@ function CallControlsPopunder({
     >
       <div
         className={cn(
-          "flex cursor-grab items-center border-b border-black/10 bg-[#F8F8F9] px-3 py-2 active:cursor-grabbing",
-          mode === "setup" ? "justify-between" : mode === "connecting" ? "justify-between" : "justify-start",
+          "flex items-center border-b border-black/10 bg-[#F8F8F9] px-3 py-2",
+          mode === "disposition" ? "justify-between cursor-default" : "cursor-grab active:cursor-grabbing justify-between",
+          (mode === "controls") && "justify-start",
         )}
         onMouseDown={(event) => {
+          if (mode === "disposition") return;
           onInteractStart?.();
           const bounds = event.currentTarget.parentElement?.getBoundingClientRect();
           if (!bounds) return;
@@ -1525,7 +1539,7 @@ function CallControlsPopunder({
         }}
       >
         <div className="flex items-center gap-2 text-sm font-semibold text-[#333333]">
-          <GripHorizontal className="h-4 w-4 text-[#7A7A7A]" />
+          {mode !== "disposition" && <GripHorizontal className="h-4 w-4 text-[#7A7A7A]" />}
           {mode === "setup"
             ? (isJoiningCall ? "Join Call" : "Start Call")
             : mode === "connecting"
@@ -1534,12 +1548,12 @@ function CallControlsPopunder({
                 ? "Active Call"
                 : "Disposition"}
         </div>
-        {(mode === "setup" || mode === "connecting") && (
+        {(mode === "setup" || mode === "connecting" || mode === "disposition") && (
           <button
             type="button"
-            onClick={onClose}
+            onClick={mode === "disposition" ? onCancelDisposition : onClose}
             className="flex h-7 w-7 items-center justify-center rounded-full text-[#7A7A7A] transition-colors hover:bg-white dark:hover:bg-[#1C2536] hover:text-[#333333] dark:hover:text-[#CBD5E1]"
-            aria-label="Close call controls"
+            aria-label={mode === "disposition" ? "Cancel disposition" : "Close call controls"}
           >
             <X className="h-4 w-4" />
           </button>
@@ -1655,20 +1669,38 @@ function CallControlsPopunder({
           </div>
         ) : (
           <>
-            <p className="text-xs leading-5 text-[#7A7A7A]">
+            <p className="text-[10px] leading-5 text-[#98A2B3]">
               Select a disposition to complete the call.
             </p>
-            {CALL_DISPOSITION_OPTIONS.map((option) => (
-              <Button
-                key={option}
-                type="button"
-                variant="outline"
-                onClick={() => onSelectDisposition(option)}
-                className="w-full justify-start border-black/10 text-[#333333]"
-              >
-                {option}
-              </Button>
-            ))}
+            <div className="-mx-3 divide-y divide-[#F2F4F7] overflow-y-auto" style={{ maxHeight: 320 }}>
+              {CALL_DISPOSITION_OPTIONS.map((option) => {
+                const isSelected = selectedDisposition === option;
+                const isDisabled = selectedDisposition !== null && !isSelected;
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    disabled={isDisabled}
+                    onClick={() => {
+                      if (selectedDisposition) return;
+                      setSelectedDisposition(option);
+                      setTimeout(() => {
+                        onSelectDisposition(option);
+                        setSelectedDisposition(null);
+                      }, 700);
+                    }}
+                    className={cn(
+                      "w-full flex items-center justify-between px-4 py-2.5 text-left transition-colors",
+                      isSelected ? "bg-[#EBF4FD] text-[#166CCA]" : "hover:bg-[#F9FAFB] text-[#344054]",
+                      isDisabled && "opacity-40 cursor-not-allowed",
+                    )}
+                  >
+                    <span className="text-[12px] font-medium">{option}</span>
+                    {isSelected && <span className="text-[10px] font-semibold text-[#166CCA]">Selected</span>}
+                  </button>
+                );
+              })}
+            </div>
           </>
         )}
       </div>
@@ -1858,32 +1890,40 @@ function AddNewPopoverContent({
 
 function CustomerProfilePopover({
   customerName,
-  onOpenCustomerInfo,
-  isCustomerInfoOpen = false,
 }: {
   customerRecordId: string;
   customerName: string;
+  onOpenCustomerInfo?: (event?: React.MouseEvent<HTMLElement>) => void;
+  isCustomerInfoOpen?: boolean;
+}) {
+  return (
+    <span className="text-sm font-semibold tracking-tight text-[#333333] dark:text-[#E2E8F0]">{customerName}</span>
+  );
+}
+
+/** Standalone icon button that opens the Customer Information popunder. */
+function CustomerInfoIconButton({
+  onOpenCustomerInfo,
+  isCustomerInfoOpen = false,
+}: {
   onOpenCustomerInfo: (event?: React.MouseEvent<HTMLElement>) => void;
   isCustomerInfoOpen?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-sm font-semibold tracking-tight text-[#333333]">{customerName}</span>
-      <button
-        type="button"
-        aria-label="Open customer information"
-        onMouseDown={(e) => e.stopPropagation()}
-        onClick={(e) => { e.stopPropagation(); onOpenCustomerInfo(e); }}
-        className={cn(
-          "flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors",
-          isCustomerInfoOpen
-            ? "bg-[#166CCA]/10 text-[#166CCA] hover:bg-[#166CCA]/20"
-            : "text-[#7A7A7A] hover:bg-white dark:hover:bg-[#1C2536] hover:text-[#333333] dark:hover:text-[#CBD5E1]",
-        )}
-      >
-        <User className="h-3.5 w-3.5 stroke-[1.5]" />
-      </button>
-    </div>
+    <button
+      type="button"
+      aria-label="Open customer information"
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => { e.stopPropagation(); onOpenCustomerInfo(e); }}
+      className={cn(
+        "flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors",
+        isCustomerInfoOpen
+          ? "bg-[#166CCA]/10 text-[#166CCA] hover:bg-[#166CCA]/20"
+          : "text-[#7A7A7A] hover:bg-white dark:hover:bg-[#1C2536] hover:text-[#333333] dark:hover:text-[#CBD5E1]",
+      )}
+    >
+      <User className="h-3.5 w-3.5 stroke-[1.5]" />
+    </button>
   );
 }
 
@@ -2467,7 +2507,7 @@ function DockedConversationPanel({
   const [isCustomerProfileOpen, setIsCustomerProfileOpen] = useState(true);
   const [hasAgentTasks, setHasAgentTasks] = useState(false);
   const customerRecord = getCustomerRecord(customerRecordId);
-  const [isWidePanel, setIsWidePanel] = useState(false);
+  const [isWidePanel] = useState(true);
   const [panelHeight, setPanelHeight] = useState(0);
   const [panelBounds, setPanelBounds] = useState<{ left: number; top: number; width: number; height: number; headerBottom: number } | null>(null);
   const [performActionsState, setPerformActionsState] = useState<"idle" | "running" | "done">("idle");
@@ -2479,6 +2519,19 @@ function DockedConversationPanel({
   const [selectedHistoryItemId, setSelectedHistoryItemId] = useState<string | null>(null);
   const selectedHistoryItem = customerRecord?.customerHistory?.find((h) => h.id === selectedHistoryItemId) ?? null;
   const [viewingInteraction, setViewingInteraction] = useState(false);
+
+  // When the active case changes, clear any open event detail so the panel never shows
+  // a stale (empty) event from the previous case.
+  useEffect(() => {
+    setSelectedHistoryItemId(null);
+    setViewingInteraction(false);
+    setIsHandoffSummaryOpen((current) => {
+      // Only collapse if the summary was opened by a history event click (not by
+      // initialSummaryOpen / caseOverviewOpenTrigger, which are case-specific props).
+      return initialSummaryOpen ? current : false;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerRecordId]);
 
   // When a toast is dismissed while this panel is active, open the summary sidebar
   // and ensure the Case Overview accordion is expanded.
@@ -3291,10 +3344,7 @@ function DockedConversationPanel({
     if (!el) return;
     const observer = new ResizeObserver((entries) => {
       const rect = entries[0]?.contentRect;
-      const width = rect?.width ?? el.offsetWidth;
       const height = rect?.height ?? el.offsetHeight;
-      setIsNarrowPanel(width < 728);
-      setIsWidePanel(true);
       setPanelHeight(height);
     });
     observer.observe(el);
@@ -3345,13 +3395,6 @@ function DockedConversationPanel({
       window.removeEventListener("scroll", update, true);
     };
   }, [isOpen]);
-
-  // Reset conversation tab when panel is no longer narrow
-  useEffect(() => {
-    if (!isNarrowPanel && summaryTab === "conversation") {
-      setSummaryTab(activeChannel);
-    }
-  }, [isNarrowPanel, summaryTab]);
 
   // Open the customer info popunder at the panel's top-left once both the transferred item
   // and the panel bounds are known (bounds settle after the 520ms entrance animation).
@@ -3407,10 +3450,10 @@ function DockedConversationPanel({
       ref={panelContainerRef}
       aria-hidden={!isOpen}
       className={cn(
-        "relative hidden min-h-0 overflow-visible transition-[margin,opacity,transform] duration-500 ease-out min-[800px]:block",
+        "relative min-h-0 overflow-visible transition-[margin,opacity,transform] duration-500 ease-out",
         isOpen && (!isEqualSplit || equalSplitWidth === undefined) && "min-w-0 flex-1 basis-0",
         isOpen && isEqualSplit && equalSplitWidth !== undefined && "min-w-0 shrink-0",
-        isOpen ? "min-[800px]:opacity-100" : "pointer-events-none w-0 min-[800px]:-translate-x-4 min-[800px]:opacity-0",
+        isOpen ? "opacity-100" : "pointer-events-none w-0 -translate-x-4 opacity-0",
       )}
       style={{
         width: isOpen && isEqualSplit && equalSplitWidth !== undefined ? equalSplitWidth : undefined,
@@ -3444,11 +3487,9 @@ function DockedConversationPanel({
                   >
                     <GripHorizontal className="h-4 w-4" />
                   </button>
-                  <div className="min-w-0">
-                    <CustomerProfilePopover customerRecordId={customerRecordId} customerName={conversation.customerName} onOpenCustomerInfo={onOpenCustomerInfo} isCustomerInfoOpen={isCustomerInfoOpen} />
-                  </div>
+                  <CustomerProfilePopover customerRecordId={customerRecordId} customerName={conversation.customerName} />
                   {/* Channel + history tabs in header */}
-                  {!isNarrowPanel && (
+                  {(
                     <div className="inline-flex items-center gap-0.5 rounded-xl bg-[#F2F4F7] dark:bg-[#0D1525] px-1 py-1 border border-black/[0.08] dark:border-white/[0.08]">
                       {([...openChannels, "history" as const]).map((tab) => (
                         <button
@@ -3498,8 +3539,9 @@ function DockedConversationPanel({
                     </div>
                   )}
                 </div>
-                {/* Right side: status chip + close */}
+                {/* Right side: customer info icon + status chip + close */}
                 <div className="flex items-center gap-2 shrink-0">
+                  <CustomerInfoIconButton onOpenCustomerInfo={onOpenCustomerInfo} isCustomerInfoOpen={isCustomerInfoOpen} />
                   {assignmentStatus && onAssignmentStatusChange && (
                     <div onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
                       <ConversationStatusDropdown status={assignmentStatus} onStatusChange={onAssignmentStatusChange} />
@@ -3517,10 +3559,10 @@ function DockedConversationPanel({
             </div>
 
             {/* Content area — flex-row when wide (>=991px) to show persistent sidebar */}
-            <div className={cn("relative min-h-0 flex-1 flex overflow-hidden", isWidePanel ? "flex-row-reverse" : "flex-col")}>
+            <div className="relative min-h-0 flex-1 flex flex-row overflow-hidden">
 
               {/* Main conversation / customer history — tab bar above toggles content */}
-              <div className={cn("min-h-0 flex-1 overflow-hidden flex flex-col", isNarrowPanel && "hidden")}>
+              <div className="min-h-0 flex-1 overflow-hidden flex flex-col">
                 {summaryTab === "history" ? (
                   /* Customer History timeline */
                   <div className="flex-1 overflow-y-auto px-4 pt-3 pb-4">
@@ -3566,8 +3608,8 @@ function DockedConversationPanel({
                 )}
               </div>
 
-              {/* Narrow/medium-mode summary drawer — slides in from the LEFT as an overlay */}
-              {!isWidePanel && (
+              {/* Narrow/medium-mode summary drawer — removed (no media queries) */}
+              {false && (
                 <>
                   {/* Drawer panel */}
                   <div
@@ -3628,30 +3670,6 @@ function DockedConversationPanel({
                                 <div className="text-right shrink-0">
                                   <p className="text-[10px] text-[#98A2B3] dark:text-[#6B8FAD]">Balance</p>
                                   <p className="text-[13px] font-semibold text-[#111827] dark:text-white">{customerRecord.profile.totalAUM}</p>
-                                </div>
-                              </div>
-                              {/* Stats row */}
-                              <div className="grid grid-cols-2 gap-2">
-                                {/* Fraud Risk Score */}
-                                <div className="rounded-lg bg-white/60 border border-[#BFDBFE]/60 p-2.5 dark:bg-[#0C1A26] dark:border-[#1B3A52]">
-                                  <p className="mb-1 text-[10px] text-[#667085] dark:text-[#8BACC4]">Fraud Risk Score</p>
-                                  <p className={cn("text-[15px] font-bold leading-none mb-1.5", customerRecord.profile.fraudRiskScore >= 70 ? "text-[#E32926]" : customerRecord.profile.fraudRiskScore >= 40 ? "text-[#A37A00]" : "text-[#208337]")}>
-                                    {customerRecord.profile.fraudRiskScore} <span className="text-[11px] font-normal text-[#98A2B3]">/ 100</span>
-                                  </p>
-                                  <div className="h-1.5 rounded-full bg-[#E4E7EC] dark:bg-[#1B3A52] overflow-hidden">
-                                    <div
-                                      className={cn("h-full rounded-full transition-all", customerRecord.profile.fraudRiskScore >= 70 ? "bg-[#E32926]" : customerRecord.profile.fraudRiskScore >= 40 ? "bg-[#A37A00]" : "bg-[#208337]")}
-                                      style={{ width: `${customerRecord.profile.fraudRiskScore}%` }}
-                                    />
-                                  </div>
-                                </div>
-                                {/* Prior Disputes */}
-                                <div className="rounded-lg bg-white/60 border border-[#BFDBFE]/60 p-2.5 dark:bg-[#0C1A26] dark:border-[#1B3A52]">
-                                  <p className="mb-1 text-[10px] text-[#667085] dark:text-[#8BACC4]">Prior Disputes</p>
-                                  <p className="text-[15px] font-bold leading-none text-[#111827] dark:text-white">{customerRecord.profile.priorDisputeCount === 0 ? "None" : customerRecord.profile.priorDisputeCount}</p>
-                                  <p className={cn("mt-1 text-[10px]", customerRecord.profile.cardBlocked ? "text-[#E32926] font-medium" : "text-[#667085] dark:text-[#8BACC4]")}>
-                                    Card: {customerRecord.profile.cardBlocked ? "BLOCKED" : "NOT blocked"}
-                                  </p>
                                 </div>
                               </div>
                               {/* Tags */}
@@ -3802,10 +3820,8 @@ function DockedConversationPanel({
               {/* Summary sidebar — animated slide open/close */}
               <div
                 className={cn(
-                  "flex-shrink-0 border-r border-border flex flex-col bg-card dark:bg-[#0C1A26] overflow-hidden transition-[width,opacity] duration-300 ease-in-out",
-                  isHandoffSummaryOpen
-                    ? isNarrowPanel ? "w-full opacity-100" : "w-[350px] opacity-100"
-                    : "w-0 opacity-0 border-r-0",
+                  "flex-shrink-0 border-l border-border flex flex-col bg-card dark:bg-[#0C1A26] overflow-hidden transition-[width,opacity] duration-300 ease-in-out",
+                  isHandoffSummaryOpen ? "w-[350px] opacity-100" : "w-0 opacity-0 border-l-0",
                 )}
               >
                 {/* ── History item detail panel ────────────────────────────── */}
@@ -3985,30 +4001,6 @@ function DockedConversationPanel({
                               <div className="text-right shrink-0">
                                 <p className="text-[10px] text-[#98A2B3] dark:text-[#6B8FAD]">Balance</p>
                                 <p className="text-[13px] font-semibold text-[#111827] dark:text-white">{customerRecord.profile.totalAUM}</p>
-                              </div>
-                            </div>
-                            {/* Stats row */}
-                            <div className="grid grid-cols-2 gap-2">
-                              {/* Fraud Risk Score */}
-                              <div className="rounded-lg bg-white/60 border border-[#BFDBFE]/60 p-2.5 dark:bg-[#0C1A26] dark:border-[#1B3A52]">
-                                <p className="mb-1 text-[10px] text-[#667085] dark:text-[#8BACC4]">Fraud Risk Score</p>
-                                <p className={cn("text-[15px] font-bold leading-none mb-1.5", customerRecord.profile.fraudRiskScore >= 70 ? "text-[#E32926]" : customerRecord.profile.fraudRiskScore >= 40 ? "text-[#A37A00]" : "text-[#208337]")}>
-                                  {customerRecord.profile.fraudRiskScore} <span className="text-[11px] font-normal text-[#98A2B3]">/ 100</span>
-                                </p>
-                                <div className="h-1.5 rounded-full bg-[#E4E7EC] dark:bg-[#1B3A52] overflow-hidden">
-                                  <div
-                                    className={cn("h-full rounded-full transition-all", customerRecord.profile.fraudRiskScore >= 70 ? "bg-[#E32926]" : customerRecord.profile.fraudRiskScore >= 40 ? "bg-[#A37A00]" : "bg-[#208337]")}
-                                    style={{ width: `${customerRecord.profile.fraudRiskScore}%` }}
-                                  />
-                                </div>
-                              </div>
-                              {/* Prior Disputes */}
-                              <div className="rounded-lg bg-white/60 border border-[#BFDBFE]/60 p-2.5 dark:bg-[#0C1A26] dark:border-[#1B3A52]">
-                                <p className="mb-1 text-[10px] text-[#667085] dark:text-[#8BACC4]">Prior Disputes</p>
-                                <p className="text-[15px] font-bold leading-none text-[#111827] dark:text-white">{customerRecord.profile.priorDisputeCount === 0 ? "None" : customerRecord.profile.priorDisputeCount}</p>
-                                <p className={cn("mt-1 text-[10px]", customerRecord.profile.cardBlocked ? "text-[#E32926] font-medium" : "text-[#667085] dark:text-[#8BACC4]")}>
-                                  Card: {customerRecord.profile.cardBlocked ? "BLOCKED" : "NOT blocked"}
-                                </p>
                               </div>
                             </div>
                             {/* Tags */}
@@ -4382,6 +4374,7 @@ function DockedCustomerInfoPanel({
   showTrailingGap,
   isEqualSplit = false,
   equalSplitWidth,
+  takeoverCard = null,
 }: {
   isOpen: boolean;
   width: number;
@@ -4398,6 +4391,7 @@ function DockedCustomerInfoPanel({
   showTrailingGap: boolean;
   isEqualSplit?: boolean;
   equalSplitWidth?: number;
+  takeoverCard?: { botType: string; botAvatarUrl: string; customerContext: string; aiConfidence: number; aiConfidenceReason: string } | null;
 }) {
   const resizeStartRef = useRef({ mouseX: 0, width });
   const isResizingRef = useRef(false);
@@ -4505,7 +4499,7 @@ function DockedCustomerInfoPanel({
               <div className="flex items-center gap-3">
                 <GripHorizontal className="h-4 w-4 flex-shrink-0 text-[#7A7A7A]" />
                 <div className="min-w-0">
-                  <h3 className="text-sm font-semibold tracking-tight text-[#333333]">Customer</h3>
+                  <h3 className="text-sm font-semibold tracking-tight text-[#333333]">Customer Information</h3>
                   <p className="truncate text-xs text-[#7A7A7A]">
                     {customerName} · {customerId}
                   </p>
@@ -4530,6 +4524,7 @@ function DockedCustomerInfoPanel({
               initialTicketId={panelSelection?.ticketId}
               customerId={customerRecordId}
               customerName={customerName}
+              takeoverCard={takeoverCard ?? undefined}
             />
           </>
         ) : null}
@@ -4744,7 +4739,7 @@ const CustomerInfoPopunder = forwardRef<CustomerInfoPopunderHandle, {
       <div
         ref={innerRef}
         className={cn(
-          "flex min-h-[420px] min-w-[360px] flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-[0_20px_50px_rgba(0,0,0,0.18)]",
+          "flex w-full min-h-[420px] min-w-0 flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-[0_20px_50px_rgba(0,0,0,0.18)]",
           isExiting
             ? "animate-out slide-out-to-top-4 fade-out duration-300"
             : "animate-in slide-in-from-top-4 fade-in duration-300",
@@ -4780,6 +4775,18 @@ const CustomerInfoPopunder = forwardRef<CustomerInfoPopunderHandle, {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {onDock && (
+            <button
+              type="button"
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={onDock}
+              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[#7A7A7A] transition-colors hover:bg-white dark:hover:bg-[#1C2536] hover:text-[#333333] dark:hover:text-[#CBD5E1]"
+              aria-label="Dock customer information panel"
+              title="Dock to conversation"
+            >
+              <PanelRight className="h-4 w-4" />
+            </button>
+          )}
           <button
             type="button"
             onMouseDown={(event) => event.stopPropagation()}
@@ -5293,9 +5300,8 @@ function ConversationPopunder({
       >
         <div className="flex items-center gap-3">
           <GripHorizontal className="h-4 w-4 flex-shrink-0 text-[#7A7A7A]" />
-          <div>
-            <CustomerProfilePopover customerRecordId={customerRecordId} customerName={conversation.customerName} onOpenCustomerInfo={onOpenCustomerInfo} isCustomerInfoOpen={isCustomerInfoOpen} />
-          </div>
+          <CustomerProfilePopover customerRecordId={customerRecordId} customerName={conversation.customerName} />
+          <CustomerInfoIconButton onOpenCustomerInfo={onOpenCustomerInfo} isCustomerInfoOpen={isCustomerInfoOpen} />
           <CustomerContactDropdown
             onOpenCall={(anchorRect) => onOpenCall(anchorRect)}
             onOpenChannel={onOpenChannel}
@@ -6823,7 +6829,7 @@ function IncomingAssignmentCard({
    *  panel toggle is clicked while the toast is visible). */
   dismissTrigger?: number;
 }) {
-  const [summaryOpen, setSummaryOpen] = useState(item.statusLabel === "transferred" || item.statusLabel === "lead");
+  const [summaryOpen, setSummaryOpen] = useState(item.statusLabel === "transferred");
   const [approvePhase, setApprovePhase] = useState<"idle" | "approving" | "resolved">("idle");
   const [resolvedToastStatus, setResolvedToastStatus] = useState("Resolved");
   const [resolvedStatusOpen, setResolvedStatusOpen] = useState(false);
@@ -7459,36 +7465,6 @@ function IncomingAssignmentCard({
                             </div>
                           )}
                         </div>
-                        {/* Stats row */}
-                        {(profile.fraudRiskScore !== null || profile.priorDisputeCount !== null) && (
-                          <div className="grid grid-cols-2 gap-2">
-                            {profile.fraudRiskScore !== null && (
-                              <div className="rounded-lg bg-[#F9FAFB] border border-[#E4E7EC] p-2.5">
-                                <p className="mb-1 text-[10px] text-[#667085]">Fraud Risk Score</p>
-                                <p className={cn("text-[15px] font-bold leading-none mb-1.5",
-                                  profile.fraudRiskScore >= 70 ? "text-[#E32926]" : profile.fraudRiskScore >= 40 ? "text-[#A37A00]" : "text-[#208337]",
-                                )}>
-                                  {profile.fraudRiskScore} <span className="text-[11px] font-normal text-[#98A2B3]">/ 100</span>
-                                </p>
-                                <div className="h-1.5 rounded-full bg-[#E4E7EC] overflow-hidden">
-                                  <div
-                                    className={cn("h-full rounded-full", profile.fraudRiskScore >= 70 ? "bg-[#E32926]" : profile.fraudRiskScore >= 40 ? "bg-[#A37A00]" : "bg-[#208337]")}
-                                    style={{ width: `${profile.fraudRiskScore}%` }}
-                                  />
-                                </div>
-                              </div>
-                            )}
-                            {profile.priorDisputeCount !== null && (
-                              <div className="rounded-lg bg-[#F9FAFB] border border-[#E4E7EC] p-2.5">
-                                <p className="mb-1 text-[10px] text-[#667085]">Prior Disputes</p>
-                                <p className="text-[15px] font-bold leading-none text-[#111827]">{profile.priorDisputeCount === 0 ? "None" : profile.priorDisputeCount}</p>
-                                <p className={cn("mt-1 text-[10px]", profile.cardBlocked ? "text-[#E32926] font-medium" : "text-[#667085]")}>
-                                  Card: {profile.cardBlocked ? "BLOCKED" : "NOT blocked"}
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                        )}
                         {/* Tags */}
                         {profile.tags.length > 0 && (
                           <div className="flex flex-wrap gap-1.5">
@@ -8772,6 +8748,11 @@ export default function Layout({ children }: LayoutProps) {
   );
   const [isConversationPopunderOpen, setIsConversationPopunderOpen] = useState(false);
   const [isCustomerInfoPanelOpen, setIsCustomerInfoPanelOpen] = useState(false);
+  // When true, the customer info popunder is docked adjacent (to the right) of the
+  // conversation panel on the activity route, rather than floating freely.
+  const [isCustomerInfoDockedToConversation, setIsCustomerInfoDockedToConversation] = useState(false);
+  // Within dock-mode, whether the panel is currently shown (toggled by the header icon).
+  const [isConversationDockedPanelOpen, setIsConversationDockedPanelOpen] = useState(true);
   const [dockedCustomerInfoWidth, setDockedCustomerInfoWidth] = useState(() =>
     getBalancedDockedPanelWidths({
       hasDesktopRightPanel: false,
@@ -8817,14 +8798,17 @@ export default function Layout({ children }: LayoutProps) {
     x: 84,
     y: 72,
   }));
-  const [customerInfoPopunderSize, setCustomerInfoPopunderSize] = useState<CustomerInfoPopunderSize>({ width: 315, height: 420 });
+  const [customerInfoPopunderSize, setCustomerInfoPopunderSize] = useState<CustomerInfoPopunderSize>({ width: 360, height: 600 });
   // Ref so getAnchoredCustomerInfoPopunderPosition can read the latest size without
   // capturing it in useMemo/useEffect dep arrays (prevents context invalidation on resize).
   const customerInfoPopunderSizeRef = useRef(customerInfoPopunderSize);
   useEffect(() => { customerInfoPopunderSizeRef.current = customerInfoPopunderSize; }, [customerInfoPopunderSize]);
+  // Tracks the measured bottom of the conversation panel header, updated on takeover events.
+  // Used to position the Customer Info popunder just below the conversation tabs.
+  const conversationPanelHeaderBottomRef = useRef(120);
   const [customerInfoPopunderPosition, setCustomerInfoPopunderPosition] = useState<CustomerInfoPopunderPosition>(() => ({
-    x: 420,
-    y: 72,
+    x: typeof window !== "undefined" ? window.innerWidth - 360 - CUSTOMER_INFO_POPOUNDER_MARGIN : 420,
+    y: 120,
   }));
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<QueuePreviewItem["id"]>(() => initialSelectedAssignmentId);
   const [overviewOpenByAssignmentId, setOverviewOpenByAssignmentId] = useState<Record<string, boolean>>({});
@@ -9297,6 +9281,11 @@ export default function Layout({ children }: LayoutProps) {
     isCustomerInfoPanelAllowed &&
     !isCustomerInfoPopunderOpen;
   const isDockedConversationVisible = isActivityRoute && !isCombinedInteractionPanel && isConversationPanelOpen && visibleAssignments.length > 0;
+  // Customer info in conversation-dock mode (true even when the panel is toggled closed).
+  // Used to keep the header icon highlighted and suppress floating-popunder logic.
+  const isCustomerInfoInConversationDockMode = isDockedConversationVisible && isCustomerInfoDockedToConversation;
+  // Panel is actually rendered/visible within dock mode (toggled by the header icon).
+  const isConversationDockedCustomerInfoVisible = isCustomerInfoInConversationDockMode && isConversationDockedPanelOpen;
   const isMainCanvasVisible = !isExpandedCanvasRoute && !isCanvasMergedIntoCombinedPanel;
   const isDeskCustomerInfoPopunderVisible =
     isCustomerInfoPanelOpen && !isCombinedInteractionPanel && isCustomerInfoPopunderOpen;
@@ -9648,36 +9637,17 @@ export default function Layout({ children }: LayoutProps) {
     };
   };
 
-  const getAnchoredCustomerInfoPopunderPosition = (anchorRect?: DOMRect | null) => {
+  const getAnchoredCustomerInfoPopunderPosition = (_anchorRect?: DOMRect | null) => {
     if (typeof window === "undefined") {
-      return { x: 420, y: 72 };
+      return { x: 420, y: 120 };
     }
 
     const width = Math.min(customerInfoPopunderSizeRef.current.width, window.innerWidth - CUSTOMER_INFO_POPOUNDER_MARGIN * 2);
-    const height = Math.min(customerInfoPopunderSizeRef.current.height, window.innerHeight - CUSTOMER_INFO_POPOUNDER_MARGIN * 2);
 
-    if (!anchorRect) {
-      return {
-        x: Math.min(
-          Math.max(
-            CUSTOMER_INFO_POPOUNDER_MARGIN,
-            56 + (isConversationPanelOpen ? dockedConversationWidth + DOCKED_CONVERSATION_GAP : 0) + CUSTOMER_INFO_POPOUNDER_GAP,
-          ),
-          window.innerWidth - width - CUSTOMER_INFO_POPOUNDER_MARGIN,
-        ),
-        y: 72,
-      };
-    }
-
+    // Always anchor to the right edge, positioned just below the conversation panel header.
     return {
-      x: Math.min(
-        Math.max(CUSTOMER_INFO_POPOUNDER_MARGIN, anchorRect.left),
-        window.innerWidth - width - CUSTOMER_INFO_POPOUNDER_MARGIN,
-      ),
-      y: Math.min(
-        Math.max(CUSTOMER_INFO_POPOUNDER_MARGIN, anchorRect.top),
-        window.innerHeight - height - CUSTOMER_INFO_POPOUNDER_MARGIN,
-      ),
+      x: window.innerWidth - width - CUSTOMER_INFO_POPOUNDER_MARGIN,
+      y: conversationPanelHeaderBottomRef.current,
     };
   };
 
@@ -9922,6 +9892,15 @@ export default function Layout({ children }: LayoutProps) {
     isDeskCustomerInfoVisible,
     isExpandedCanvasRoute,
   ]);
+
+  // When the conversation panel is closed/hidden, release any customer-info panel that was
+  // docked adjacent to it — otherwise the docked shell would remain with no conversation beside it.
+  useEffect(() => {
+    if (!isDockedConversationVisible && isCustomerInfoDockedToConversation) {
+      setIsCustomerInfoDockedToConversation(false);
+      setIsConversationDockedPanelOpen(true);
+    }
+  }, [isDockedConversationVisible, isCustomerInfoDockedToConversation]);
 
   // Desk canvas popunder is intentionally NOT auto-cleared when navigating to the desk route.
   // Panels stay floating until the agent explicitly clicks "Dock panel".
@@ -10966,6 +10945,13 @@ export default function Layout({ children }: LayoutProps) {
   };
 
   const openCustomerInfoIconPopover = (event?: React.MouseEvent<HTMLElement>) => {
+    // While in conversation-dock mode the icon simply toggles the panel open / closed
+    // without ever leaving dock mode or opening a separate floating popunder.
+    if (isCustomerInfoInConversationDockMode) {
+      setIsConversationDockedPanelOpen((prev) => !prev);
+      return;
+    }
+
     // If the popunder is already visible (from icon click or takeover), animate it out.
     if (isCustomerInfoIconPopoverOpen || isTakeoverInfoOpen || isDeskCustomerInfoPopunderVisible) {
       // Trigger the slide-up exit animation; onClose will clear state after it finishes.
@@ -10991,6 +10977,30 @@ export default function Layout({ children }: LayoutProps) {
   const dockCustomerInfoPanel = () => {
     if (isCombinedInteractionPanel) {
       openCombinedInteractionPanel("customerInfo");
+      return;
+    }
+
+    // On the activity route with a visible docked conversation panel, dock customer info
+    // directly adjacent (to the right) of the conversation panel instead of navigating.
+    if (isActivityRoute && isDockedConversationVisible) {
+      // Size the docked panel to a reasonable default if not already sized.
+      const { customerInfoWidth } = getBalancedDockedPanelWidths({
+        hasDesktopRightPanel: false,
+        reserveMainWorkspace: isMainCanvasVisible,
+        showConversation: true,
+        showCustomerInfo: true,
+        hasMainCanvas: isMainCanvasVisible,
+        currentConversationWidth: dockedConversationWidth,
+        currentCustomerInfoWidth: dockedCustomerInfoWidth,
+      });
+      setDockedCustomerInfoWidth(customerInfoWidth);
+      setIsCustomerInfoDockedToConversation(true);
+      setIsConversationDockedPanelOpen(true);
+      setIsCustomerInfoPopunderOpen(false);
+      setIsCustomerInfoIconPopoverOpen(false);
+      setIsTakeoverInfoOpen(false);
+      setCustomerInfoTakeoverStartTime(null);
+      setCustomerInfoDragActivation(null);
       return;
     }
 
@@ -11037,6 +11047,8 @@ export default function Layout({ children }: LayoutProps) {
     setCustomerInfoDragActivation(null);
     setIsCustomerInfoPopunderOpen(false);
     setIsCustomerInfoPanelOpen(false);
+    setIsCustomerInfoDockedToConversation(false);
+    setIsConversationDockedPanelOpen(true);
   };
 
   const clearDeskCanvasPopunderState = () => {
@@ -12053,10 +12065,13 @@ export default function Layout({ children }: LayoutProps) {
                 caseOverviewOpenTrigger={caseOverviewOpenTrigger}
                 activeCaseTransferredItem={activeCaseTransferredItem}
                 onTakeoverOpen={(pos) => {
+                  if (pos) conversationPanelHeaderBottomRef.current = pos.y;
                   bringFloatingPanelToFront("customerInfo");
-                  setCustomerInfoPopunderPosition(pos);
-                  setCustomerInfoPopunderSize({ width: 315, height: 600 });
-                  customerInfoHasBeenPositionedRef.current = true;
+                  if (!customerInfoHasBeenPositionedRef.current) {
+                    setCustomerInfoPopunderPosition(getAnchoredCustomerInfoPopunderPosition());
+                    setCustomerInfoPopunderSize({ width: 360, height: 600 });
+                    customerInfoHasBeenPositionedRef.current = true;
+                  }
                   setCustomerInfoTakeoverStartTime(Date.now());
                   const botLabel = selectedAssignment.label ?? "Aria";
                   const botAvatarUrl = botLabel === "Emily"
@@ -12167,7 +12182,7 @@ export default function Layout({ children }: LayoutProps) {
               onOpenDeskPanel={openDeskPanel}
               onOpenCall={layoutContextValue.toggleCallPopunder}
               onOpenChannel={(channel) => openCustomerConversation(selectedAssignment.customerRecordId, channel)}
-              isCustomerInfoOpen={isDeskCustomerInfoPopunderVisible || isCustomerInfoIconPopoverOpen || isTakeoverInfoOpen}
+              isCustomerInfoOpen={isConversationDockedCustomerInfoVisible || isDeskCustomerInfoPopunderVisible || isCustomerInfoIconPopoverOpen || isTakeoverInfoOpen}
               onOpenCustomerInfo={openCustomerInfoIconPopover}
               onConversationStatusChange={handleConversationStatusChange}
               onResolveAssignment={handleResolveAssignment}
@@ -12180,7 +12195,7 @@ export default function Layout({ children }: LayoutProps) {
               }}
               isCallDisabled={status === "In a Call" || status !== "Available"}
               onClose={closeConversationPanel}
-              showTrailingGap={isDeskCustomerInfoVisible || shouldCombineDockedCustomerAndDeskPanels || isMainCanvasVisible}
+              showTrailingGap={isConversationDockedCustomerInfoVisible || isDeskCustomerInfoVisible || shouldCombineDockedCustomerAndDeskPanels || isMainCanvasVisible}
               showTaskSummary={taskSummaryIds.has(selectedAssignment.id)}
               initialSummaryOpen={false}
                 onSummaryClose={() => setClosedSummaryIds((prev) => new Set([...prev, selectedAssignment.id]))}
@@ -12228,11 +12243,7 @@ export default function Layout({ children }: LayoutProps) {
               caseOverviewOpenTrigger={caseOverviewOpenTrigger}
               activeCaseTransferredItem={activeCaseTransferredItem}
               onTakeoverOpen={(pos) => {
-                bringFloatingPanelToFront("customerInfo");
-                setCustomerInfoPopunderPosition(pos);
-                setCustomerInfoPopunderSize({ width: 315, height: 600 });
-                customerInfoHasBeenPositionedRef.current = true;
-                setCustomerInfoTakeoverStartTime(Date.now());
+                if (pos) conversationPanelHeaderBottomRef.current = pos.y;
                 const botLabel = selectedAssignment.label ?? "Aria";
                 const botAvatarUrl = botLabel === "Emily"
                   ? `${import.meta.env.BASE_URL}emily-avatar.jpg`
@@ -12252,7 +12263,70 @@ export default function Layout({ children }: LayoutProps) {
                     aiConfidenceReason: selectedAssignment.aiConfidenceReason ?? "Based on 3 similar resolved cases and firmware documentation match.",
                   });
                 }
+                // If the panel is already docked adjacent to the conversation, don't open
+                // a floating popunder — the docked panel will display the updated card.
+                if (isCustomerInfoInConversationDockMode) {
+                  setIsConversationDockedPanelOpen(true);
+                  return;
+                }
+                bringFloatingPanelToFront("customerInfo");
+                if (!customerInfoHasBeenPositionedRef.current) {
+                  setCustomerInfoPopunderPosition(getAnchoredCustomerInfoPopunderPosition());
+                  setCustomerInfoPopunderSize({ width: 360, height: 600 });
+                  customerInfoHasBeenPositionedRef.current = true;
+                }
+                setCustomerInfoTakeoverStartTime(Date.now());
                 setIsTakeoverInfoOpen(true);
+              }}
+            />
+            {/* Customer info docked directly to the right of the conversation panel
+                (activity route only, triggered by the dock button in the floating popunder). */}
+            <DockedCustomerInfoPanel
+              isOpen={isConversationDockedCustomerInfoVisible}
+              width={dockedCustomerInfoWidth}
+              maxWidth={customerInfoPanelMaxWidth}
+              customerRecordId={selectedAssignment.customerRecordId}
+              customerName={selectedAssignment.name}
+              customerId={selectedAssignment.customerId}
+              panelSelection={deskPanelSelection}
+              onWidthChange={setDockedCustomerInfoWidth}
+              onOpenCall={layoutContextValue.toggleCallPopunder}
+              isCallDisabled={status === "In a Call" || status !== "Available"}
+              onClose={() => setIsConversationDockedPanelOpen(false)}
+              showTrailingGap={isMainCanvasVisible}
+              takeoverCard={customerInfoTakeoverCard}
+              onUndockStart={(event) => {
+                if (typeof window === "undefined") return;
+
+                event.preventDefault();
+
+                const bounds = event.currentTarget.parentElement?.getBoundingClientRect();
+                if (!bounds) return;
+
+                const margin = CUSTOMER_INFO_POPOUNDER_MARGIN;
+                const nextPosition = {
+                  x: Math.min(
+                    Math.max(margin, bounds.left),
+                    window.innerWidth - customerInfoPopunderSize.width - margin,
+                  ),
+                  y: Math.min(
+                    Math.max(margin, bounds.top),
+                    window.innerHeight - customerInfoPopunderSize.height - margin,
+                  ),
+                };
+
+                bringFloatingPanelToFront("customerInfo");
+                setIsCustomerInfoDockedToConversation(false);
+                setIsConversationDockedPanelOpen(true);
+                setCustomerInfoPopunderPosition(nextPosition);
+                setIsCustomerInfoIconPopoverOpen(true);
+                setCustomerInfoDragActivation({
+                  id: Date.now(),
+                  offset: {
+                    x: event.clientX - nextPosition.x,
+                    y: event.clientY - nextPosition.y,
+                  },
+                });
               }}
             />
             <DockedCustomerInfoPanel
@@ -12268,6 +12342,7 @@ export default function Layout({ children }: LayoutProps) {
               isCallDisabled={status === "In a Call" || status !== "Available"}
               onClose={closeCustomerInfoPanel}
               showTrailingGap={isMainCanvasVisible}
+              takeoverCard={customerInfoTakeoverCard}
               onUndockStart={(event) => {
                 if (typeof window === "undefined") return;
 
@@ -12350,7 +12425,7 @@ export default function Layout({ children }: LayoutProps) {
         />
       )}
 
-      {(isActivityRoute || isDeskRoute) && (isDeskCustomerInfoPopunderVisible || isCustomerInfoIconPopoverOpen || isTakeoverInfoOpen) && (
+      {(isActivityRoute || isDeskRoute) && !isCustomerInfoInConversationDockMode && (isDeskCustomerInfoPopunderVisible || isCustomerInfoIconPopoverOpen || isTakeoverInfoOpen) && (
         <CustomerInfoPopunder
           ref={customerInfoPopunderRef}
           position={customerInfoPopunderPosition}
@@ -12365,9 +12440,9 @@ export default function Layout({ children }: LayoutProps) {
           onOpenCall={layoutContextValue.toggleCallPopunder}
           isCallDisabled={status === "In a Call" || status !== "Available"}
           takeoverStartTime={customerInfoTakeoverStartTime}
-          takeoverCard={isTakeoverInfoOpen ? customerInfoTakeoverCard : null}
-          onClose={() => { setIsCustomerInfoIconPopoverOpen(false); setIsTakeoverInfoOpen(false); setCustomerInfoTakeoverStartTime(null); setCustomerInfoTakeoverCard(null); closeCustomerInfoPanel(); }}
-          onDock={isCustomerInfoPanelAllowed ? () => { setIsCustomerInfoIconPopoverOpen(false); dockCustomerInfoPanel(); } : undefined}
+          takeoverCard={customerInfoTakeoverCard}
+          onClose={() => { setIsCustomerInfoIconPopoverOpen(false); setIsTakeoverInfoOpen(false); setCustomerInfoTakeoverStartTime(null); closeCustomerInfoPanel(); }}
+          onDock={(isCustomerInfoPanelAllowed || (isActivityRoute && isDockedConversationVisible)) ? () => { setIsCustomerInfoIconPopoverOpen(false); dockCustomerInfoPanel(); } : undefined}
           dragActivation={customerInfoDragActivation}
           onInteractStart={() => bringFloatingPanelToFront("customerInfo")}
         />
@@ -12477,6 +12552,7 @@ export default function Layout({ children }: LayoutProps) {
             }, 2000);
           }}
           onEndCall={() => openCallDisposition()}
+          onCancelDisposition={() => setCallPopunderMode("controls")}
           onSelectDisposition={(disposition) => {
             const dispositionTimestamp = new Date();
             const formattedDispositionTimestamp = formatRecentInteractionTimestamp(dispositionTimestamp);
@@ -12525,6 +12601,8 @@ export default function Layout({ children }: LayoutProps) {
             }
             setIsCallPopunderOpen(false);
             setCallPopunderMode("setup");
+            setCustomerInfoTakeoverCard(null);
+            setIsTakeoverInfoOpen(false);
           }}
           onInteractStart={() => bringFloatingPanelToFront("call")}
         />
@@ -12590,18 +12668,39 @@ export default function Layout({ children }: LayoutProps) {
             }
             setPendingCallCustomerRecordId(item.customerRecordId);
             setLaunchingLeadId(item.id);
+            const capturedLeadItem = item;
             leadLaunchTimerRef.current = window.setTimeout(() => {
               leadLaunchTimerRef.current = null;
               layoutContextValue.startCallStatus();
-              const nextVoiceAssignment = openCustomerConversation(item.customerRecordId, "voice");
+              const nextVoiceAssignment = openCustomerConversation(capturedLeadItem.customerRecordId, "voice");
               setActiveCallAssignmentId(nextVoiceAssignment.id);
               setPendingCallAccountNumber("");
               setIsLeftRailOpen(true);
               navigate("/activity");
               setCopilotPopunderPosition(getAnchoredCopilotPopunderPosition());
               setIsCopilotPopoverOpen(true);
+              // Auto-open the Customer Information popunder with the lead intelligence overview card
+              const li = capturedLeadItem.leadIntelligence;
+              if (li) {
+                const ariaAvatarUrl = "https://cdn.builder.io/api/v1/image/assets%2F9d3d716b4b844ab4bcf3267b33310813%2F054057b71e64441097a4902d7dcea754?format=webp&width=800&height=1200";
+                setCustomerInfoTakeoverCard({
+                  botType: capturedLeadItem.label ?? "Aria",
+                  botAvatarUrl: ariaAvatarUrl,
+                  customerContext: li.ariaMessage ?? li.formMessage,
+                  aiConfidence: li.aiConfidence ?? 78,
+                  aiConfidenceReason: li.aiConfidenceReason ?? "Based on 3 similar resolved cases and firmware documentation match.",
+                });
+                setCustomerInfoTakeoverStartTime(Date.now());
+                if (!customerInfoHasBeenPositionedRef.current) {
+                  setCustomerInfoPopunderSize({ width: 360, height: 600 });
+                  setCustomerInfoPopunderPosition(getAnchoredCustomerInfoPopunderPosition());
+                  customerInfoHasBeenPositionedRef.current = true;
+                }
+                bringFloatingPanelToFront("customerInfo");
+                setIsTakeoverInfoOpen(true);
+              }
               setLaunchingLeadId(null);
-              removeIncoming(item.id);
+              removeIncoming(capturedLeadItem.id);
             }, 2000);
           } else {
             layoutContextValue.toggleCallPopunder(null, item.customerRecordId);
