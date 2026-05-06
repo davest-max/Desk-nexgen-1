@@ -25,7 +25,8 @@ export type CustomerHistoryItemType =
   | "ticket"       // Auto-generated system ticket
   | "email"        // System or agent email
   | "system"       // Internal system event
-  | "handoff";     // Human-agent handoff
+  | "handoff"      // Human-agent handoff
+  | "lead";        // CRM lead form created by agent
 
 // ── Interaction types ────────────────────────────────────────────────────────
 
@@ -87,6 +88,9 @@ export type CustomerHistoryInteraction =
   | {
       kind: "registration";
       fields: { label: string; value: string }[];
+    }
+  | {
+      kind: "lead";
     };
 
 // ── History item ─────────────────────────────────────────────────────────────

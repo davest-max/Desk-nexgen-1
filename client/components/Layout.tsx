@@ -67,6 +67,7 @@ import {
   CheckCircle2,
   Building2,
   ExternalLink,
+  ScrollText,
 } from "lucide-react";
 
 import {
@@ -145,7 +146,7 @@ interface LayoutProps {
   children: React.ReactNode;
 }
 
-type FloatingPanelId = "conversation" | "customerInfo" | "deskCanvas" | "call" | "addNew" | "chat" | "notifications";
+type FloatingPanelId = "conversation" | "customerInfo" | "deskCanvas" | "call" | "addNew" | "chat" | "notifications" | "transcript";
 type CombinedInteractionPanelTab = "conversation" | "customerInfo" | "canvas";
 
 // Agent roster used for the Transfer sub-menu in the case header dropdown
@@ -637,6 +638,16 @@ type DeskCanvasPopunderSize = {
   width: number;
   height: number;
 };
+
+type TranscriptLine = {
+  id: string;
+  speaker: "agent" | "customer" | "system";
+  text: string;
+  elapsed: number; // seconds since call start
+};
+
+type TranscriptPopunderPosition = { x: number; y: number };
+type TranscriptPopunderSize = { width: number; height: number };
 
 type CallPopunderMode = "setup" | "connecting" | "controls" | "disposition";
 
@@ -1927,6 +1938,33 @@ function CustomerInfoIconButton({
   );
 }
 
+/** Standalone icon button that opens the live call Transcript popunder. */
+function TranscriptIconButton({
+  onOpen,
+  isOpen = false,
+}: {
+  onOpen: (event?: React.MouseEvent<HTMLElement>) => void;
+  isOpen?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label="Open call transcript"
+      title="Call Transcript"
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => { e.stopPropagation(); onOpen(e); }}
+      className={cn(
+        "flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors",
+        isOpen
+          ? "bg-[#166CCA]/10 text-[#166CCA] hover:bg-[#166CCA]/20"
+          : "text-[#7A7A7A] hover:bg-white dark:hover:bg-[#1C2536] hover:text-[#333333] dark:hover:text-[#CBD5E1]",
+      )}
+    >
+      <ScrollText className="h-3.5 w-3.5 stroke-[1.5]" />
+    </button>
+  );
+}
+
 function TaskSummaryView({
   assignment,
 }: {
@@ -2418,6 +2456,16 @@ function DockedConversationPanel({
   onOpenChannel,
   onOpenCustomerInfo,
   isCustomerInfoOpen = false,
+  onOpenTranscript,
+  isTranscriptOpen = false,
+  isCallActive = false,
+  hasTranscript = false,
+  voiceOpeningLines,
+  voiceTopContent,
+  voiceRightPanel,
+  voiceContentOverlay,
+  onVoiceOpeningLineClick,
+  extraHistoryItems = [],
   onConversationStatusChange,
   onResolveAssignment,
   overviewIsOpen,
@@ -2458,6 +2506,16 @@ function DockedConversationPanel({
   onOpenChannel: (channel: Extract<CustomerChannel, "sms" | "email" | "whatsapp">) => void;
   onOpenCustomerInfo: (event?: React.MouseEvent<HTMLElement>) => void;
   isCustomerInfoOpen?: boolean;
+  onOpenTranscript?: (event?: React.MouseEvent<HTMLElement>) => void;
+  isTranscriptOpen?: boolean;
+  isCallActive?: boolean;
+  hasTranscript?: boolean;
+  voiceOpeningLines?: Array<{ intro: string; question: string }> | null;
+  voiceTopContent?: React.ReactNode;
+  voiceRightPanel?: React.ReactNode;
+  voiceContentOverlay?: React.ReactNode;
+  onVoiceOpeningLineClick?: () => void;
+  extraHistoryItems?: CustomerHistoryItem[];
   onConversationStatusChange: (status: ConversationStatus) => void;
   onResolveAssignment?: () => void;
   overviewIsOpen: boolean;
@@ -2517,7 +2575,10 @@ function DockedConversationPanel({
 
   // Customer history detail panel — tracks which item is expanded in the left sidebar.
   const [selectedHistoryItemId, setSelectedHistoryItemId] = useState<string | null>(null);
-  const selectedHistoryItem = customerRecord?.customerHistory?.find((h) => h.id === selectedHistoryItemId) ?? null;
+  const selectedHistoryItem =
+    customerRecord?.customerHistory?.find((h) => h.id === selectedHistoryItemId) ??
+    extraHistoryItems?.find((h) => h.id === selectedHistoryItemId) ??
+    null;
   const [viewingInteraction, setViewingInteraction] = useState(false);
 
   // When the active case changes, clear any open event detail so the panel never shows
@@ -2571,6 +2632,7 @@ function DockedConversationPanel({
     email:        { icon: Mail,         accent: "#F59E0B", iconBg: "#FFFBEB" },
     system:       { icon: Activity,     accent: "#667085", iconBg: "#F2F4F7" },
     handoff:      { icon: UserCheck,    accent: "#E32926", iconBg: "#FEF2F2" },
+    lead:         { icon: ClipboardList,accent: "#166CCA", iconBg: "#EBF4FD" },
   };
 
   const dotColorClass = (dot: CustomerHistoryDot) =>
@@ -2592,6 +2654,7 @@ function DockedConversationPanel({
       case "ticket":       return "Ticket Thread";
       case "email":        return "Email";
       case "registration": return "Registration Record";
+      case "lead":         return "Lead Form";
     }
   };
 
@@ -2830,6 +2893,10 @@ function DockedConversationPanel({
           </div>
         </div>
       );
+    }
+
+    if (interaction.kind === "lead") {
+      return <TerryLeadForm onClose={() => setViewingInteraction(false)} />;
     }
 
     return null;
@@ -3567,7 +3634,7 @@ function DockedConversationPanel({
                   /* Customer History timeline */
                   <div className="flex-1 overflow-y-auto px-4 pt-3 pb-4">
                     <div className="max-w-[800px] mx-auto w-full">
-                      {renderHistoryTimeline(customerRecord?.customerHistory ?? [])}
+                      {renderHistoryTimeline([...(customerRecord?.customerHistory ?? []), ...extraHistoryItems])}
                     </div>
                   </div>
                 ) : showTaskSummary ? (
@@ -3604,6 +3671,11 @@ function DockedConversationPanel({
                     aiConfidenceReason={aiConfidenceReason}
                     botLabel={botLabel}
                     customerContext={customerContext}
+                    voiceOpeningLines={voiceOpeningLines}
+                    voiceTopContent={voiceTopContent}
+                    voiceRightPanel={voiceRightPanel}
+                    voiceContentOverlay={voiceContentOverlay}
+                    onVoiceOpeningLineClick={onVoiceOpeningLineClick}
                   />
                 )}
               </div>
@@ -3790,7 +3862,7 @@ function DockedConversationPanel({
                         /* Customer History timeline — narrow drawer */
                         <div className="px-1">
                           <div className="max-w-[800px] mx-auto w-full">
-                            {renderHistoryTimeline(customerRecord?.customerHistory ?? [])}
+                            {renderHistoryTimeline([...(customerRecord?.customerHistory ?? []), ...extraHistoryItems])}
                           </div>
                         </div>
                       )}
@@ -3821,7 +3893,7 @@ function DockedConversationPanel({
               <div
                 className={cn(
                   "flex-shrink-0 border-l border-border flex flex-col bg-card dark:bg-[#0C1A26] overflow-hidden transition-[width,opacity] duration-300 ease-in-out",
-                  isHandoffSummaryOpen ? "w-[350px] opacity-100" : "w-0 opacity-0 border-l-0",
+                  isHandoffSummaryOpen && (summaryTab === "history" || !selectedHistoryItemId) ? "w-[350px] opacity-100" : "w-0 opacity-0 border-l-0",
                 )}
               >
                 {/* ── History item detail panel ────────────────────────────── */}
@@ -4472,7 +4544,7 @@ function DockedCustomerInfoPanel({
     <div
       aria-hidden={!isOpen}
       className={cn(
-        "relative hidden min-h-0 overflow-visible transition-[width,margin,opacity,transform] duration-400 ease-out min-[1024px]:block",
+        "relative hidden min-h-0 overflow-visible transition-[width,margin,opacity,transform] duration-300 ease-out min-[1024px]:block",
         isEqualSplit && equalSplitWidth === undefined && "min-w-0 flex-1 basis-0",
         isEqualSplit && equalSplitWidth !== undefined && "shrink-0",
         isOpen
@@ -4830,6 +4902,1073 @@ const CustomerInfoPopunder = forwardRef<CustomerInfoPopunderHandle, {
     </div>
   );
 });
+
+// Terry Williams call — specific script for the sales demo simulation.
+const TERRY_TRANSCRIPT_LINES: Omit<TranscriptLine, "id">[] = [
+  { speaker: "customer", text: "Hello? This is Terry Williams.", elapsed: 1 },
+  { speaker: "agent",    text: "Hi Terry, this is Jeff from NovaTech — thanks for reaching out, I saw you were just on our pricing page. Perfect timing. What's driving the search right now?", elapsed: 5 },
+  { speaker: "customer", text: "Yeah, we've been on a legacy TMS for about six years. It's falling apart and our warehouse integrations are a nightmare. We're under pressure to have something new in place before Q4.", elapsed: 9 },
+  { speaker: "agent",    text: "Got it — Q4 is tight but doable. Has budget been approved yet, or are you still in the evaluation phase?", elapsed: 24 },
+  { speaker: "customer", text: "Budget's approved. We set aside around $400K annually for this. I just need to make sure the product can handle the complexity of our routing logic before I bring it to our CTO.", elapsed: 33 },
+  { speaker: "agent",    text: "That's great — and honestly, for routing logic at your scale, what I'd recommend is a technical deep-dive with one of our solutions engineers rather than a standard demo. They can get into the specifics of your warehouse setup. Does that sound useful?", elapsed: 43 },
+  { speaker: "customer", text: "That's exactly what I'd want, yeah. Can we do that this week?", elapsed: 49 },
+  { speaker: "agent",    text: "Absolutely — I'll get that set up. Can I confirm your email so the solutions engineer can send over a prep doc beforehand?", elapsed: 59 },
+  { speaker: "customer", text: "Sure, it's t.williams@nexusfreight.com.", elapsed: 65 },
+  { speaker: "agent",    text: "Perfect. I'll have someone reach out by end of day to confirm the time. Thanks Terry — this is going to be a great fit.", elapsed: 74 },
+  { speaker: "customer", text: "Thanks, looking forward to next steps.", elapsed: 81 },
+];
+
+// Right-side call transcript panel — auto-scrolls to new lines unless the agent has scrolled up.
+// Incoming lines are revealed word-by-word to simulate live transcription.
+function TerryTranscriptPanel({
+  transcriptLines,
+  isVisible,
+  isLive,
+  customerName,
+  scriptLength,
+  onClose,
+}: {
+  transcriptLines: TranscriptLine[];
+  isVisible: boolean;
+  isLive: boolean;
+  customerName: string;
+  scriptLength: number;
+  onClose: () => void;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const userScrolledUpRef = useRef(false);
+
+  // Word-by-word reveal state
+  const [animatingLineId, setAnimatingLineId] = useState<string | null>(null);
+  const [revealedWordCount, setRevealedWordCount] = useState(0);
+  const animIntervalRef = useRef<number | null>(null);
+  // Initialise to the current length so pre-seeded lines are never animated.
+  const prevLinesLengthRef = useRef(transcriptLines.length);
+
+  // Detect newly appended non-system lines and start word-by-word reveal.
+  useEffect(() => {
+    const prevLen = prevLinesLengthRef.current;
+    const newLen = transcriptLines.length;
+    prevLinesLengthRef.current = newLen;
+
+    if (newLen <= prevLen) return;
+
+    const newestLine = transcriptLines[newLen - 1];
+    if (!newestLine || newestLine.speaker === "system") return;
+
+    // Cancel any in-progress animation before starting a new one.
+    if (animIntervalRef.current !== null) {
+      clearInterval(animIntervalRef.current);
+      animIntervalRef.current = null;
+    }
+
+    const words = newestLine.text.split(" ");
+    setAnimatingLineId(newestLine.id);
+    setRevealedWordCount(1);
+
+    let wordIdx = 1;
+    animIntervalRef.current = window.setInterval(() => {
+      wordIdx += 1;
+      setRevealedWordCount(wordIdx);
+      if (wordIdx >= words.length) {
+        clearInterval(animIntervalRef.current!);
+        animIntervalRef.current = null;
+        setAnimatingLineId(null);
+      }
+    }, 90);
+  }, [transcriptLines]);
+
+  // Clean up interval on unmount.
+  useEffect(() => {
+    return () => {
+      if (animIntervalRef.current !== null) clearInterval(animIntervalRef.current);
+    };
+  }, []);
+
+  // Auto-scroll to bottom whenever new lines arrive or a word is revealed, unless user scrolled up.
+  useEffect(() => {
+    if (userScrolledUpRef.current || !scrollRef.current) return;
+    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [transcriptLines, revealedWordCount]);
+
+  const handleScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    userScrolledUpRef.current = distFromBottom > 40;
+  };
+
+  // Return partial text while a line is being animated, full text otherwise.
+  const getDisplayText = (line: TranscriptLine) => {
+    if (line.id !== animatingLineId) return line.text;
+    return line.text.split(" ").slice(0, revealedWordCount).join(" ");
+  };
+
+  return (
+    <div className={cn(
+      "flex flex-col h-full border-l border-[#E4E7EC] bg-white overflow-hidden transition-[width] duration-300 ease-in-out",
+      isVisible ? "w-[340px]" : "w-0 border-l-0",
+    )}>
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[#F2F4F7] shrink-0 min-w-[340px]">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-[#667085]">Call Transcript</span>
+          <span className="text-[10px] text-[#98A2B3]">· {customerName}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {isLive && (
+            <div className="flex items-center gap-1.5 rounded-full bg-[#EFFBF1] px-2.5 py-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#208337] animate-pulse" />
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-[#208337]">Live</span>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-6 w-6 items-center justify-center rounded-full text-[#98A2B3] transition-colors hover:bg-[#F2F4F7] hover:text-[#344054]"
+            aria-label="Close transcript"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+      {/* Scrollable transcript lines */}
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className="flex flex-col gap-3 overflow-y-auto px-4 py-3 flex-1 min-w-[340px]"
+      >
+        {transcriptLines.map((line) => (
+          line.speaker === "system" ? (
+            <div key={line.id} className="flex items-center gap-2 py-1">
+              <div className="h-px flex-1 bg-[#E4E7EC]" />
+              <span className="flex-shrink-0 text-[11px] font-medium text-[#98A2B3]">{line.text}</span>
+              <div className="h-px flex-1 bg-[#E4E7EC]" />
+            </div>
+          ) : (
+            <div key={line.id} className={cn("flex flex-col gap-0.5", line.speaker === "agent" ? "items-end" : "items-start")}>
+              <div className="flex items-center gap-1.5">
+                <span className={cn("text-[10px] font-semibold uppercase tracking-wide", line.speaker === "agent" ? "text-[#166CCA]" : "text-[#667085]")}>
+                  {line.speaker === "agent" ? "Jeff Comstock" : customerName}
+                </span>
+                <span className="text-[10px] text-[#98A2B3]">{formatElapsed(line.elapsed)}</span>
+              </div>
+              <div className={cn(
+                "max-w-[88%] rounded-xl px-3 py-2 text-[13px] leading-relaxed",
+                line.speaker === "agent" ? "bg-[#EBF4FD] text-[#1D2939]" : "bg-[#F9FAFB] border border-[#E4E7EC] text-[#344054]",
+              )}>
+                {getDisplayText(line)}
+              </div>
+            </div>
+          )
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Collapsible lead form shown when agent clicks "Review Lead Form".
+function TerryLeadForm({ onClose }: { onClose: () => void }) {
+  const sectionClass = "flex flex-col gap-3";
+  const sectionHeaderClass = "flex items-center gap-3";
+  const labelClass = "text-[11px] font-medium text-[#667085]";
+  const inputClass = "h-9 rounded-lg border border-[#E4E7EC] bg-[#F9FAFB] px-3 text-[13px] text-[#1D2939] placeholder:text-[#98A2B3] focus:border-[#166CCA] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#166CCA]/20 transition-colors";
+
+  const INITIAL_FIELDS = {
+    firstName: "Terry",
+    lastName: "Williams",
+    title: "VP of Operations",
+    company: "Nexus Freight",
+    email: "t.williams@nexusfreight.com",
+    phone: "+1 (408) 555-0134",
+    location: "San Jose, CA",
+    leadType: "Enterprise — New logo",
+    leadSource: "Web callback — pricing page",
+    annualBudget: "$400,000",
+    decisionTimeline: "Before Q4 2025",
+    industry: "Freight & Logistics",
+    companySize: "~200 employees",
+    painPoint: "Legacy TMS replacement; warehouse integration failures",
+    keyStakeholders: "Terry Williams (primary); CTO (to be confirmed)",
+    recommendedAction: "Technical deep-dive with solutions engineer — this week",
+  };
+
+  const [fields, setFields] = useState(INITIAL_FIELDS);
+
+  const isDirty = (Object.keys(fields) as (keyof typeof fields)[]).some(
+    (key) => fields[key] !== INITIAL_FIELDS[key],
+  );
+
+  const set = (key: keyof typeof fields) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setFields((prev) => ({ ...prev, [key]: e.target.value }));
+
+  return (
+    <div className="rounded-xl border border-[#E4E7EC] bg-white overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+      {/* Form header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[#F2F4F7]">
+        <span className="text-[11px] font-semibold uppercase tracking-widest text-[#667085]">Lead Form</span>
+        <button
+          type="button"
+          onClick={onClose}
+          className="flex h-6 w-6 items-center justify-center rounded-full text-[#98A2B3] hover:bg-[#F2F4F7] hover:text-[#344054] transition-colors"
+          aria-label="Close lead form"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      <div className="px-4 py-4 flex flex-col gap-5 overflow-y-auto max-h-[560px]">
+
+        {/* CONTACT */}
+        <div className={sectionClass}>
+          <div className={sectionHeaderClass}>
+            <span className="text-[9px] font-semibold uppercase tracking-widest text-[#98A2B3]">Contact</span>
+            <div className="flex-1 h-px bg-[#F2F4F7]" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className={labelClass}>First name</label>
+              <input className={inputClass} value={fields.firstName} onChange={set("firstName")} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className={labelClass}>Last name</label>
+              <input className={inputClass} value={fields.lastName} onChange={set("lastName")} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className={labelClass}>Title</label>
+              <input className={inputClass} value={fields.title} onChange={set("title")} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className={labelClass}>Company</label>
+              <input className={inputClass} value={fields.company} onChange={set("company")} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className={labelClass}>Email</label>
+              <input className={inputClass} value={fields.email} onChange={set("email")} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className={labelClass}>Phone</label>
+              <input className={inputClass} value={fields.phone} onChange={set("phone")} />
+            </div>
+            <div className="col-span-2 flex flex-col gap-1">
+              <label className={labelClass}>Location</label>
+              <input className={inputClass} value={fields.location} onChange={set("location")} />
+            </div>
+          </div>
+        </div>
+
+        {/* QUALIFICATION */}
+        <div className={sectionClass}>
+          <div className={sectionHeaderClass}>
+            <span className="text-[9px] font-semibold uppercase tracking-widest text-[#98A2B3]">Qualification</span>
+            <div className="flex-1 h-px bg-[#F2F4F7]" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className={labelClass}>Lead type</label>
+              <input className={inputClass} value={fields.leadType} onChange={set("leadType")} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className={labelClass}>Lead source</label>
+              <input className={inputClass} value={fields.leadSource} onChange={set("leadSource")} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className={labelClass}>Annual budget</label>
+              <input className={inputClass} value={fields.annualBudget} onChange={set("annualBudget")} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className={labelClass}>Decision timeline</label>
+              <input className={inputClass} value={fields.decisionTimeline} onChange={set("decisionTimeline")} />
+            </div>
+          </div>
+        </div>
+
+        {/* OPPORTUNITY */}
+        <div className={sectionClass}>
+          <div className={sectionHeaderClass}>
+            <span className="text-[9px] font-semibold uppercase tracking-widest text-[#98A2B3]">Opportunity</span>
+            <div className="flex-1 h-px bg-[#F2F4F7]" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className={labelClass}>Industry</label>
+              <div className="relative">
+                <input className={cn(inputClass, "w-full pr-14 border-[#ABEFC6] bg-[#F0FDF4] text-[#166534] focus:border-[#166534] focus:ring-[#166534]/20")} value={fields.industry} onChange={set("industry")} />
+                <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full bg-[#DCFCE7] px-1.5 py-0.5 text-[9px] font-semibold text-[#166534]">Edited</span>
+              </div>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className={labelClass}>Company size</label>
+              <input className={inputClass} value={fields.companySize} onChange={set("companySize")} />
+            </div>
+            <div className="col-span-2 flex flex-col gap-1">
+              <label className={labelClass}>Pain point</label>
+              <input className={inputClass} value={fields.painPoint} onChange={set("painPoint")} />
+            </div>
+            <div className="col-span-2 flex flex-col gap-1">
+              <label className={labelClass}>Key stakeholders</label>
+              <input className={inputClass} value={fields.keyStakeholders} onChange={set("keyStakeholders")} />
+            </div>
+          </div>
+        </div>
+
+        {/* NEXT STEP */}
+        <div className={sectionClass}>
+          <div className={sectionHeaderClass}>
+            <span className="text-[9px] font-semibold uppercase tracking-widest text-[#98A2B3]">Next Step</span>
+            <div className="flex-1 h-px bg-[#F2F4F7]" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className={labelClass}>Recommended action</label>
+            <input className={inputClass} value={fields.recommendedAction} onChange={set("recommendedAction")} />
+          </div>
+        </div>
+
+      </div>
+
+      {/* Footer buttons */}
+      <div className="flex gap-2 border-t border-[#F2F4F7] px-4 py-3">
+        <button
+          type="button"
+          onClick={onClose}
+          className="flex-1 rounded-lg border border-[#D0D5DD] bg-white px-4 py-2 text-[13px] font-semibold text-[#344054] transition-colors hover:bg-[#F9FAFB]"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={!isDirty}
+          className="flex-1 rounded-lg px-4 py-2 text-[13px] font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:bg-[#93C5FD] disabled:opacity-60 bg-[#166CCA] hover:enabled:bg-[#1260B0]"
+        >
+          Save lead information
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Live Sales Intelligence panel — renders inside the conversation content during Terry's call.
+// Phase is derived from how many transcript lines have appeared:
+//   0 = call just started, 1 = after Terry's 1st reply, 2 = after 2nd, 3 = after 3rd, 4 = email captured.
+function TerryCallPanel({ lineCount, callKey, isCallActive, onLeadSaved }: {
+  lineCount: number;
+  callKey: string;
+  isCallActive: boolean;
+  onLeadSaved?: () => void;
+}) {
+  // stableLineCount lags behind lineCount while a customer line is being word-animated
+  // (90 ms per word, matching TerryTranscriptPanel's interval). This ensures the Analysis
+  // and Suggested Response sections don't appear until the transcript has caught up.
+  const [stableLineCount, setStableLineCount] = useState(lineCount);
+  const phaseTimerRef = useRef<number | null>(null);
+  const prevLineCountRef = useRef(lineCount);
+
+  useEffect(() => {
+    if (lineCount <= prevLineCountRef.current) {
+      prevLineCountRef.current = lineCount;
+      return;
+    }
+    prevLineCountRef.current = lineCount;
+
+    const newLineIndex = lineCount - 1;
+    const newLine = TERRY_TRANSCRIPT_LINES[newLineIndex];
+    // Only delay for customer lines — those are the ones being word-animated.
+    const delay = newLine?.speaker === "customer" ? newLine.text.split(" ").length * 90 : 0;
+
+    if (phaseTimerRef.current !== null) clearTimeout(phaseTimerRef.current);
+    if (delay > 0) {
+      phaseTimerRef.current = window.setTimeout(() => {
+        setStableLineCount(lineCount);
+        phaseTimerRef.current = null;
+      }, delay);
+    } else {
+      setStableLineCount(lineCount);
+    }
+  }, [lineCount]);
+
+  // Clean up the pending timer if the component unmounts or the call resets.
+  useEffect(() => {
+    return () => { if (phaseTimerRef.current !== null) clearTimeout(phaseTimerRef.current); };
+  }, []);
+
+  const phase: 0 | 1 | 2 | 3 | 4 = stableLineCount >= 9 ? 4 : stableLineCount >= 7 ? 3 : stableLineCount >= 5 ? 2 : stableLineCount >= 3 ? 1 : 0;
+  const [industryValue, setIndustryValue] = useState("Transportation");
+  const [isEditingIndustry, setIsEditingIndustry] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
+  const [isLeadFormOpen, setIsLeadFormOpen] = useState(false);
+  // Reset editable state if a completely new call starts.
+  // isSaved is intentionally excluded — saving a lead is a permanent action
+  // and must not be reversed when the call ends (callKey flips to the fallback "terry").
+  const prevKeyRef = useRef(callKey);
+  if (callKey !== prevKeyRef.current) {
+    prevKeyRef.current = callKey;
+    setIndustryValue("Transportation");
+    setIsEditingIndustry(false);
+    setIsLeadFormOpen(false);
+    if (phaseTimerRef.current !== null) { clearTimeout(phaseTimerRef.current); phaseTimerRef.current = null; }
+    setStableLineCount(lineCount);
+  }
+
+  const aiSuggestions: Record<number, { analysis: string; response: string }> = {
+    1: {
+      analysis: "Timeline is tight — Terry needs a replacement before Q4, which is under 6 months out. This is a strong urgency signal, but budget status is still unconfirmed.",
+      response: "\"Has budget been approved yet, or are you still in the evaluation phase?\"",
+    },
+    2: {
+      analysis: "Budget confirmed at $400K annually. Terry needs CTO buy-in before committing — the technical fit is the deciding factor, not price.",
+      response: "\"For routing logic at your scale, a technical deep-dive with one of our solutions engineers would be more valuable than a standard demo. Does that sound useful?\"",
+    },
+    3: {
+      analysis: "Strong buying intent — Terry wants a session this week and is ready to move forward. Capturing direct contact now locks in the next step.",
+      response: "\"Can I confirm your email so our solutions engineer can send over a prep doc beforehand?\"",
+    },
+    4: {
+      analysis: "Lead fully qualified and captured. Budget confirmed, timeline urgent, technical session agreed. This is a high-intent enterprise opportunity ready to hand off.",
+      response: "\"Perfect. I'll have someone reach out by end of day to confirm the time. Really glad we connected today, Terry — this sounds like a great fit.\"",
+    },
+  };
+  const currentSuggestion = isCallActive && phase >= 1 && phase <= 4 ? aiSuggestions[phase] : null;
+
+  const tagClass = "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold";
+
+  return (
+    <>
+    <div className="flex flex-col gap-3 rounded-xl border border-[#E4E7EC] bg-white overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 pt-3.5 pb-0">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-[#667085]">Sales Intelligence</span>
+          {!isSaved && (
+            <span className="flex items-center gap-1 rounded-full bg-[#EFFBF1] px-2 py-0.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#208337] animate-pulse" />
+              <span className="text-[9px] font-semibold uppercase tracking-wide text-[#208337]">Live</span>
+            </span>
+          )}
+          {isSaved && (
+            <span className="flex items-center gap-1 rounded-full bg-[#EBF4FD] px-2 py-0.5">
+              <span className="text-[9px] font-semibold uppercase tracking-wide text-[#166CCA]">Saved ✓</span>
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Static identity fields */}
+      <div className="px-4 grid grid-cols-2 gap-x-4 gap-y-2">
+        {[
+          { label: "Lead Name", value: "Terry Williams" },
+          { label: "Company", value: "Nexus Freight" },
+          { label: "Channel", value: "Inbound Voice" },
+        ].map((f) => (
+          <div key={f.label}>
+            <p className="text-[9px] font-semibold uppercase tracking-wide text-[#98A2B3] mb-0.5">{f.label}</p>
+            <p className="text-[12px] text-[#344054] font-medium">{f.value}</p>
+          </div>
+        ))}
+        {/* Editable Industry field */}
+        <div>
+          <p className="text-[9px] font-semibold uppercase tracking-wide text-[#98A2B3] mb-0.5">Industry</p>
+          {isEditingIndustry ? (
+            <input
+              autoFocus
+              className="w-full rounded border border-[#166CCA] bg-[#EBF4FD] px-1.5 py-0.5 text-[12px] text-[#1D2939] outline-none"
+              value={industryValue}
+              onChange={(e) => setIndustryValue(e.target.value)}
+              onBlur={() => setIsEditingIndustry(false)}
+              onKeyDown={(e) => { if (e.key === "Enter") setIsEditingIndustry(false); }}
+            />
+          ) : (
+            <button
+              type="button"
+              className="flex items-center gap-1 text-[12px] text-[#344054] font-medium hover:text-[#166CCA] group"
+              onClick={() => { if (!isSaved) setIsEditingIndustry(true); }}
+            >
+              {industryValue}
+              {!isSaved && <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="opacity-0 group-hover:opacity-60"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Divider */}
+      <div className="mx-4 h-px bg-[#F2F4F7]" />
+
+      {/* Dynamic captured fields */}
+      <div className="px-4 pb-4 flex flex-col gap-2">
+        {phase >= 1 && (
+          <div className="flex flex-col gap-1.5 animate-in fade-in slide-in-from-bottom-2 duration-400">
+            <p className="text-[9px] font-semibold uppercase tracking-wide text-[#98A2B3]">Captured · Q1</p>
+            <div className="flex flex-wrap gap-1.5">
+              <span className={cn(tagClass, "bg-[#FEF3F2] text-[#B42318] border border-[#FECDCA]")}>Legacy TMS · Integration failures</span>
+              <span className={cn(tagClass, "bg-[#FFF4E5] text-[#B54708] border border-[#FEDF89]")}>Q4 deadline</span>
+              <span className={cn(tagClass, "bg-[#FEF3F2] text-[#B42318] border border-[#FECDCA]")}>Urgency: High</span>
+            </div>
+          </div>
+        )}
+        {phase >= 2 && (
+          <div className="flex flex-col gap-1.5 animate-in fade-in slide-in-from-bottom-2 duration-400">
+            <p className="text-[9px] font-semibold uppercase tracking-wide text-[#98A2B3]">Captured · Q2</p>
+            <div className="flex flex-wrap gap-1.5">
+              <span className={cn(tagClass, "bg-[#EFFBF1] text-[#208337] border border-[#ABEFC6]")}>Budget: $400K / yr</span>
+              <span className={cn(tagClass, "bg-[#EBF4FD] text-[#166CCA] border border-[#BFDBFE]")}>Enterprise — New Logo</span>
+              <span className={cn(tagClass, "bg-[#F9FAFB] text-[#344054] border border-[#E4E7EC]")}>CTO approval needed</span>
+            </div>
+          </div>
+        )}
+        {phase >= 3 && (
+          <div className="flex flex-col gap-1.5 animate-in fade-in slide-in-from-bottom-2 duration-400">
+            <p className="text-[9px] font-semibold uppercase tracking-wide text-[#98A2B3]">Captured · Q3</p>
+            <div className="flex flex-wrap gap-1.5">
+              <span className={cn(tagClass, "bg-[#EBF4FD] text-[#166CCA] border border-[#BFDBFE]")}>Technical deep-dive · This week</span>
+              <span className={cn(tagClass, "bg-[#EFFBF1] text-[#208337] border border-[#ABEFC6]")}>Engagement: High</span>
+            </div>
+          </div>
+        )}
+        {phase >= 4 && (
+          <div className="flex flex-col gap-1.5 animate-in fade-in slide-in-from-bottom-2 duration-400">
+            <p className="text-[9px] font-semibold uppercase tracking-wide text-[#98A2B3]">Captured · Q4</p>
+            <div className="flex flex-wrap gap-1.5">
+              <span className={cn(tagClass, "bg-[#F9FAFB] text-[#344054] border border-[#E4E7EC] font-mono")}>t.williams@nexusfreight.com</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Save Lead / Review Lead Form buttons — appear once email is captured */}
+      {phase >= 4 && !isSaved && (
+        <div className="px-4 pb-4 flex gap-2 animate-in fade-in duration-400">
+          <button
+            type="button"
+            onClick={() => { setIsSaved(true); onLeadSaved?.(); }}
+            className="flex-1 rounded-lg bg-[#166CCA] px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-[#1260B0]"
+          >
+            Save Lead
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsLeadFormOpen((prev) => !prev)}
+            className={cn(
+              "flex-1 rounded-lg border px-4 py-2 text-[13px] font-semibold transition-colors",
+              isLeadFormOpen
+                ? "border-[#166CCA] bg-[#EBF4FD] text-[#166CCA] hover:bg-[#DBEAFE]"
+                : "border-[#D0D5DD] bg-white text-[#344054] hover:bg-[#F9FAFB]",
+            )}
+          >
+            Review Lead Form
+          </button>
+        </div>
+      )}
+      {phase >= 4 && isSaved && (
+        <div className="px-4 pb-4 flex gap-2">
+          <div className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#EFFBF1] border border-[#ABEFC6] px-4 py-2">
+            <CheckCircle2 className="h-4 w-4 text-[#208337]" />
+            <span className="text-[13px] font-semibold text-[#208337]">Lead Saved</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsLeadFormOpen((prev) => !prev)}
+            className={cn(
+              "flex-1 rounded-lg border px-4 py-2 text-[13px] font-semibold transition-colors",
+              isLeadFormOpen
+                ? "border-[#166CCA] bg-[#EBF4FD] text-[#166CCA] hover:bg-[#DBEAFE]"
+                : "border-[#D0D5DD] bg-white text-[#344054] hover:bg-[#F9FAFB]",
+            )}
+          >
+            Review Lead Form
+          </button>
+        </div>
+      )}
+    </div>
+
+    {/* Lead Form — collapsible, below Sales Intelligence card */}
+    {isLeadFormOpen && (
+      <TerryLeadForm onClose={() => setIsLeadFormOpen(false)} />
+    )}
+
+    {/* AI cards — outside the Sales Intelligence card.
+        key={phase} forces remount (and re-animation) each time phase advances. */}
+    {currentSuggestion && (
+      <React.Fragment key={phase}>
+        {/* Analysis card */}
+        <div className="rounded-lg border border-[#E4E7EC] bg-white px-3 py-2.5 animate-in fade-in slide-in-from-bottom-2 duration-400">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#667085] shrink-0"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <span className="text-[9px] font-semibold uppercase tracking-widest text-[#667085]">Analysis</span>
+          </div>
+          <p className="text-[12px] leading-relaxed text-[#344054]">{currentSuggestion.analysis}</p>
+        </div>
+        {/* Suggested response card */}
+        <div className="rounded-lg border border-[#BFDBFE] bg-[#EBF4FD] px-3 py-2.5 animate-in fade-in slide-in-from-bottom-2 duration-400">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <Sparkles className="h-3 w-3 text-[#166CCA] shrink-0" />
+            <span className="text-[9px] font-semibold uppercase tracking-widest text-[#1260B0]">Suggested Response</span>
+          </div>
+          <p className="text-[12px] leading-relaxed text-[#1D2939]">{currentSuggestion.response}</p>
+        </div>
+      </React.Fragment>
+    )}
+
+</>
+  );
+}
+
+// Mock call transcript lines — revealed progressively as the call advances.
+const MOCK_TRANSCRIPT_LINES: Omit<TranscriptLine, "id">[] = [
+  { speaker: "agent",    text: "Thank you for calling, this is your agent. How can I help you today?",                                elapsed: 3  },
+  { speaker: "customer", text: "Hi, yes — I'm calling about a charge on my account that I don't recognize.",                         elapsed: 8  },
+  { speaker: "agent",    text: "Of course, I can help with that. Can you confirm the last four digits of your card?",                 elapsed: 14 },
+  { speaker: "customer", text: "Sure, it's ending in 4821.",                                                                          elapsed: 19 },
+  { speaker: "agent",    text: "Thank you. I can see your account here. Which charge are you seeing?",                                elapsed: 25 },
+  { speaker: "customer", text: "There's a charge from yesterday — $147.50 to something called NX Digital Services. No idea what it is.", elapsed: 33 },
+  { speaker: "agent",    text: "Let me look that up for you. One moment.",                                                            elapsed: 38 },
+  { speaker: "agent",    text: "I can see that transaction. It does look unusual. Have you signed up for any new subscriptions recently?", elapsed: 46 },
+  { speaker: "customer", text: "No, nothing new. That's why I'm calling.",                                                            elapsed: 52 },
+  { speaker: "agent",    text: "Understood. I'm going to flag this as a potential unauthorized charge and initiate a dispute.",        elapsed: 59 },
+  { speaker: "customer", text: "Okay, thank you. Will I get the money back?",                                                         elapsed: 65 },
+  { speaker: "agent",    text: "Yes, we'll issue a provisional credit within 1 to 2 business days while we investigate.",             elapsed: 73 },
+  { speaker: "customer", text: "And how long does the full investigation take?",                                                       elapsed: 79 },
+  { speaker: "agent",    text: "Typically 5 to 10 business days. You'll receive email updates throughout the process.",               elapsed: 86 },
+  { speaker: "customer", text: "Perfect. That works for me.",                                                                         elapsed: 91 },
+  { speaker: "agent",    text: "Great. Is there anything else I can help you with today?",                                            elapsed: 96 },
+  { speaker: "customer", text: "No, that's everything. Thanks so much.",                                                              elapsed: 100 },
+  { speaker: "agent",    text: "You're very welcome. Have a great day!",                                                              elapsed: 104 },
+];
+
+function formatElapsed(seconds: number) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function TranscriptPopunder({
+  position,
+  size,
+  zIndex,
+  transcriptLines,
+  scriptLength,
+  isCallActive,
+  customerName,
+  onPositionChange,
+  onSizeChange,
+  onClose,
+  dragActivation,
+  onInteractStart,
+  onDock,
+}: {
+  position: TranscriptPopunderPosition;
+  size: TranscriptPopunderSize;
+  zIndex: number;
+  transcriptLines: TranscriptLine[];
+  scriptLength: number;
+  isCallActive: boolean;
+  customerName: string;
+  onPositionChange: (position: TranscriptPopunderPosition) => void;
+  onSizeChange: (size: TranscriptPopunderSize) => void;
+  onClose: () => void;
+  dragActivation?: CopilotDragActivation | null;
+  onInteractStart?: () => void;
+  onDock?: () => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const dragOffsetRef = useRef({ x: 0, y: 0 });
+  const resizeStartRef = useRef({ mouseX: 0, mouseY: 0, width: size.width, height: size.height });
+  const isDraggingRef = useRef(false);
+  const isResizingRef = useRef(false);
+  const [isExiting, setIsExiting] = useState(false);
+  const positionRef = useRef(position);
+  const sizeRef = useRef(size);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const wasNearBottomRef = useRef(true);
+  useEffect(() => { positionRef.current = position; }, [position]);
+  useEffect(() => { sizeRef.current = size; }, [size]);
+
+  useLayoutEffect(() => {
+    if (!containerRef.current || isDraggingRef.current || isResizingRef.current) return;
+    containerRef.current.style.transform = `translate(${position.x}px, ${position.y}px)`;
+  }, [position]);
+
+  useLayoutEffect(() => {
+    if (!containerRef.current || isResizingRef.current) return;
+    containerRef.current.style.width = `${size.width}px`;
+    containerRef.current.style.height = `${size.height}px`;
+  }, [size]);
+
+  const handleClose = useCallback(() => {
+    if (isExiting) return;
+    setIsExiting(true);
+    setTimeout(() => { onClose(); }, 280);
+  }, [isExiting, onClose]);
+
+  // Auto-scroll to bottom when new lines arrive, if already near bottom.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    wasNearBottomRef.current = distFromBottom < 80;
+    if (wasNearBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [transcriptLines.length]);
+
+  useEffect(() => {
+    if (!dragActivation) return;
+    isDraggingRef.current = true;
+    dragOffsetRef.current = dragActivation.offset;
+    document.body.style.userSelect = "none";
+    if (containerRef.current) containerRef.current.style.willChange = "transform";
+  }, [dragActivation]);
+
+  useEffect(() => {
+    const handleMouseMove = (event: MouseEvent) => {
+      if (isDraggingRef.current) {
+        const margin = 16;
+        const absX = Math.min(Math.max(margin, event.clientX - dragOffsetRef.current.x), window.innerWidth - sizeRef.current.width - margin);
+        const absY = Math.min(Math.max(margin, event.clientY - dragOffsetRef.current.y), window.innerHeight - sizeRef.current.height - margin);
+        if (containerRef.current) containerRef.current.style.transform = `translate(${absX}px, ${absY}px)`;
+        positionRef.current = { x: absX, y: absY };
+        return;
+      }
+      if (!isResizingRef.current) return;
+      const deltaX = event.clientX - resizeStartRef.current.mouseX;
+      const deltaY = event.clientY - resizeStartRef.current.mouseY;
+      const nextW = Math.min(Math.max(320, resizeStartRef.current.width + deltaX), window.innerWidth - positionRef.current.x - 16);
+      const nextH = Math.min(Math.max(300, resizeStartRef.current.height + deltaY), window.innerHeight - positionRef.current.y - 16);
+      sizeRef.current = { width: nextW, height: nextH };
+      if (containerRef.current) {
+        containerRef.current.style.width  = `${nextW}px`;
+        containerRef.current.style.height = `${nextH}px`;
+      }
+    };
+    const handleMouseUp = () => {
+      if (isDraggingRef.current) {
+        isDraggingRef.current = false;
+        onPositionChange(positionRef.current);
+        if (containerRef.current) containerRef.current.style.willChange = "auto";
+      }
+      if (isResizingRef.current) {
+        isResizingRef.current = false;
+        onSizeChange(sizeRef.current);
+      }
+      document.body.style.userSelect = "";
+    };
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+      document.body.style.userSelect = "";
+    };
+  }, [onPositionChange, onSizeChange]);
+
+  return (
+    <div ref={containerRef} className="fixed" style={{ zIndex }}>
+      <div
+        className={cn(
+          "flex w-full flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-[0_20px_50px_rgba(0,0,0,0.18)]",
+          isExiting ? "animate-out slide-out-to-top-4 fade-out duration-300" : "animate-in slide-in-from-top-4 fade-in duration-300",
+        )}
+        style={{ width: "100%", height: "100%", maxWidth: "calc(100vw - 2rem)", maxHeight: "calc(100vh - 2rem)", animationFillMode: "both" }}
+      >
+        {/* Header / drag handle */}
+        <div
+          className="flex cursor-grab items-center justify-between gap-3 border-b border-border bg-background/50 px-4 py-3.5 active:cursor-grabbing"
+          onMouseDown={(event) => {
+            onInteractStart?.();
+            isDraggingRef.current = true;
+            dragOffsetRef.current = { x: event.clientX - positionRef.current.x, y: event.clientY - positionRef.current.y };
+            document.body.style.userSelect = "none";
+            if (containerRef.current) containerRef.current.style.willChange = "transform";
+          }}
+        >
+          <div className="flex items-center gap-2.5">
+            <GripHorizontal className="h-4 w-4 flex-shrink-0 text-[#7A7A7A]" />
+            <div>
+              <h3 className="text-sm font-semibold tracking-tight text-[#333333]">Call Transcript</h3>
+              <p className="text-xs text-[#7A7A7A]">{customerName}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {isCallActive && (
+              <div className="flex items-center gap-1.5 rounded-full bg-[#EFFBF1] px-2.5 py-1">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#208337] animate-pulse" />
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-[#208337]">Live</span>
+              </div>
+            )}
+            {onDock && (
+              <button
+                type="button"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={onDock}
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[#7A7A7A] transition-colors hover:bg-[#F3F4F6] hover:text-[#333333]"
+                aria-label="Dock transcript panel"
+                title="Dock to conversation"
+              >
+                <PanelRight className="h-4 w-4" />
+              </button>
+            )}
+            <button
+              type="button"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={handleClose}
+              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[#7A7A7A] transition-colors hover:bg-[#F3F4F6] hover:text-[#333333]"
+              aria-label="Close transcript"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Transcript body */}
+        <div
+          ref={scrollRef}
+          className="min-h-0 flex-1 overflow-y-auto px-4 py-3"
+          style={{ scrollBehavior: "smooth" }}
+        >
+          {transcriptLines.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 text-center">
+              <ScrollText className="h-8 w-8 text-[#D0D5DD] mb-3" />
+              <p className="text-sm font-medium text-[#667085]">Transcript will appear here</p>
+              <p className="mt-1 text-xs text-[#98A2B3]">Lines are captured as the call progresses</p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {transcriptLines.map((line) => (
+                line.speaker === "system" ? (
+                  <div key={line.id} className="flex items-center gap-2 py-1">
+                    <div className="h-px flex-1 bg-[#E4E7EC]" />
+                    <span className="flex-shrink-0 text-[11px] font-medium text-[#98A2B3]">{line.text}</span>
+                    <div className="h-px flex-1 bg-[#E4E7EC]" />
+                  </div>
+                ) : (
+                  <div key={line.id} className={cn("flex flex-col gap-0.5", line.speaker === "agent" ? "items-end" : "items-start")}>
+                    <div className="flex items-center gap-1.5">
+                      <span className={cn("text-[10px] font-semibold uppercase tracking-wide", line.speaker === "agent" ? "text-[#166CCA]" : "text-[#667085]")}>
+                        {line.speaker === "agent" ? "Jeff Comstock" : customerName}
+                      </span>
+                      <span className="text-[10px] text-[#98A2B3]">{formatElapsed(line.elapsed)}</span>
+                    </div>
+                    <div
+                      className={cn(
+                        "max-w-[88%] rounded-xl px-3 py-2 text-[13px] leading-relaxed",
+                        line.speaker === "agent"
+                          ? "bg-[#EBF4FD] text-[#1D2939]"
+                          : "bg-[#F9FAFB] border border-[#E4E7EC] text-[#344054]",
+                      )}
+                    >
+                      {line.text}
+                    </div>
+                  </div>
+                )
+              ))}
+              {isCallActive && transcriptLines.length < scriptLength && (
+                <div className="flex items-center gap-1.5 py-1">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#98A2B3] animate-bounce [animation-delay:0ms]" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#98A2B3] animate-bounce [animation-delay:150ms]" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#98A2B3] animate-bounce [animation-delay:300ms]" />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Resize handle */}
+        <button
+          type="button"
+          aria-label="Resize transcript panel"
+          className="absolute bottom-0 right-0 h-5 w-5 cursor-se-resize"
+          onMouseDown={(event) => {
+            event.preventDefault();
+            isResizingRef.current = true;
+            resizeStartRef.current = { mouseX: event.clientX, mouseY: event.clientY, width: sizeRef.current.width, height: sizeRef.current.height };
+            document.body.style.userSelect = "none";
+          }}
+        >
+          <span className="absolute bottom-1 right-1 h-2.5 w-2.5 rounded-sm border-b-2 border-r-2 border-[#A1A1AA]" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DockedTranscriptPanel({
+  isOpen,
+  width,
+  maxWidth,
+  onWidthChange,
+  onUndockStart,
+  onClose,
+  showTrailingGap,
+  transcriptLines,
+  scriptLength,
+  isCallActive,
+  customerName,
+}: {
+  isOpen: boolean;
+  width: number;
+  maxWidth: number;
+  onWidthChange: (width: number) => void;
+  onUndockStart: (event: React.MouseEvent<HTMLElement>) => void;
+  onClose: () => void;
+  showTrailingGap: boolean;
+  transcriptLines: TranscriptLine[];
+  scriptLength: number;
+  isCallActive: boolean;
+  customerName: string;
+}) {
+  const resizeStartRef = useRef({ mouseX: 0, width });
+  const isResizingRef = useRef(false);
+  const contentInitializedRef = useRef(false);
+  const [isContentVisible, setIsContentVisible] = useState(isOpen);
+  const [isContentEntered, setIsContentEntered] = useState(isOpen);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleMouseMove = (event: MouseEvent) => {
+      if (!isResizingRef.current) return;
+      const deltaX = event.clientX - resizeStartRef.current.mouseX;
+      onWidthChange(Math.min(maxWidth, Math.max(CUSTOMER_INFO_PANEL_MIN_WIDTH, resizeStartRef.current.width + deltaX)));
+    };
+    const handleMouseUp = () => { isResizingRef.current = false; document.body.style.userSelect = ""; };
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => { window.removeEventListener("mousemove", handleMouseMove); window.removeEventListener("mouseup", handleMouseUp); };
+  }, [maxWidth, onWidthChange]);
+
+  useEffect(() => {
+    if (!contentInitializedRef.current) { contentInitializedRef.current = true; return; }
+    let timeoutId: number | undefined;
+    let frameId: number | undefined;
+    if (!isOpen) {
+      setIsContentEntered(false);
+      timeoutId = window.setTimeout(() => setIsContentVisible(false), CUSTOMER_INFO_PANEL_CONTENT_TRANSITION_MS);
+      return () => { if (timeoutId !== undefined) window.clearTimeout(timeoutId); };
+    }
+    setIsContentVisible(true);
+    timeoutId = window.setTimeout(() => {
+      frameId = window.requestAnimationFrame(() => setIsContentEntered(true));
+    }, CUSTOMER_INFO_PANEL_CONTENT_ENTER_DELAY_MS);
+    return () => { if (timeoutId !== undefined) window.clearTimeout(timeoutId); if (frameId !== undefined) window.cancelAnimationFrame(frameId); };
+  }, [isOpen]);
+
+  // Auto-scroll to the latest transcript line.
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [transcriptLines.length]);
+
+  return (
+    <div
+      aria-hidden={!isOpen}
+      className={cn(
+        "relative hidden min-h-0 overflow-visible transition-[width,margin,opacity,transform] duration-300 ease-out min-[1024px]:block",
+        isOpen ? "min-[1024px]:opacity-100" : "pointer-events-none min-[1024px]:translate-x-4 min-[1024px]:opacity-0",
+      )}
+      style={{
+        width: isOpen ? width : 0,
+        marginRight: isOpen && showTrailingGap ? CUSTOMER_INFO_PANEL_GAP : 0,
+      }}
+    >
+      <div
+        className={cn(
+          "flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-black/[0.16] bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-[opacity,transform,box-shadow] duration-200 ease-out will-change-[opacity,transform]",
+          isContentEntered ? "opacity-100" : "translate-x-3 scale-[0.985] opacity-0",
+        )}
+      >
+        {isContentVisible ? (
+          <>
+            {/* Header / drag handle */}
+            <div
+              className="flex min-h-[68px] cursor-grab items-center justify-between gap-3 border-b border-border bg-background/50 px-5 py-4 active:cursor-grabbing"
+              onMouseDown={onUndockStart}
+            >
+              <div className="flex items-center gap-3">
+                <GripHorizontal className="h-4 w-4 flex-shrink-0 text-[#7A7A7A]" />
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold tracking-tight text-[#333333]">Call Transcript</h3>
+                  <p className="truncate text-xs text-[#7A7A7A]">{customerName}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {isCallActive && (
+                  <div className="flex items-center gap-1.5 rounded-full bg-[#EFFBF1] px-2.5 py-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#208337] animate-pulse" />
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-[#208337]">Live</span>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={onClose}
+                  className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[#7A7A7A] transition-colors hover:bg-white hover:text-[#333333]"
+                  aria-label="Close transcript panel"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Transcript body */}
+            <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-3" style={{ scrollBehavior: "smooth" }}>
+              {transcriptLines.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 text-center">
+                  <ScrollText className="h-8 w-8 text-[#D0D5DD] mb-3" />
+                  <p className="text-sm font-medium text-[#667085]">Transcript will appear here</p>
+                  <p className="mt-1 text-xs text-[#98A2B3]">Lines are captured as the call progresses</p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {transcriptLines.map((line) => (
+                    line.speaker === "system" ? (
+                      <div key={line.id} className="flex items-center gap-2 py-1">
+                        <div className="h-px flex-1 bg-[#E4E7EC]" />
+                        <span className="flex-shrink-0 text-[11px] font-medium text-[#98A2B3]">{line.text}</span>
+                        <div className="h-px flex-1 bg-[#E4E7EC]" />
+                      </div>
+                    ) : (
+                      <div key={line.id} className={cn("flex flex-col gap-0.5", line.speaker === "agent" ? "items-end" : "items-start")}>
+                        <div className="flex items-center gap-1.5">
+                          <span className={cn("text-[10px] font-semibold uppercase tracking-wide", line.speaker === "agent" ? "text-[#166CCA]" : "text-[#667085]")}>
+                            {line.speaker === "agent" ? "Jeff Comstock" : customerName}
+                          </span>
+                          <span className="text-[10px] text-[#98A2B3]">{formatElapsed(line.elapsed)}</span>
+                        </div>
+                        <div className={cn(
+                          "max-w-[88%] rounded-xl px-3 py-2 text-[13px] leading-relaxed",
+                          line.speaker === "agent" ? "bg-[#EBF4FD] text-[#1D2939]" : "bg-[#F9FAFB] border border-[#E4E7EC] text-[#344054]",
+                        )}>
+                          {line.text}
+                        </div>
+                      </div>
+                    )
+                  ))}
+                  {isCallActive && transcriptLines.length < scriptLength && (
+                    <div className="flex items-center gap-1.5 py-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-[#98A2B3] animate-bounce [animation-delay:0ms]" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-[#98A2B3] animate-bounce [animation-delay:150ms]" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-[#98A2B3] animate-bounce [animation-delay:300ms]" />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Resize handle */}
+            <div
+              className="absolute inset-y-0 left-0 w-1 cursor-col-resize"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                isResizingRef.current = true;
+                resizeStartRef.current = { mouseX: e.clientX, width };
+                document.body.style.userSelect = "none";
+              }}
+            />
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 function DockedCopilotPanel({
   width,
@@ -7016,25 +8155,6 @@ function IncomingAssignmentCard({
                       <p className="text-[10px] font-semibold uppercase tracking-widest text-[#1260B0]">Aria</p>
                     </div>
                     <p className="text-[13px] leading-relaxed text-[#1D2939]">{li.ariaMessage}</p>
-
-                    {/* AI Confidence bar */}
-                    {li.aiConfidence !== undefined && (
-                      <div className="mt-3 rounded-lg border border-[#BFDBFE] bg-white px-3 py-2.5">
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-[10px] font-semibold uppercase tracking-widest text-[#344054]">AI Confidence</span>
-                          <span className="text-[13px] font-bold text-[#166CCA]">{li.aiConfidence}%</span>
-                        </div>
-                        <div className="h-2 w-full rounded-full bg-[#E4E7EC] overflow-hidden">
-                          <div
-                            className="h-full rounded-full bg-[#166CCA]"
-                            style={{ width: `${li.aiConfidence}%` }}
-                          />
-                        </div>
-                        {li.aiConfidenceReason && (
-                          <p className="mt-1.5 text-[11px] text-[#667085]">{li.aiConfidenceReason}</p>
-                        )}
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -8272,14 +9392,14 @@ function LeftQueueRail({
                       </TooltipTrigger>
                       <TooltipContent side="right">
                         <span className="font-medium">{label}</span>
-                        {label === "Control Center" && totalQueueCount > 0 && (
-                          <span className="mt-0.5 block text-[11px] font-normal opacity-75">
-                            {totalQueueCount} in queue
-                          </span>
-                        )}
                         {label === "Control Center" && escalatedRailCount > 0 && (
                           <span className="mt-0.5 block text-[11px] font-normal text-[#E53935]">
                             {escalatedRailCount} escalated
+                          </span>
+                        )}
+                        {label === "Queue" && totalQueueCount > 0 && (
+                          <span className="mt-0.5 block text-[11px] font-normal opacity-75">
+                            {totalQueueCount} in queue
                           </span>
                         )}
                       </TooltipContent>
@@ -8354,7 +9474,7 @@ function LeftQueueRail({
                   { label: "Settings", icon: Settings,      path: "/settings"      },
                 ].map(({ label, icon: Icon, path }) => {
                   const isActive = location.pathname === path;
-                  const caseCount = label === "Control Center" ? totalQueueCount : 0;
+                  const caseCount = label === "Queue" ? totalQueueCount : 0;
                   return (
                     <button
                       key={label}
@@ -8665,6 +9785,30 @@ export default function Layout({ children }: LayoutProps) {
     width: DESK_CANVAS_POPOUNDER_DESK_DEFAULT_WIDTH,
     height: typeof window === "undefined" ? 720 : Math.max(DESK_CANVAS_POPOUNDER_MIN_HEIGHT, window.innerHeight - 80),
   }));
+  // Transcript popunder state
+  // Post-call history mode: entered when a voice call is dispositioned.
+  // The voice assignment stays in the visible list (so the customer panel remains open) but
+  // openChannels is overridden to [] so the panel auto-switches to the History tab.
+  // The assignment is fully cleaned up when the agent navigates away or closes the panel.
+  const [isPostCallHistoryMode, setIsPostCallHistoryMode] = useState(false);
+  const postCallAssignmentIdRef = useRef<string | null>(null);
+
+  const [isTranscriptPopunderOpen, setIsTranscriptPopunderOpen] = useState(false);
+  const [transcriptPopunderPosition, setTranscriptPopunderPosition] = useState<TranscriptPopunderPosition>(() => ({
+    x: typeof window !== "undefined" ? Math.max(16, window.innerWidth - 400 - 16) : 400,
+    y: 80,
+  }));
+  const [transcriptPopunderSize, setTranscriptPopunderSize] = useState<TranscriptPopunderSize>({ width: 380, height: 520 });
+  const [transcriptDragActivation, setTranscriptDragActivation] = useState<CopilotDragActivation | null>(null);
+  const [transcriptLines, setTranscriptLines] = useState<TranscriptLine[]>([]);
+  const transcriptCallStartRef = useRef<number | null>(null);
+  const transcriptTimerRef = useRef<number | null>(null);
+  // For Terry's call, the demo doesn't auto-start — it waits for the agent to click an opening line.
+  const [terryDemoStarted, setTerryDemoStarted] = useState(false);
+  // Controls whether the right-side transcript panel is visible (user can close it and re-open via toggle).
+  const [isTranscriptVisible, setIsTranscriptVisible] = useState(true);
+  // Dynamically appended customer history items (e.g. "Lead Form Created" after saving the lead).
+  const [dynamicHistoryItems, setDynamicHistoryItems] = useState<CustomerHistoryItem[]>([]);
   const [isCopilotDockingAllowed, setIsCopilotDockingAllowed] = useState(
     () => typeof window === "undefined" ? true : window.innerWidth >= COPILOT_DOCK_BREAKPOINT,
   );
@@ -8751,7 +9895,9 @@ export default function Layout({ children }: LayoutProps) {
   // When true, the customer info popunder is docked adjacent (to the right) of the
   // conversation panel on the activity route, rather than floating freely.
   const [isCustomerInfoDockedToConversation, setIsCustomerInfoDockedToConversation] = useState(false);
+  const [isTranscriptDockedToConversation, setIsTranscriptDockedToConversation] = useState(false);
   // Within dock-mode, whether the panel is currently shown (toggled by the header icon).
+  // Shared by both customer-info and transcript docking (they are mutually exclusive).
   const [isConversationDockedPanelOpen, setIsConversationDockedPanelOpen] = useState(true);
   const [dockedCustomerInfoWidth, setDockedCustomerInfoWidth] = useState(() =>
     getBalancedDockedPanelWidths({
@@ -8792,6 +9938,7 @@ export default function Layout({ children }: LayoutProps) {
     "conversation",
     "customerInfo",
     "deskCanvas",
+    "transcript",
   ]);
   const [conversationPopunderSize, setConversationPopunderSize] = useState<ConversationPopunderSize>({ width: 315, height: 720 });
   const [conversationPopunderPosition, setConversationPopunderPosition] = useState<ConversationPopunderPosition>(() => ({
@@ -9224,12 +10371,17 @@ export default function Layout({ children }: LayoutProps) {
   );
   const activeConversationChannel = selectedAssignment.channel;
   // Collect all channels open for this customer — order is stable (matches visibleAssignments order).
+  // In post-call history mode the voice tab is suppressed (empty list) so the panel falls back
+  // to the History tab automatically.
   const activeConversationTabs = useMemo(() => {
+    if (isPostCallHistoryMode && postCallAssignmentIdRef.current === selectedAssignment.id) {
+      return [] as CustomerChannel[];
+    }
     const channels = visibleAssignments
       .filter((a) => a.customerRecordId === selectedAssignment.customerRecordId)
       .map((a) => a.channel);
     return [...new Set(channels)] as CustomerChannel[];
-  }, [visibleAssignments, selectedAssignment.customerRecordId]);
+  }, [isPostCallHistoryMode, visibleAssignments, selectedAssignment.customerRecordId, selectedAssignment.id]);
   const activeConversationStateKey = useMemo(
     () => getConversationStateKey(selectedAssignment.id),
     [selectedAssignment.id],
@@ -9284,8 +10436,10 @@ export default function Layout({ children }: LayoutProps) {
   // Customer info in conversation-dock mode (true even when the panel is toggled closed).
   // Used to keep the header icon highlighted and suppress floating-popunder logic.
   const isCustomerInfoInConversationDockMode = isDockedConversationVisible && isCustomerInfoDockedToConversation;
+  const isTranscriptInConversationDockMode = isDockedConversationVisible && isTranscriptDockedToConversation;
   // Panel is actually rendered/visible within dock mode (toggled by the header icon).
   const isConversationDockedCustomerInfoVisible = isCustomerInfoInConversationDockMode && isConversationDockedPanelOpen;
+  const isConversationDockedTranscriptVisible = isTranscriptInConversationDockMode && isConversationDockedPanelOpen;
   const isMainCanvasVisible = !isExpandedCanvasRoute && !isCanvasMergedIntoCombinedPanel;
   const isDeskCustomerInfoPopunderVisible =
     isCustomerInfoPanelOpen && !isCombinedInteractionPanel && isCustomerInfoPopunderOpen;
@@ -9451,6 +10605,17 @@ export default function Layout({ children }: LayoutProps) {
 
   const handleResolveAssignment = () => {
     const assignmentName = selectedAssignment.name;
+    if (selectedAssignment.channel === "voice") {
+      // Enter post-call history mode: close the voice tab, show history, defer cleanup.
+      setIsPostCallHistoryMode(true);
+      postCallAssignmentIdRef.current = selectedAssignmentId;
+      toast(`Call dispositioned — ${assignmentName}`, {
+        description: "Voice call ended. Reviewing customer history.",
+        position: "bottom-right",
+        duration: 4000,
+      });
+      return;
+    }
     handleRemoveVisibleAssignment(selectedAssignmentId);
     toast(`Case resolved — ${assignmentName}`, {
       description: "The case has been marked as resolved and removed from the queue.",
@@ -9458,6 +10623,21 @@ export default function Layout({ children }: LayoutProps) {
       duration: 4000,
     });
   };
+
+  // When the agent switches to a different case while in post-call history mode, finish the cleanup.
+  useEffect(() => {
+    if (
+      isPostCallHistoryMode &&
+      postCallAssignmentIdRef.current !== null &&
+      selectedAssignmentId !== postCallAssignmentIdRef.current
+    ) {
+      const postCallId = postCallAssignmentIdRef.current;
+      setIsPostCallHistoryMode(false);
+      postCallAssignmentIdRef.current = null;
+      handleRemoveVisibleAssignment(postCallId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAssignmentId, isPostCallHistoryMode]);
 
   const handleAssignmentStatusChange = (assignmentId: QueuePreviewItem["id"], status: QueueAssignmentStatus) => {
     setAssignmentStatusesById((currentStatuses) => ({
@@ -9893,17 +11073,96 @@ export default function Layout({ children }: LayoutProps) {
     isExpandedCanvasRoute,
   ]);
 
-  // When the conversation panel is closed/hidden, release any customer-info panel that was
-  // docked adjacent to it — otherwise the docked shell would remain with no conversation beside it.
-  useEffect(() => {
-    if (!isDockedConversationVisible && isCustomerInfoDockedToConversation) {
-      setIsCustomerInfoDockedToConversation(false);
-      setIsConversationDockedPanelOpen(true);
-    }
-  }, [isDockedConversationVisible, isCustomerInfoDockedToConversation]);
+  // Dock mode (isCustomerInfoDockedToConversation) persists across case switches — no auto-reset
+  // on conversation hide. It is only cleared when the user explicitly undocks (drag) or closes
+  // the customer info panel. The isCustomerInfoInConversationDockMode derived value already gates
+  // on isDockedConversationVisible, so the docked shell stays hidden while no conversation is open.
 
   // Desk canvas popunder is intentionally NOT auto-cleared when navigating to the desk route.
   // Panels stay floating until the agent explicitly clicks "Dock panel".
+
+  // Live transcript — advance through the appropriate script while a voice call is active.
+  // For Terry Williams we use a custom sales-demo script; all others use the generic fallback.
+  const isAgentInCallForTranscript = status === "In a Call";
+  const isTerryCall = selectedAssignment.customerRecordId === "terry";
+  // For Terry's call the timer only fires after the agent clicks an opening line (terryDemoStarted).
+  // For all other calls the timer starts as soon as the call is active.
+  const transcriptShouldRun = isAgentInCallForTranscript && (!isTerryCall || terryDemoStarted);
+  const transcriptScriptRef = useRef<Omit<TranscriptLine, "id">[]>(MOCK_TRANSCRIPT_LINES);
+
+  // When Terry's call first goes active, pre-show his greeting in the transcript.
+  // The rest of the conversation stays paused until the agent clicks an AI suggested opening line.
+  useEffect(() => {
+    if (!isAgentInCallForTranscript || !isTerryCall) return;
+    // Re-show the transcript panel whenever a new call starts (in case agent had closed it).
+    setIsTranscriptVisible(true);
+    setTranscriptLines((prev) => {
+      // Skip if already populated with live lines. If the last line is a system
+      // "call ended" message this is a new call — reset and start fresh.
+      if (prev.length > 0 && prev[prev.length - 1].speaker !== "system") return prev;
+      return [{ ...TERRY_TRANSCRIPT_LINES[0], id: "tl-0" }];
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAgentInCallForTranscript, isTerryCall]);
+
+  useEffect(() => {
+    if (transcriptShouldRun) {
+      // Record the wall-clock time when the demo began (only on first activation).
+      if (transcriptCallStartRef.current === null) {
+        transcriptCallStartRef.current = Date.now();
+        transcriptScriptRef.current = isTerryCall ? TERRY_TRANSCRIPT_LINES : MOCK_TRANSCRIPT_LINES;
+        // For Terry, seed the greeting + Jeff's first response immediately on click.
+        // For other calls, reset to empty.
+        if (!isTerryCall) {
+          setTranscriptLines([]);
+        } else {
+          setTranscriptLines([
+            { ...TERRY_TRANSCRIPT_LINES[0], id: "tl-0" },
+            { ...TERRY_TRANSCRIPT_LINES[1], id: "tl-1" },
+          ]);
+        }
+      }
+      const tick = () => {
+        const elapsed = Math.floor((Date.now() - (transcriptCallStartRef.current ?? Date.now())) / 1000);
+        const script = transcriptScriptRef.current;
+        setTranscriptLines((prev) => {
+          const nextIdx = prev.length;
+          if (nextIdx >= script.length) return prev;
+          const nextLine = script[nextIdx];
+          if (elapsed >= nextLine.elapsed) {
+            return [...prev, { ...nextLine, id: `tl-${nextIdx}` }];
+          }
+          return prev;
+        });
+      };
+      transcriptTimerRef.current = window.setInterval(tick, 1000);
+      return () => {
+        if (transcriptTimerRef.current !== null) window.clearInterval(transcriptTimerRef.current);
+      };
+    } else {
+      // Call ended (or Terry demo not yet started) — stop timer.
+      if (transcriptTimerRef.current !== null) {
+        window.clearInterval(transcriptTimerRef.current);
+        transcriptTimerRef.current = null;
+      }
+      if (!isAgentInCallForTranscript) {
+        // Append a "call ended" system message with call duration before clearing the start time.
+        if (transcriptCallStartRef.current !== null) {
+          const durationSeconds = Math.floor((Date.now() - transcriptCallStartRef.current) / 1000);
+          const durationStr = formatElapsed(durationSeconds);
+          setTranscriptLines((prev) => {
+            // Only append if not already appended.
+            if (prev.length > 0 && prev[prev.length - 1].speaker === "system") return prev;
+            return [...prev, { id: `tl-end`, speaker: "system", text: `Call ended · ${durationStr}`, elapsed: durationSeconds }];
+          });
+        }
+        transcriptCallStartRef.current = null;
+        // terryDemoStarted intentionally NOT reset here so the Sales Intelligence
+        // card persists in the voice tab after the call ends.
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transcriptShouldRun, isAgentInCallForTranscript]);
 
   useEffect(() => {
     if (!isCanvasMergedIntoCombinedPanel) {
@@ -10005,11 +11264,17 @@ export default function Layout({ children }: LayoutProps) {
   };
 
   const closeConversationPanel = () => {
+    // If closing while in post-call history mode, fully remove the call assignment first.
+    if (isPostCallHistoryMode && postCallAssignmentIdRef.current !== null) {
+      const postCallId = postCallAssignmentIdRef.current;
+      setIsPostCallHistoryMode(false);
+      postCallAssignmentIdRef.current = null;
+      handleRemoveVisibleAssignment(postCallId);
+    }
     if (isCombinedInteractionPanel) {
       closeCombinedInteractionPanel();
       return;
     }
-
     setIsConversationPanelOpen(false);
   };
 
@@ -10908,6 +12173,19 @@ export default function Layout({ children }: LayoutProps) {
     );
   };
 
+  // Docks the transcript panel adjacent to the conversation panel.
+  // Mutually exclusive with customer info docking — undocks customer info if it is currently docked.
+  const dockTranscriptToConversation = () => {
+    if (isCustomerInfoDockedToConversation) {
+      setIsCustomerInfoDockedToConversation(false);
+      setIsCustomerInfoPopunderOpen(true);
+    }
+    setIsTranscriptDockedToConversation(true);
+    setIsConversationDockedPanelOpen(true);
+    setIsTranscriptPopunderOpen(false);
+    setTranscriptDragActivation(null);
+  };
+
   const openChatPopover = () => {
     const margin = 16;
     const gap = 10;
@@ -10994,6 +12272,11 @@ export default function Layout({ children }: LayoutProps) {
         currentCustomerInfoWidth: dockedCustomerInfoWidth,
       });
       setDockedCustomerInfoWidth(customerInfoWidth);
+      // Mutual exclusivity: undock transcript if it is currently docked.
+      if (isTranscriptDockedToConversation) {
+        setIsTranscriptDockedToConversation(false);
+        setIsTranscriptPopunderOpen(true);
+      }
       setIsCustomerInfoDockedToConversation(true);
       setIsConversationDockedPanelOpen(true);
       setIsCustomerInfoPopunderOpen(false);
@@ -12184,6 +13467,82 @@ export default function Layout({ children }: LayoutProps) {
               onOpenChannel={(channel) => openCustomerConversation(selectedAssignment.customerRecordId, channel)}
               isCustomerInfoOpen={isConversationDockedCustomerInfoVisible || isDeskCustomerInfoPopunderVisible || isCustomerInfoIconPopoverOpen || isTakeoverInfoOpen}
               onOpenCustomerInfo={openCustomerInfoIconPopover}
+              isCallActive={status === "In a Call" && activeCallAssignmentId === selectedAssignment.id}
+              hasTranscript={selectedAssignment.customerRecordId !== "terry" && transcriptLines.length > 0}
+              voiceOpeningLines={
+                status === "In a Call" && activeCallAssignmentId === selectedAssignment.id
+                  ? (staticAssignments.find((s) =>
+                      s.customerRecordId === selectedAssignment.customerRecordId ||
+                      s.customerId === selectedAssignment.customerId
+                    )?.leadIntelligence?.openingLines ?? null)
+                  : null
+              }
+              voiceTopContent={
+                selectedAssignment.customerRecordId === "terry" && terryDemoStarted
+                  ? <TerryCallPanel
+                      lineCount={transcriptLines.length}
+                      callKey={activeCallAssignmentId ?? "terry"}
+                      isCallActive={status === "In a Call"}
+                      onLeadSaved={() => {
+                        setDynamicHistoryItems((prev) => {
+                          // Don't duplicate if lead was already saved.
+                          if (prev.some((h) => h.id === "terry-lead-form")) return prev;
+                          return [...prev, {
+                            id: "terry-lead-form",
+                            title: "Lead Form Created",
+                            timestamp: "Just now",
+                            detail: "Lead form captured and saved during inbound voice call. Enterprise opportunity — Nexus Freight, $400K budget, Q4 deadline.",
+                            dot: "blue" as const,
+                            type: "lead" as const,
+                            interaction: { kind: "lead" as const },
+                          }];
+                        });
+                      }}
+                    />
+                  : undefined
+              }
+              voiceContentOverlay={
+                selectedAssignment.customerRecordId === "terry" && transcriptLines.length > 0 && !isTranscriptVisible
+                  ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsTranscriptVisible(true)}
+                      className="flex items-center gap-1.5 rounded-full border border-[#E4E7EC] bg-white px-3 py-1.5 text-[11px] font-medium text-[#344054] shadow-sm transition-colors hover:bg-[#F9FAFB] hover:border-[#D0D5DD]"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                      Show Transcript
+                    </button>
+                  )
+                  : undefined
+              }
+              voiceRightPanel={
+                selectedAssignment.customerRecordId === "terry" && transcriptLines.length > 0
+                  ? (
+                    <TerryTranscriptPanel
+                      transcriptLines={transcriptLines}
+                      isVisible={isTranscriptVisible}
+                      isLive={status === "In a Call" && activeCallAssignmentId === selectedAssignment.id}
+                      customerName={selectedAssignment.name}
+                      scriptLength={transcriptScriptRef.current.length}
+                      onClose={() => setIsTranscriptVisible(false)}
+                    />
+                  )
+                  : undefined
+              }
+              onVoiceOpeningLineClick={selectedAssignment.customerRecordId === "terry" ? () => {
+                setTerryDemoStarted(true);
+              } : undefined}
+              extraHistoryItems={selectedAssignment.customerRecordId === "terry" ? dynamicHistoryItems : []}
+              isTranscriptOpen={selectedAssignment.customerRecordId !== "terry" && (isTranscriptPopunderOpen || isConversationDockedTranscriptVisible)}
+              onOpenTranscript={selectedAssignment.customerRecordId !== "terry" ? () => {
+                if (isTranscriptInConversationDockMode) {
+                  // Transcript is docked — toggle its open/closed state.
+                  setIsConversationDockedPanelOpen((prev) => !prev);
+                } else {
+                  bringFloatingPanelToFront("transcript");
+                  setIsTranscriptPopunderOpen((prev) => !prev);
+                }
+              } : undefined}
               onConversationStatusChange={handleConversationStatusChange}
               onResolveAssignment={handleResolveAssignment}
               overviewIsOpen={overviewOpenByAssignmentId[selectedAssignment.id] ?? true}
@@ -12195,7 +13554,7 @@ export default function Layout({ children }: LayoutProps) {
               }}
               isCallDisabled={status === "In a Call" || status !== "Available"}
               onClose={closeConversationPanel}
-              showTrailingGap={isConversationDockedCustomerInfoVisible || isDeskCustomerInfoVisible || shouldCombineDockedCustomerAndDeskPanels || isMainCanvasVisible}
+              showTrailingGap={isConversationDockedCustomerInfoVisible || isConversationDockedTranscriptVisible || isDeskCustomerInfoVisible || shouldCombineDockedCustomerAndDeskPanels || isMainCanvasVisible}
               showTaskSummary={taskSummaryIds.has(selectedAssignment.id)}
               initialSummaryOpen={false}
                 onSummaryClose={() => setClosedSummaryIds((prev) => new Set([...prev, selectedAssignment.id]))}
@@ -12375,6 +13734,41 @@ export default function Layout({ children }: LayoutProps) {
                 });
               }}
             />
+            {/* Transcript panel docked directly to the right of the conversation panel
+                (activity route only, triggered by the dock button in the floating transcript).
+                Not shown for Terry's call — transcript is embedded inline in the voice area. */}
+            <DockedTranscriptPanel
+              isOpen={isConversationDockedTranscriptVisible && selectedAssignment.customerRecordId !== "terry"}
+              width={dockedCustomerInfoWidth}
+              maxWidth={customerInfoPanelMaxWidth}
+              onWidthChange={setDockedCustomerInfoWidth}
+              transcriptLines={transcriptLines}
+              scriptLength={transcriptScriptRef.current.length}
+              isCallActive={status === "In a Call"}
+              customerName={selectedAssignment.name}
+              showTrailingGap={isMainCanvasVisible}
+              onClose={() => setIsConversationDockedPanelOpen(false)}
+              onUndockStart={(event) => {
+                if (typeof window === "undefined") return;
+                event.preventDefault();
+                const bounds = event.currentTarget.parentElement?.getBoundingClientRect();
+                if (!bounds) return;
+                const margin = CUSTOMER_INFO_POPOUNDER_MARGIN;
+                const nextPosition = {
+                  x: Math.min(Math.max(margin, bounds.left), window.innerWidth - transcriptPopunderSize.width - margin),
+                  y: Math.min(Math.max(margin, bounds.top), window.innerHeight - transcriptPopunderSize.height - margin),
+                };
+                bringFloatingPanelToFront("transcript");
+                setIsTranscriptDockedToConversation(false);
+                setIsConversationDockedPanelOpen(true);
+                setTranscriptPopunderPosition(nextPosition);
+                setIsTranscriptPopunderOpen(true);
+                setTranscriptDragActivation({
+                  id: Date.now(),
+                  offset: { x: event.clientX - nextPosition.x, y: event.clientY - nextPosition.y },
+                });
+              }}
+            />
           </>
         )}
         {!isExpandedCanvasRoute && !isCanvasMergedIntoCombinedPanel && (
@@ -12445,6 +13839,25 @@ export default function Layout({ children }: LayoutProps) {
           onDock={(isCustomerInfoPanelAllowed || (isActivityRoute && isDockedConversationVisible)) ? () => { setIsCustomerInfoIconPopoverOpen(false); dockCustomerInfoPanel(); } : undefined}
           dragActivation={customerInfoDragActivation}
           onInteractStart={() => bringFloatingPanelToFront("customerInfo")}
+        />
+      )}
+
+      {/* Live call transcript popunder — not shown for Terry's call (transcript is inline) */}
+      {isTranscriptPopunderOpen && selectedAssignment.customerRecordId !== "terry" && (
+        <TranscriptPopunder
+          position={transcriptPopunderPosition}
+          size={transcriptPopunderSize}
+          zIndex={getFloatingPanelZIndex("transcript")}
+          transcriptLines={transcriptLines}
+          scriptLength={transcriptScriptRef.current.length}
+          isCallActive={status === "In a Call"}
+          customerName={selectedAssignment.name}
+          onPositionChange={setTranscriptPopunderPosition}
+          onSizeChange={setTranscriptPopunderSize}
+          onClose={() => setIsTranscriptPopunderOpen(false)}
+          dragActivation={transcriptDragActivation}
+          onInteractStart={() => bringFloatingPanelToFront("transcript")}
+          onDock={isActivityRoute && isDockedConversationVisible ? dockTranscriptToConversation : undefined}
         />
       )}
 
@@ -12552,7 +13965,14 @@ export default function Layout({ children }: LayoutProps) {
             }, 2000);
           }}
           onEndCall={() => openCallDisposition()}
-          onCancelDisposition={() => setCallPopunderMode("controls")}
+          onCancelDisposition={() => {
+            if (callConnectTimeoutRef.current !== null) {
+              window.clearTimeout(callConnectTimeoutRef.current);
+              callConnectTimeoutRef.current = null;
+            }
+            setIsCallPopunderOpen(false);
+            setCallPopunderMode("setup");
+          }}
           onSelectDisposition={(disposition) => {
             const dispositionTimestamp = new Date();
             const formattedDispositionTimestamp = formatRecentInteractionTimestamp(dispositionTimestamp);

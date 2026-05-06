@@ -3215,6 +3215,14 @@ function CaseDetailPanel({ caseData, onClose }: { caseData: RowData; onClose: ()
             <p className="text-[11px] text-[#667085] mt-0.5 truncate">{caseData.preview}</p>
             <p className="text-[10px] text-[#98A2B3] mt-0.5">{caseData.botType} · Wait: {caseData.waitTime}</p>
           </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[#98A2B3] transition-colors hover:bg-[#F2F4F7] hover:text-[#344054]"
+            aria-label="Close panel"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
         </div>
 
         {/* Review / Takeover / Transfer actions */}
@@ -3596,9 +3604,7 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [isFilterPanelOpen]);
-  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(
-    () => staticAssignments.filter((a) => a.channel !== "voice")[0]?.id ?? null
-  );
+  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [rejectedIds, setRejectedIds] = useState<Set<string>>(new Set());
 
   // Drain any cross-page rejections queued by the global Layout modal.

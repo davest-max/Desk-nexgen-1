@@ -772,19 +772,6 @@ function OverviewTabContent({ customerId, customerName, onCopilotSubmit, takeove
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-[#1260B0]">{takeoverCard.botType}</p>
               </div>
               <p className="text-[13px] font-medium leading-5 text-[#344054]">{takeoverCard.customerContext}</p>
-              <div className="rounded-lg border border-[#BFDBFE] bg-white px-3 py-2.5 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-semibold uppercase tracking-widest text-[#667085]">AI Confidence</span>
-                  <span className="text-[12px] font-bold text-[#166CCA]">{takeoverCard.aiConfidence}%</span>
-                </div>
-                <div className="h-1.5 w-full rounded-full bg-[#E4E7EC] overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-[#166CCA] to-[#4B96DA]"
-                    style={{ width: `${takeoverCard.aiConfidence}%` }}
-                  />
-                </div>
-                <p className="text-[10px] text-[#98A2B3] leading-relaxed">{takeoverCard.aiConfidenceReason}</p>
-              </div>
             </div>
           )}
 
