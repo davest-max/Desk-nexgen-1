@@ -2452,7 +2452,7 @@ function CaseDetailPanel({ caseData, onClose }: { caseData: RowData; onClose: ()
   }
 
   return (
-    <div className="w-[360px] flex-shrink-0 border-l border-border flex flex-col bg-white dark:bg-[#0F1629] overflow-hidden">
+    <div className="w-[360px] h-full flex-shrink-0 border-l border-border flex flex-col bg-white dark:bg-[#0F1629] overflow-hidden">
       {/* Header */}
       <div className="shrink-0 px-5 py-4 border-b border-border">
         <div className="flex items-start gap-3">
@@ -2663,7 +2663,7 @@ function AnimatedCaseDetailPanel({
 
   return (
     <div
-      className="flex-shrink-0 overflow-hidden transition-all duration-300 ease-out"
+      className="flex-shrink-0 h-full overflow-hidden transition-all duration-300 ease-out"
       style={{
         width: visible ? 360 : 0,
       }}
@@ -2881,14 +2881,13 @@ const persistedState = {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-panel" } = {}) {
-  const { resolvedAssignments, assignmentStatusesById, acceptIssue, visibleAssignments, setAssignmentStatus, selectAssignment, openCopilot, isAgentAvailable, pendingMonitorCaseId, clearPendingMonitorCaseId, pendingTakeoverCaseId, clearPendingTakeoverCaseId, openCustomerConversation, dismissIncomingByCustomer, decrementEscalatedCount, onJordanCaseResolved, onSofiaCaseResolved, onMarcusCaseResolved, showDismissalToast, pushTransferredToast, setConversationStateForAssignment } = useLayoutContext();
+  const { resolvedAssignments, assignmentStatusesById, acceptIssue, visibleAssignments, setAssignmentStatus, selectAssignment, openCopilot, isAgentAvailable, pendingMonitorCaseId, clearPendingMonitorCaseId, pendingTakeoverCaseId, clearPendingTakeoverCaseId, openCustomerConversation, dismissIncomingByCustomer, decrementEscalatedCount, onJordanCaseResolved, onSofiaCaseResolved, onMarcusCaseResolved, showDismissalToast, pushTransferredToast, setConversationStateForAssignment, incomingNotifications } = useLayoutContext();
   const navigate = useNavigate();
   const [activePageTab, setActivePageTab] = useState<DeskPageTab>("queue");
   const [controlCenterTab, setControlCenterTab] = useState<"monitor" | "assigned" | "queue">(() => {
     if (mode === "inbox") return "queue";
-    const saved = persistedState.controlCenterTab;
-    // "queue" no longer exists as a tab on the control-panel page — fall back to "monitor"
-    return (saved === "queue" ? "monitor" : saved) as "monitor" | "assigned";
+    // Always start on the Home tab when navigating to the control center
+    return "monitor";
   });
   const [issueTab, setIssueTab] = useState<IssueTab>(() => persistedState.issueTab);
   const [priorityFilters, setPriorityFilters] = useState<Set<Priority>>(() => new Set(persistedState.priorityFilters));
@@ -3485,6 +3484,54 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
               );
             })()}
 
+            {/* New Lead alert — shown when an incoming lead notification exists */}
+            {(() => {
+              const leadNotifications = incomingNotifications.filter((n) => n.statusLabel === "lead");
+              if (leadNotifications.length === 0) return null;
+              return (
+                <div className="w-full max-w-4xl flex flex-col gap-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#B54708]">
+                    New {leadNotifications.length === 1 ? "Lead" : "Leads"} Incoming
+                  </p>
+                  {leadNotifications.map((lead) => (
+                    <div
+                      key={lead.id}
+                      className="relative rounded-xl border border-[#FEC84B] bg-[#FFFCF5] shadow-sm overflow-hidden animate-in slide-in-from-bottom-2 fade-in duration-300"
+                    >
+                      {/* left accent bar */}
+                      <div className="absolute left-0 inset-y-0 w-[3px] bg-[#F79009] rounded-r-full" />
+                      <div className="flex items-center gap-3 px-5 py-3.5">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#FEF0C7]">
+                          <Phone className="h-4 w-4 text-[#DC6803]" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[13px] font-semibold text-[#1D2939]">{lead.name}</span>
+                            <span className="rounded border border-[#F79009] bg-[#FEF0C7] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#B54708]">
+                              Sales Lead
+                            </span>
+                            <span className="rounded border border-[#F79009]/40 bg-[#FEF0C7]/60 px-1.5 py-0.5 text-[10px] font-medium leading-none text-[#B54708]">
+                              {lead.priority}
+                            </span>
+                          </div>
+                          <p className="mt-0.5 text-[12px] text-[#475467] leading-[1.4] truncate">{lead.preview}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigate("/activity");
+                          }}
+                          className="px-3 py-1 text-[11px] font-semibold rounded-md bg-[#F79009] text-white hover:bg-[#DC6803] transition-colors"
+                        >
+                          Review Lead
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
             <div className="w-full max-w-4xl grid grid-cols-3 gap-4">
 
             {/* Overview card */}
@@ -3700,7 +3747,7 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
                   )}
                 </div>
 
-                <div className={cn("flex-1 min-h-0", viewMode === "card" ? "overflow-y-auto" : "overflow-y-auto")}>
+                <div key={viewMode} className={cn("flex-1 min-h-0 animate-view-crossfade", viewMode === "card" ? "overflow-y-auto" : "overflow-y-auto")}>
                   {assignedRows.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full gap-3 text-center p-8">
                       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#EBF4FD]">
@@ -4156,7 +4203,7 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
               )}
             </div>
 
-            <div className={cn("flex-1 min-h-0", viewMode === "carousel" ? "flex flex-col overflow-hidden" : "overflow-y-auto")}>
+            <div key={viewMode} className={cn("flex-1 min-h-0 animate-view-crossfade", viewMode === "carousel" ? "flex flex-col overflow-hidden" : "overflow-y-auto")}>
               {viewMode === "card" && <QueueCardView rows={allRows} />}
               {viewMode === "carousel" && <QueueCarouselView rows={allRows} index={carouselIndex} onIndexChange={(i) => { setCarouselDir(i > carouselIndex ? "next" : "prev"); setCarouselIndex(i); }} />}
               {viewMode === "list" && (() => {

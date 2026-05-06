@@ -113,6 +113,9 @@ interface ConversationPanelProps {
   voiceContentOverlay?: React.ReactNode;
   /** Called when the agent clicks one of the opening lines (e.g. to start a demo script). */
   onVoiceOpeningLineClick?: () => void;
+  /** When true, renders the reply footer in-flow instead of portalling to document.body.
+   *  Use inside draggable popunders where the portalled footer can't track the container position during drag. */
+  inlineFooter?: boolean;
 }
 
 
@@ -150,6 +153,7 @@ export default function ConversationPanel({
   voiceRightPanel,
   voiceContentOverlay,
   onVoiceOpeningLineClick,
+  inlineFooter = false,
 }: ConversationPanelProps) {
   const customerFirstName = conversation.customerName.split(" ")[0] ?? conversation.customerName;
   const customerRecord = customerId ? getCustomerRecord(customerId) : null;
@@ -1031,7 +1035,7 @@ export default function ConversationPanel({
             </div>
           )}
           <div className={cn("flex-1 min-h-0 overflow-hidden", isVoiceChannel && voiceRightPanel ? "flex" : "flex flex-col")}>
-          <div ref={scrollAreaRef} className="flex-1 min-h-0 overflow-y-auto py-6" style={{ paddingBottom: isPendingAcceptance ? 0 : 120, ...(scrollTopPadding ? { paddingTop: scrollTopPadding } : {}) }}>
+          <div ref={scrollAreaRef} className="flex-1 min-h-0 overflow-y-auto py-6" style={{ paddingBottom: isPendingAcceptance ? 0 : inlineFooter ? 16 : 120, ...(scrollTopPadding ? { paddingTop: scrollTopPadding } : {}) }}>
             <div className={cn("space-y-6 px-6", isWidePanel ? "m-8 mx-auto max-w-[800px]" : "m-8")}>
             <div className="text-left">
               <span className="rounded-full bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
@@ -1892,44 +1896,53 @@ export default function ConversationPanel({
         )}
 
       {/* "N new messages" chip — portalled so it escapes stacking context and always sits
-          above the portalled footer. z-[10001] keeps it above the focused footer (10000). */}
-      {!isVoiceChannel && !isEmailChannel && newMessagesCount > 0 && containerBounds && createPortal(
-        <div
-          className="pointer-events-none flex justify-center px-6"
-          style={{
-            position: "fixed",
-            left: containerBounds.left,
-            width: containerBounds.width,
-            bottom: window.innerHeight - containerBounds.bottom + 96,
-            zIndex: 10001,
-          }}
-        >
-          <Button
-            type="button"
-            size="sm"
-            onClick={handleJumpToLatest}
-            className="pointer-events-auto rounded-full bg-[#111827] px-4 text-white shadow-lg hover:bg-[#1F2937]"
+          above the portalled footer. z-[10001] keeps it above the focused footer (10000).
+          When inlineFooter is true the chip is rendered in-flow (absolute within the container). */}
+      {!isVoiceChannel && !isEmailChannel && newMessagesCount > 0 && (() => {
+        const chip = (
+          <div
+            className="pointer-events-none flex justify-center px-6"
+            style={inlineFooter ? {
+              position: "absolute",
+              left: 0,
+              right: 0,
+              bottom: 96,
+              zIndex: 10001,
+            } : {
+              position: "fixed",
+              left: containerBounds?.left,
+              width: containerBounds?.width,
+              bottom: window.innerHeight - (containerBounds?.bottom ?? 0) + 96,
+              zIndex: 10001,
+            }}
           >
-            {newMessagesCount} new {newMessagesCount === 1 ? "message" : "messages"}
-          </Button>
-        </div>,
-        document.body,
-      )}
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleJumpToLatest}
+              className="pointer-events-auto rounded-full bg-[#111827] px-4 text-white shadow-lg hover:bg-[#1F2937]"
+            >
+              {newMessagesCount} new {newMessagesCount === 1 ? "message" : "messages"}
+            </Button>
+          </div>
+        );
+        return inlineFooter ? chip : containerBounds ? createPortal(chip, document.body) : null;
+      })()}
 
-      {!hideInput && !isVoiceChannel && !isEmailChannel && (!isNarrowPanel || !showAiPanel || narrowTab === "conversation") && containerBounds && createPortal(
-        <>
-          {/* Live response input — portalled to document.body to escape parent stacking context */}
+      {!hideInput && !isVoiceChannel && !isEmailChannel && (!isNarrowPanel || !showAiPanel || narrowTab === "conversation") && (inlineFooter || containerBounds) && (() => {
+        const footerContent = (
           <div
             ref={footerRef}
-            style={{
-              position: "fixed",
-              left: containerBounds.left,
-              width: containerBounds.width,
-              bottom: window.innerHeight - containerBounds.bottom,
+            className={inlineFooter ? "shrink-0" : undefined}
+            style={inlineFooter ? {} : {
+              position: "fixed" as const,
+              left: containerBounds!.left,
+              width: containerBounds!.width,
+              bottom: window.innerHeight - containerBounds!.bottom,
               zIndex: isDraftFocused ? 10000 : 60,
             }}
           >
-            <div className="mx-auto w-full max-w-[1100px] px-[36px] pb-[36px]">
+            <div className={cn("mx-auto w-full", inlineFooter ? "px-3 pb-3" : "max-w-[1100px] px-[36px] pb-[36px]")}>
               {/* When suggestions are visible, wrap everything in a single white card */}
               <div className={cn(
                 showingSuggestions && "overflow-hidden rounded-2xl bg-white shadow-[0_-8px_32px_rgba(16,24,40,0.12),0_4px_16px_rgba(16,24,40,0.06)]",
@@ -2153,10 +2166,10 @@ export default function ConversationPanel({
             </div>{/* end pill padding wrapper */}
               </div>{/* end white suggestion container */}
             </div>{/* end centering wrapper */}
-          </div>{/* end footerRef */}
-        </>,
-        document.body,
-      )}
+          </div>
+        );
+        return inlineFooter ? footerContent : createPortal(footerContent, document.body);
+      })()}
       </div>
 
     </div>

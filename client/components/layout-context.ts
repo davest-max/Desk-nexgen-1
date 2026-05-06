@@ -152,6 +152,7 @@ export interface LayoutContextValue {
   openCopilot: () => void;
   openChatPopover: () => void;
   isBriefingDismissed: boolean;
+  incomingNotifications: QueuePreviewItem[];
   pushToIncomingNotifications: (item: QueuePreviewItem) => void;
   /** Dismiss the incoming toast for a customer (by customerRecordId) when an action is taken from the queue/alert. */
   dismissIncomingByCustomer: (customerRecordId: string) => void;

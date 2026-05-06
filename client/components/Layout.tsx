@@ -98,6 +98,7 @@ import AddPanelContent from "@/components/AddPanelContent";
 import ChatPopoverContent from "@/components/ChatPopover";
 import NotificationsPopoverContent, { seedNotifications, type AppNotification } from "@/components/NotificationsPopover";
 import NotesPanel from "@/components/NotesPanel";
+import CustomerHistoryTimeline from "@/components/CustomerHistoryTimeline";
 import { conversationChannelOptions } from "@/components/ConversationChannelToggleGroup";
 import { type RecentInteractionItem } from "@/components/RecentInteractionsPanel";
 import { cn } from "@/lib/utils";
@@ -2684,11 +2685,7 @@ function DockedConversationPanel({
               <div className="min-h-0 flex-1 overflow-hidden flex flex-col">
                 {summaryTab === "history" ? (
                   /* Customer History timeline */
-                  <div className="flex-1 overflow-y-auto px-4 pt-3 pb-4">
-                    <div className="max-w-[800px] mx-auto w-full">
-                      {renderHistoryTimeline([...(customerRecord?.customerHistory ?? []), ...extraHistoryItems])}
-                    </div>
-                  </div>
+                  <CustomerHistoryTimeline historyItems={[...(customerRecord?.customerHistory ?? []), ...extraHistoryItems]} />
                 ) : showTaskSummary ? (
                   <TaskSummaryView
                     assignment={{
@@ -2914,7 +2911,7 @@ function DockedConversationPanel({
                         /* Customer History timeline — narrow drawer */
                         <div className="px-1">
                           <div className="max-w-[800px] mx-auto w-full">
-                            {renderHistoryTimeline([...(customerRecord?.customerHistory ?? []), ...extraHistoryItems])}
+                            <CustomerHistoryTimeline historyItems={[...(customerRecord?.customerHistory ?? []), ...extraHistoryItems]} />
                           </div>
                         </div>
                       )}
@@ -5401,6 +5398,7 @@ function ConversationPopunder({
   const isDraggingRef = useRef(false);
   const isResizingRef = useRef(false);
   const [isAiPanelVisible, setIsAiPanelVisible] = useState(false);
+  const [popunderTab, setPopunderTab] = useState<"conversation" | "history">("conversation");
   const shouldStackHeaderActions = size.width < 800;
   const isVeryNarrow = size.width < 640;
 
@@ -5478,7 +5476,7 @@ function ConversationPopunder({
       }}
     >
       <div
-        className="flex cursor-grab items-center justify-between gap-3 border-b border-border px-5 py-4 active:cursor-grabbing"
+        className="flex cursor-grab flex-col border-b border-border px-5 py-4 gap-0 active:cursor-grabbing"
         onMouseDown={(event) => {
           onInteractStart?.();
           isDraggingRef.current = true;
@@ -5489,50 +5487,108 @@ function ConversationPopunder({
           document.body.style.userSelect = "none";
         }}
       >
-        <div className="flex items-center gap-3">
-          <GripHorizontal className="h-4 w-4 flex-shrink-0 text-[#7A7A7A]" />
-          <CustomerProfilePopover customerRecordId={customerRecordId} customerName={conversation.customerName} />
-          <CustomerInfoIconButton onOpenCustomerInfo={onOpenCustomerInfo} isCustomerInfoOpen={isCustomerInfoOpen} />
-          <CustomerContactDropdown
-            onOpenCall={(anchorRect) => onOpenCall(anchorRect)}
-            onOpenChannel={onOpenChannel}
-            isCallDisabled={isCallDisabled}
-          />
-        </div>
-        {onDock && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
+        {/* Top row: drag handle · name · customer info · dock */}
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <GripHorizontal className="h-4 w-4 flex-shrink-0 text-[#7A7A7A]" />
+            <CustomerProfilePopover customerRecordId={customerRecordId} customerName={conversation.customerName} />
+            {/* Channel + history tabs */}
+            <div className="inline-flex items-center gap-0.5 rounded-xl bg-[#F2F4F7] dark:bg-[#0D1525] px-1 py-1 border border-black/[0.08] dark:border-white/[0.08]">
+              {([...openChannels, "history" as const]).map((tab) => (
+                <button
+                  key={tab}
                   type="button"
-                  variant="ghost"
-                  size="icon"
-                  onMouseDown={(event) => event.stopPropagation()}
-                  onClick={onDock}
-                  className="h-8 w-8 shrink-0 rounded-full border border-black/10 dark:border-border bg-white dark:bg-[#1C2A3A] text-[#333333] dark:text-[#CBD5E1] hover:bg-[#F8F8F9] dark:hover:bg-[#243041] hover:text-[#333333]"
-                  aria-label="Dock panel"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={() => {
+                    if (tab === "history") {
+                      setPopunderTab("history");
+                    } else {
+                      onSelectChannel(tab as CustomerChannel);
+                      setPopunderTab("conversation");
+                    }
+                  }}
+                  className={cn(
+                    "rounded-lg px-3 py-1 text-[12px] font-medium transition-all duration-150",
+                    (tab === "history" ? popunderTab === "history" : tab === activeChannel && popunderTab === "conversation")
+                      ? "bg-white dark:bg-[#1C2A3A] text-[#101828] dark:text-[#E2E8F0] shadow-sm"
+                      : "text-[#667085] dark:text-[#8898AB] hover:text-[#333333] dark:hover:text-[#CBD5E1]",
+                  )}
                 >
-                  <Pin className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Dock panel</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
+                  {tab === "history" ? "Customer History" : tab === "sms" ? "SMS" : tab === "whatsapp" ? "WhatsApp" : tab === "email" ? "Email" : tab === "voice" ? "Voice" : "Chat"}
+                </button>
+              ))}
+              {/* + New Channel inside tab group */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    className="flex h-6 w-6 items-center justify-center rounded-lg text-[#667085] hover:bg-white hover:text-[#344054] transition-all duration-150"
+                    aria-label="Add channel"
+                  >
+                    <Plus className="h-3.5 w-3.5 stroke-[2]" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44 rounded-2xl border border-black/10 bg-white p-1 shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
+                  <DropdownMenuItem onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { onOpenCall(e.currentTarget.getBoundingClientRect()); }} disabled={isCallDisabled} className="rounded-xl px-3 py-2 text-sm text-[#111827]">
+                    <Phone className="mr-2 h-4 w-4" /> Call
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onMouseDown={(e) => e.stopPropagation()} onClick={() => onOpenChannel("email")} className="rounded-xl px-3 py-2 text-sm text-[#111827]">
+                    <Mail className="mr-2 h-4 w-4" /> Email
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onMouseDown={(e) => e.stopPropagation()} onClick={() => onOpenChannel("sms")} className="rounded-xl px-3 py-2 text-sm text-[#111827]">
+                    <MessageSquare className="mr-2 h-4 w-4" /> SMS
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onMouseDown={(e) => e.stopPropagation()} onClick={() => onOpenChannel("whatsapp")} className="rounded-xl px-3 py-2 text-sm text-[#111827]">
+                    <WhatsAppIcon className="mr-2 h-4 w-4" /> WhatsApp
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <CustomerInfoIconButton onOpenCustomerInfo={onOpenCustomerInfo} isCustomerInfoOpen={isCustomerInfoOpen} />
+            {onDock && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onMouseDown={(event) => event.stopPropagation()}
+                      onClick={onDock}
+                      className="h-8 w-8 shrink-0 rounded-full border border-black/10 dark:border-border bg-white dark:bg-[#1C2A3A] text-[#333333] dark:text-[#CBD5E1] hover:bg-[#F8F8F9] dark:hover:bg-[#243041] hover:text-[#333333]"
+                      aria-label="Dock panel"
+                    >
+                      <Pin className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Dock panel</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </div>
+        </div>
       </div>
 
-      <ConversationPanel
-        conversation={conversation}
-        openChannels={openChannels}
-        activeChannel={activeChannel}
-        customerId={customerRecordId}
-        draftKey={`popunder-${conversation.label}-${conversation.customerName}`}
-        onConversationChange={onConversationChange}
-        onSelectChannel={onSelectChannel}
-        onOpenDeskPanel={onOpenDeskPanel}
-        onResolveAssignment={onResolveAssignment}
-        showAiPanel={isAiPanelVisible}
-      />
+      {popunderTab === "history" ? (
+        <CustomerHistoryTimeline historyItems={getCustomerRecord(customerRecordId)?.customerHistory ?? []} />
+      ) : (
+        <ConversationPanel
+          conversation={conversation}
+          openChannels={openChannels}
+          activeChannel={activeChannel}
+          customerId={customerRecordId}
+          draftKey={`popunder-${conversation.label}-${conversation.customerName}`}
+          onConversationChange={onConversationChange}
+          onSelectChannel={onSelectChannel}
+          onOpenDeskPanel={onOpenDeskPanel}
+          onResolveAssignment={onResolveAssignment}
+          showAiPanel={isAiPanelVisible}
+          inlineFooter
+        />
+      )}
 
       <button
         type="button"
@@ -8172,7 +8228,7 @@ function LeftQueueRail({
 
   // If the agent is on a top-level nav page (Desk / Inbox / Schedule / Settings), the
   // assignment icon should not appear "active" — the nav destination is the focus.
-  const isOnNavPage = ["/control-center", "/queue", "/schedule", "/settings"].includes(location.pathname);
+  const isOnNavPage = ["/control-center", "/queue", "/directory", "/schedule", "/settings"].includes(location.pathname);
 
   const visibleQueuePreviewItems = useMemo(() => {
     const nextItems = visibleAssignments.map((item) => ({
@@ -8424,6 +8480,7 @@ function LeftQueueRail({
                 {([
                   { icon: Monitor,       path: "/control-center", label: "Control Center" },
                   { icon: Inbox,         path: "/queue",         label: "Queue"          },
+                  { icon: BookUser,      path: "/directory",     label: "Directory"      },
                   { icon: CalendarCheck, path: "/schedule",      label: "Schedule"       },
                   { icon: Settings,      path: "/settings",      label: "Settings"       },
                 ] as const).map(({ icon: Icon, path, label }) => {
@@ -8541,9 +8598,10 @@ function LeftQueueRail({
               <nav className="space-y-0.5">
                 {[
                   { label: "Control Center", icon: Monitor, path: "/control-center" },
-                  { label: "Queue",    icon: Inbox,         path: "/queue"         },
-                  { label: "Schedule", icon: CalendarCheck, path: "/schedule"      },
-                  { label: "Settings", icon: Settings,      path: "/settings"      },
+                  { label: "Queue",      icon: Inbox,         path: "/queue"         },
+                  { label: "Directory",  icon: BookUser,      path: "/directory"     },
+                  { label: "Schedule",   icon: CalendarCheck, path: "/schedule"      },
+                  { label: "Settings",   icon: Settings,      path: "/settings"      },
                 ].map(({ label, icon: Icon, path }) => {
                   const isActive = location.pathname === path;
                   const caseCount = label === "Queue" ? totalQueueCount : 0;
@@ -11676,6 +11734,7 @@ export default function Layout({ children }: LayoutProps) {
       isAgentInCall: status === "In a Call",
       isAgentAvailable: status === "Available",
       isBriefingDismissed,
+      incomingNotifications,
       pushToIncomingNotifications: (item: QueuePreviewItem) => setIncomingNotifications((prev) => [...prev, item]),
       dismissIncomingByCustomer,
       pendingMonitorCaseId,
@@ -12040,15 +12099,6 @@ export default function Layout({ children }: LayoutProps) {
 
         {/* Right: Icon buttons + status */}
         <div className="flex items-center justify-end gap-1 sm:gap-1.5">
-          <HeaderIconButton
-            ariaLabel="Open Directory"
-            tooltip="Directory"
-            onClick={() => isDeskViewPopunderOpen ? setIsDeskViewPopunderOpen(false) : openHeaderAppPanel("desk")}
-            isActive={isDeskViewPopunderOpen}
-          >
-            <BookUser className="h-4 w-4 stroke-[1.5]" />
-          </HeaderIconButton>
-
           <div ref={bellButtonRef}>
             <HeaderIconButton
               ariaLabel="Open notifications"

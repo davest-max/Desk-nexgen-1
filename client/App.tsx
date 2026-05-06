@@ -21,6 +21,7 @@ import SalesforcePage from "./pages/SalesforcePage";
 import ServiceNowPage from "./pages/ServiceNowPage";
 import WemPage from "./pages/WemPage";
 import ReportingPage from "./pages/ReportingPage";
+import DirectoryPage from "./pages/DirectoryPage";
 import ScenarioControllerPage from "./pages/ScenarioControllerPage";
 import Layout from "./components/Layout";
 
@@ -36,6 +37,7 @@ function WorkspaceRoutes() {
         <Route path="/queue"        element={<ControlPanelPage mode="inbox" />} />
         <Route path="/desk"         element={<DeskPage />} />
         <Route path="/desk-panel"   element={<Desk />} />
+        <Route path="/directory"    element={<DirectoryPage />} />
         <Route path="/schedule"     element={<Schedule />} />
         <Route path="/settings"     element={<SettingsPage />} />
         <Route path="/reporting"    element={<ReportingPage />} />
