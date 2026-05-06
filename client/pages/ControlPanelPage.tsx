@@ -34,6 +34,38 @@ import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import DeskDataTable from "@/components/DeskDataTable";
 import ConversationPanel from "@/components/ConversationPanel";
+import { EscalationTimer } from "@/components/EscalationTimer";
+import { WhatsAppIcon } from "@/components/icons/WhatsAppIcon";
+import { CopilotResponseCard } from "@/components/CopilotResponseCard";
+import {
+  CURRENT_AGENT_NAME,
+  priorityStyles,
+  priorityRank,
+  channelIconMap,
+  companyByCustomerId,
+  liveCustomerContext,
+  liveAiOverview,
+  priorityFilterOptions,
+  channelFilterOptions,
+  ISSUE_GROUPS,
+  connectedApps,
+  appIconLetters,
+  COPILOT_REASONING_STEPS,
+  CARD_COPILOT_STEPS,
+  BULK_AI_RESPONSES,
+  type ChannelFilterValue,
+} from "@/lib/control-panel-data";
+import {
+  Agent,
+  agentRoster,
+  supervisorRoster,
+  availabilityOrder,
+  availabilityDot,
+  scoreAgent,
+  getSmartPopoverPosition,
+} from "@/lib/agent-roster";
+import { RejectPopover } from "./control-panel/RejectPopover";
+import { TakeoverButton } from "./control-panel/TakeoverButton";
 
 type DeskPageTab = "queue" | "customers" | "tickets" | "accounts" | "contact-history";
 type IssueTab = "all" | "open" | "pending" | "resolved" | "escalated";
@@ -46,127 +78,8 @@ const DESK_PAGE_TABS: Array<{ id: DeskPageTab; label: string }> = [
   { id: "contact-history", label: "Contact History" },
 ];
 
-// ─── Escalation live timer ────────────────────────────────────────────────────
-function EscalationTimer({ customerId }: { customerId?: string }) {
-  const startRef = useRef(customerId ? getEscalationStart(customerId) : Date.now());
-  const [elapsed, setElapsed] = useState(() => Math.floor((Date.now() - startRef.current) / 1000));
-  useEffect(() => {
-    const id = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
-    }, 1000);
-    return () => clearInterval(id);
-  }, []);
-  const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
-  const ss = String(elapsed % 60).padStart(2, "0");
-  const chip = elapsed >= 60
-    ? "border-[#E32926] text-[#E32926]"
-    : elapsed >= 30
-    ? "border-[#FFB800] text-[#FFB800]"
-    : "border-[#98A2B3] text-[#98A2B3]";
-  return <span className={`rounded border bg-white px-1.5 py-0.5 text-[10px] font-semibold leading-none tabular-nums ${chip}`}>{mm}:{ss}</span>;
-}
 
-// ─── Lookups ──────────────────────────────────────────────────────────────────
 
-// The name of the currently logged-in agent.
-const CURRENT_AGENT_NAME = "Jeff Comstock";
-
-const priorityStyles: Record<Priority, string> = {
-  Critical: "border-[#E53935] bg-[#FDEAEA] text-[#C71D1A]",
-  High:     "border-[#FFB800] bg-[#FFF6E0] text-[#A37A00]",
-  Medium:   "border-[#BFDBFE] bg-[#EBF4FD] text-[#166CCA]",
-  Low:      "border-[#24943E] bg-[#EFFBF1] text-[#208337]",
-};
-
-const priorityRank: Record<Priority, number> = { Critical: 0, High: 1, Medium: 2, Low: 3 };
-
-function WhatsAppIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={className} aria-hidden="true">
-      <path d="M12 3.25C7.163 3.25 3.25 7.119 3.25 11.882C3.25 13.549 3.734 15.149 4.638 16.529L3.75 20.75L8.097 19.9C9.406 20.647 10.898 21.042 12.421 21.042C17.258 21.042 21.171 17.172 21.171 12.41C21.171 7.647 16.837 3.25 12 3.25Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M9.428 8.867C9.206 8.373 8.97 8.362 8.761 8.354C8.59 8.347 8.394 8.347 8.198 8.347C8.002 8.347 7.683 8.421 7.413 8.715C7.143 9.009 6.389 9.703 6.389 11.117C6.389 12.531 7.438 13.897 7.585 14.093C7.732 14.289 9.634 17.287 12.611 18.437C15.086 19.392 15.589 19.203 16.123 19.154C16.657 19.105 17.839 18.485 18.084 17.815C18.329 17.144 18.329 16.566 18.255 16.444C18.182 16.321 17.986 16.248 17.692 16.101C17.397 15.954 15.957 15.235 15.687 15.137C15.417 15.039 15.22 14.99 15.024 15.284C14.828 15.578 14.27 16.248 14.098 16.444C13.926 16.64 13.754 16.665 13.459 16.518C13.165 16.37 12.218 16.061 11.095 15.059C10.221 14.28 9.632 13.319 9.46 13.025C9.289 12.731 9.442 12.571 9.589 12.424C9.722 12.292 9.883 12.081 10.03 11.91C10.177 11.738 10.226 11.615 10.324 11.419C10.422 11.223 10.373 11.052 10.299 10.905C10.226 10.758 9.679 9.312 9.428 8.867Z" fill="currentColor" />
-    </svg>
-  );
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const channelIconMap: Record<Channel, any> = {
-  chat:     MessageCircle,
-  sms:      MessageSquare,
-  email:    Mail,
-  voice:    Phone,
-  whatsapp: WhatsAppIcon,
-};
-
-const companyByCustomerId: Record<string, string> = {
-  alex:      "Apex Financial Group",
-  sarah:     "Summit Healthcare Inc.",
-  priya:     "Priya Sharma (Personal)",
-  david:     "BlueLine Logistics",
-  priyaNair: "Coastal Realty Partners",
-  olivia:    "Meridian Tech Solutions",
-  noah:      "Noah Patel (Personal)",
-  ethan:     "Westfield Capital",
-};
-
-// AI overview content keyed by customer record id (live assignments)
-// Customer context per live customerRecordId
-const liveCustomerContext: Record<string, string> = {
-  noah: "Individual account. Technically proficient user. First data-export failure. Sentiment: Frustrated but methodical — expects a clear resolution path.",
-  olivia: "Mid-market tech client. Growing subscription. Billing discrepancy tied to a mid-cycle plan upgrade. Sentiment: Confused but calm — has contacted support twice already.",
-  ethan: "High-value client. Frequent wire transfers to known payees. Transaction flagged as a false positive. Sentiment: Concerned — expects swift manual clearance.",
-};
-
-const liveAiOverview: Record<string, AiOverview> = {
-  noah: {
-    actions: [
-      "Reviewed the full SMS thread and extracted the core data-export failure from Noah's messages.",
-      "Cross-referenced Noah's account permissions and recent failed export job logs.",
-      "Confirmed the issue is tied to a quarterly report generation timeout — not a permissions error.",
-      "Prepared a step-by-step remediation draft and flagged the relevant knowledge base article.",
-    ],
-    whyNeeded:
-      "The export failure requires a manual queue reset that the AI cannot trigger autonomously. A human agent is needed to confirm the correct reporting period, initiate the fix, and validate the output before sending it to Noah.",
-    nextSteps: [
-      "Confirm the correct reporting period with Noah",
-      "Initiate a manual queue reset for the failed export job",
-      "Validate the export output before delivering it",
-      "Send the completed report and close the case",
-    ],
-  },
-  olivia: {
-    actions: [
-      "Reviewed the full chat thread and identified a billing discrepancy tied to a mid-cycle plan upgrade.",
-      "Checked Olivia's subscription history and confirmed the pro-rated charge was applied incorrectly.",
-      "Assessed tone — Olivia is frustrated after two prior contacts on the same issue.",
-      "Drafted an apology response and prepared a credit memo for agent review.",
-    ],
-    whyNeeded:
-      "Olivia has contacted support twice for the same billing issue without resolution. She is showing clear frustration signals. A human agent is needed to acknowledge the repeated failure, issue the correct credit, and personally confirm the account is now accurate.",
-    nextSteps: [
-      "Acknowledge the repeated billing failure and apologise",
-      "Issue the correct credit and confirm the amount with Olivia",
-      "Verify the account balance is now accurate",
-      "Confirm resolution and close the case with a personal note",
-    ],
-  },
-  ethan: {
-    actions: [
-      "Reviewed the SMS thread and identified a wire transfer flagged incorrectly by the fraud filter.",
-      "Cross-referenced Ethan's transaction history and confirmed the transfer destination is a known payee.",
-      "Checked compliance flags and found no active holds — the block appears to be a false positive.",
-      "Prepared a suggested resolution path and escalation note for the payments team.",
-    ],
-    whyNeeded:
-      "Releasing a flagged wire transfer requires agent-level authorisation that cannot be granted autonomously. A human agent must verify Ethan's identity, confirm the payee details, and manually clear the hold in the payments system.",
-    nextSteps: [
-      "Verify Ethan's identity against account security requirements",
-      "Confirm the transfer destination as a known and approved payee",
-      "Manually clear the fraud hold in the payments system",
-      "Confirm the transfer has been released and notify Ethan",
-    ],
-  },
-};
 
 // staticAssignments is now imported from @/lib/static-assignments
 // keeping a re-export for any consumers that still reference this module
@@ -1304,32 +1217,7 @@ function getLiveAiOverview(customerRecordId: string, name: string, preview: stri
   };
 }
 
-const priorityFilterOptions: { value: Priority; label: string }[] = [
-  { value: "Critical", label: "Critical" },
-  { value: "High",     label: "High" },
-  { value: "Medium",   label: "Medium" },
-  { value: "Low",      label: "Low" },
-];
 
-type ChannelFilterValue = "chat" | "email" | "sms" | "whatsapp" | "voice";
-
-const channelFilterOptions: { value: ChannelFilterValue; label: string }[] = [
-  { value: "chat",     label: "Chat"     },
-  { value: "email",    label: "Email"    },
-  { value: "sms",      label: "SMS"      },
-  { value: "whatsapp", label: "WhatsApp" },
-  { value: "voice",    label: "Voice"    },
-];
-
-// ─── Issue grouping ───────────────────────────────────────────────────────────
-const ISSUE_GROUPS: { label: string; keywords: string[] }[] = [
-  { label: "Login & Authentication",  keywords: ["login", "password", "auth", "sign in", "access", "locked out"] },
-  { label: "Payment & Billing",       keywords: ["payment", "charge", "billing", "invoice", "refund", "transfer", "transaction", "wire", "funds"] },
-  { label: "System & Technical",      keywords: ["system", "error", "outage", "down", "crash", "bug", "technical", "ai ", "virtual agent", "incorrect", "compliance"] },
-  { label: "Account Management",      keywords: ["account", "profile", "settings", "update", "plan", "subscription"] },
-  { label: "Security & Fraud",        keywords: ["security", "breach", "fraud", "suspicious", "unauthori", "data", "export"] },
-  { label: "Service & Support",       keywords: ["delay", "sla", "service", "support", "escalat", "complaint"] },
-];
 
 function getIssueGroup(preview: string, name: string): string {
   const text = (preview + " " + name).toLowerCase();
@@ -1340,647 +1228,27 @@ function getIssueGroup(preview: string, name: string): string {
 }
 
 
-// ─── Connected applications (static) ─────────────────────────────────────────
 
-const connectedApps = [
-  { name: "Salesforce",      latency: "42ms",  uptime: "99.9%", status: "healthy" },
-  { name: "ADP Workforce",   latency: "88ms",  uptime: "99.7%", status: "healthy" },
-  { name: "Outlook 365",     latency: "31ms",  uptime: "100%",  status: "healthy" },
-  { name: "MS Teams",        latency: "29ms",  uptime: "100%",  status: "healthy" },
-  { name: "Zendesk",         latency: "340ms", uptime: "97.2%", status: "degraded" },
-  { name: "Jira Cloud",      latency: "67ms",  uptime: "99.8%", status: "healthy" },
-  { name: "Knowledge Base",  latency: "12ms",  uptime: "100%",  status: "healthy" },
-  { name: "Desktop CTI",     latency: "8ms",   uptime: "100%",  status: "healthy" },
-];
-
-const appIconLetters: Record<string, string> = {
-  Salesforce: "S", "ADP Workforce": "A", "Outlook 365": "O",
-  "MS Teams": "T", Zendesk: "Z", "Jira Cloud": "J",
-  "Knowledge Base": "K", "Desktop CTI": "D",
-};
 
 // ─── Agent roster ─────────────────────────────────────────────────────────────
 
-type AgentAvailability = "Available" | "In a Call" | "Away" | "Offline";
 
-interface Agent {
-  id: string;
-  name: string;
-  initials: string;
-  availability: AgentAvailability;
-  skills: string[];
-  activeCount: number; // current assignment count
-}
 
-const agentRoster: Agent[] = [
-  {
-    id: "agent-1",
-    name: "Jeff Comstock",
-    initials: "JC",
-    availability: "Available",
-    skills: ["Billing", "Account Management", "Escalations"],
-    activeCount: 2,
-  },
-  {
-    id: "agent-2",
-    name: "Priya Mehra",
-    initials: "PM",
-    availability: "Available",
-    skills: ["Technical Support", "API Integration", "Security"],
-    activeCount: 1,
-  },
-  {
-    id: "agent-3",
-    name: "Sam Torres",
-    initials: "ST",
-    availability: "Available",
-    skills: ["Compliance", "Data Exports", "Contract Renewals"],
-    activeCount: 3,
-  },
-  {
-    id: "agent-4",
-    name: "Kenji Watanabe",
-    initials: "KW",
-    availability: "In a Call",
-    skills: ["Payments", "Fraud", "Wire Transfers"],
-    activeCount: 4,
-  },
-  {
-    id: "agent-5",
-    name: "Amara Osei",
-    initials: "AO",
-    availability: "Available",
-    skills: ["Enterprise Accounts", "Licensing", "Escalations"],
-    activeCount: 2,
-  },
-  {
-    id: "agent-6",
-    name: "Lena Fischer",
-    initials: "LF",
-    availability: "Away",
-    skills: ["Billing", "Refunds", "Account Management"],
-    activeCount: 1,
-  },
-  {
-    id: "agent-7",
-    name: "Marcus Webb",
-    initials: "MW",
-    availability: "Available",
-    skills: ["Security", "Identity Management", "SSO"],
-    activeCount: 2,
-  },
-  {
-    id: "agent-8",
-    name: "Chloe Nguyen",
-    initials: "CN",
-    availability: "Offline",
-    skills: ["Technical Support", "Logistics", "Customs"],
-    activeCount: 0,
-  },
-];
 
-const supervisorRoster: Agent[] = [
-  {
-    id: "sup-1",
-    name: "Rachel Kim",
-    initials: "RK",
-    availability: "Available",
-    skills: ["Escalations", "Enterprise Accounts", "Compliance"],
-    activeCount: 3,
-  },
-  {
-    id: "sup-2",
-    name: "David Okafor",
-    initials: "DO",
-    availability: "Available",
-    skills: ["Fraud", "Risk Management", "Wire Transfers"],
-    activeCount: 2,
-  },
-  {
-    id: "sup-3",
-    name: "Sandra Howell",
-    initials: "SH",
-    availability: "In a Call",
-    skills: ["Billing", "Licensing", "Contract Renewals"],
-    activeCount: 4,
-  },
-  {
-    id: "sup-4",
-    name: "Tom Ellison",
-    initials: "TE",
-    availability: "Away",
-    skills: ["Security", "Identity Management", "Escalations"],
-    activeCount: 1,
-  },
-];
 
-const availabilityOrder: Record<AgentAvailability, number> = {
-  Available: 0,
-  "In a Call": 1,
-  Away: 2,
-  Offline: 3,
-};
 
-const availabilityDot: Record<AgentAvailability, string> = {
-  Available:  "bg-[#208337]",
-  "In a Call": "bg-[#FFB800]",
-  Away:       "bg-[#D0D5DD]",
-  Offline:    "bg-[#98A2B3]",
-};
 
-// Score an agent against an issue's channel/priority to surface best matches
-function scoreAgent(agent: Agent, priority: Priority, preview: string): number {
-  const text = preview.toLowerCase();
-  let score = 0;
-  for (const skill of agent.skills) {
-    if (text.includes(skill.toLowerCase().split(" ")[0])) score += 2;
-  }
-  if (priority === "Critical" || priority === "High") {
-    if (agent.skills.some((s) => s.toLowerCase().includes("escalation"))) score += 3;
-  }
-  score -= agent.activeCount * 0.5;
-  return score;
-}
 
-// ─── Smart popover positioning ───────────────────────────────────────────────
-function getSmartPopoverPosition(
-  triggerRect: DOMRect,
-  popoverWidth: number,
-  estimatedHeight: number,
-  gap = 6,
-  margin = 8,
-) {
-  const spaceBelow = window.innerHeight - triggerRect.bottom - gap - margin;
-  const spaceAbove = triggerRect.top - gap - margin;
-  const openBelow = spaceBelow >= estimatedHeight || spaceBelow >= spaceAbove;
-  const left = Math.max(margin, Math.min(triggerRect.left, window.innerWidth - popoverWidth - margin));
-  if (openBelow) {
-    return { left, top: triggerRect.bottom + gap, maxHeight: Math.max(160, spaceBelow), transform: "none" as const };
-  }
-  return { left, top: triggerRect.top - gap, maxHeight: Math.max(160, spaceAbove), transform: "translateY(-100%)" as const };
-}
 
-// ─── Transfer popover ─────────────────────────────────────────────────────────
-
-type TransferTab = "Agents" | "Supervisors";
-
-function RejectPopover({
-  priority,
-  preview,
-  triggerRect,
-  onClose,
-  onAssign,
-}: {
-  priority: Priority;
-  preview: string;
-  triggerRect: DOMRect;
-  onClose: () => void;
-  onAssign: (agent: Agent) => void;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [assigned, setAssigned] = useState<string | null>(null);
-  const [tab, setTab] = useState<TransferTab>("Agents");
-  const [isClosing, setIsClosing] = useState(false);
-
-  const handleClose = useCallback(() => {
-    if (isClosing) return;
-    setIsClosing(true);
-    setTimeout(onClose, 150);
-  }, [isClosing, onClose]);
-
-  // Close on outside click
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) handleClose();
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [handleClose]);
-
-  const sortedAgents = [...agentRoster].sort((a, b) => {
-    const avail = availabilityOrder[a.availability] - availabilityOrder[b.availability];
-    if (avail !== 0) return avail;
-    return scoreAgent(b, priority, preview) - scoreAgent(a, priority, preview);
-  });
-
-  const sortedSupervisors = [...supervisorRoster].sort((a, b) =>
-    availabilityOrder[a.availability] - availabilityOrder[b.availability],
-  );
-
-  const roster = tab === "Agents" ? sortedAgents : sortedSupervisors;
-
-  const handleAssign = (agent: Agent) => {
-    setAssigned(agent.id);
-    setTimeout(() => { onAssign(agent); onClose(); }, 800);
-  };
-
-  const POPOVER_WIDTH = 300;
-  const ESTIMATED_HEIGHT = 370;
-  const { left, top, maxHeight, transform } = getSmartPopoverPosition(triggerRect, POPOVER_WIDTH, ESTIMATED_HEIGHT);
-
-  return createPortal(
-    <div
-      ref={ref}
-      className={`fixed z-[9999] rounded-xl border border-border bg-white shadow-[0_8px_24px_rgba(16,24,40,0.12)] overflow-hidden ${isClosing ? "animate-popover-fade-out" : "animate-popover-fade-in"}`}
-      style={{ left, top, width: POPOVER_WIDTH, transform }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-        <p className="text-[12px] font-semibold text-[#333333]">Transfer to</p>
-        <button type="button" onClick={handleClose} className="text-[#98A2B3] hover:text-[#475467] transition-colors">
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex border-b border-border">
-        {(["Agents", "Supervisors"] as const).map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            className={cn(
-              "relative flex-1 py-2.5 text-[12px] font-medium transition-colors",
-              tab === t ? "text-[#166CCA]" : "text-[#667085] hover:text-[#344054]",
-            )}
-          >
-            {t}
-            {tab === t && (
-              <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-t-full bg-[#166CCA]" />
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/* Roster list */}
-      <div className="overflow-y-auto divide-y divide-border" style={{ maxHeight: Math.min(224, maxHeight - 120) }}>
-        {roster.map((agent) => {
-          const isAssigned = assigned === agent.id;
-          const isDisabled = agent.availability === "Offline" || (assigned !== null && !isAssigned);
-          return (
-            <button
-              key={agent.id}
-              type="button"
-              disabled={isDisabled}
-              onClick={() => handleAssign(agent)}
-              className={cn(
-                "w-full flex items-center gap-3 px-4 py-3 text-left transition-colors",
-                isAssigned ? "bg-[#EBF4FD]" : "hover:bg-[#F9FAFB]",
-                isDisabled && "opacity-40 cursor-not-allowed",
-              )}
-            >
-              <div className="relative shrink-0">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F2F4F7] text-[11px] font-bold text-[#475467]">
-                  {agent.initials}
-                </div>
-                <span className={cn("absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white", availabilityDot[agent.availability])} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="text-[12px] font-semibold text-[#1D2939] truncate">{agent.name}</p>
-                  {isAssigned && <span className="text-[10px] font-semibold text-[#166CCA]">Transferred</span>}
-                </div>
-                <p className="text-[10px] text-[#98A2B3] truncate">{agent.skills.join(" · ")}</p>
-              </div>
-              <span className="shrink-0 text-[10px] text-[#667085]">{agent.activeCount} active</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Footer */}
-      <div className="px-4 py-2.5 border-t border-border bg-[#F9FAFB]">
-        <p className="text-[10px] text-[#98A2B3]">Sorted by availability</p>
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
-// ─── Copilot reasoning constants ─────────────────────────────────────────────
-
-const COPILOT_REASONING_STEPS = [
-  "Reviewing case history and prior customer interactions...",
-  "Analyzing attempted resolutions and their outcomes...",
-  "Cross-referencing similar resolved cases in the knowledge base...",
-  "Synthesizing recommended next steps and action items...",
-];
 
 // ─── CopilotResponseCard ──────────────────────────────────────────────────────
 
-function CopilotResponseCard({
-  query,
-  phase,
-  reasoningVisible,
-  isOpen,
-  onToggle,
-}: {
-  query: string;
-  phase: "thinking" | "done";
-  reasoningVisible: number;
-  isOpen: boolean;
-  onToggle: () => void;
-}) {
-  const [isReasoningOpen, setIsReasoningOpen] = useState(false);
-
-  return (
-    <div className="rounded-xl border border-[#BFDBFE] bg-white overflow-hidden">
-      {/* Header */}
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center justify-between px-4 py-3 text-left"
-      >
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-3.5 w-3.5 text-[#166CCA]" />
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#1260B0]">
-            Copilot Response
-          </p>
-          {phase === "thinking" && (
-            <span className="flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#166CCA] animate-bounce [animation-delay:0ms]" />
-              <span className="h-1.5 w-1.5 rounded-full bg-[#166CCA] animate-bounce [animation-delay:150ms]" />
-              <span className="h-1.5 w-1.5 rounded-full bg-[#166CCA] animate-bounce [animation-delay:300ms]" />
-            </span>
-          )}
-        </div>
-        <ChevronDown
-          className={cn(
-            "h-3.5 w-3.5 text-[#1260B0] transition-transform duration-200",
-            isOpen && "rotate-180",
-          )}
-        />
-      </button>
-
-      {/* Body */}
-      <div
-        className={cn(
-          "grid transition-all duration-200 ease-out",
-          isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
-        )}
-      >
-        <div className="overflow-hidden">
-          <div className="px-4 pb-4 space-y-3">
-            {/* Query echo */}
-            <p className="text-[11px] text-[#98A2B3] italic">"{query}"</p>
-
-            {/* Reasoning — inline Claude-style toggle */}
-            {reasoningVisible > 0 && (
-              <div>
-                <button
-                  type="button"
-                  onClick={() => setIsReasoningOpen((v) => !v)}
-                  className="flex items-center gap-1 text-[11px] text-[#98A2B3] hover:text-[#667085] transition-colors"
-                >
-                  <span>{phase === "thinking" ? "Thinking…" : "Thought process"}</span>
-                  <ChevronDown
-                    className={cn(
-                      "h-3 w-3 transition-transform duration-200",
-                      isReasoningOpen && "rotate-180",
-                    )}
-                  />
-                </button>
-                <div
-                  className={cn(
-                    "grid transition-all duration-200 ease-out",
-                    isReasoningOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
-                  )}
-                >
-                  <div className="overflow-hidden">
-                    <div className="pt-2 space-y-1.5 border-l-2 border-[#C5DEF5] ml-1 pl-3">
-                      {COPILOT_REASONING_STEPS.slice(0, reasoningVisible).map((step, i) => (
-                        <div
-                          key={i}
-                          className="text-[11px] text-[#98A2B3] animate-in fade-in slide-in-from-bottom-1 duration-300"
-                        >
-                          {step}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Final response */}
-            {phase === "done" && (
-              <div className="animate-in fade-in slide-in-from-bottom-2 duration-400 rounded-lg bg-[#EBF4FD] border border-[#BFDBFE] px-3 py-2.5">
-                <p className="text-[12px] text-[#344054] leading-relaxed">
-                  Based on the case analysis, the customer's issue appears to stem from an account configuration mismatch. The previous resolution attempts addressed symptoms but not the root cause. I recommend verifying the account settings directly, issuing a service credit for the disruption, and scheduling a follow-up within 48 hours to confirm resolution.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ─── Row component ────────────────────────────────────────────────────────────
 
 // ─── TakeoverPopover ─────────────────────────────────────────────────────────
 
-function TakeoverPopover({
-  botType,
-  customerName,
-  triggerRect,
-  onClose,
-  onConfirm,
-}: {
-  botType: string;
-  customerName: string;
-  triggerRect: DOMRect;
-  onClose: () => void;
-  onConfirm: (reason: string, alertBot: boolean) => void;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [alertBot, setAlertBot] = useState(true);
-  const [reason, setReason] = useState("");
-  const [isClosing, setIsClosing] = useState(false);
 
-  const handleClose = useCallback(() => {
-    if (isClosing) return;
-    setIsClosing(true);
-    setTimeout(onClose, 150);
-  }, [isClosing, onClose]);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) handleClose();
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [handleClose]);
-
-  const POPOVER_WIDTH = 320;
-  const ESTIMATED_HEIGHT = 260;
-  const { left, top, transform } = getSmartPopoverPosition(triggerRect, POPOVER_WIDTH, ESTIMATED_HEIGHT);
-
-  return createPortal(
-    <div
-      ref={ref}
-      className={`fixed z-[9999] rounded-xl border border-border bg-white shadow-[0_8px_24px_rgba(16,24,40,0.14)] overflow-hidden ${isClosing ? "animate-popover-fade-out" : "animate-popover-fade-in"}`}
-      style={{ left, top, width: POPOVER_WIDTH, transform }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-        <div>
-          <p className="text-[12px] font-semibold text-[#1D2939]">Take over conversation</p>
-          <p className="text-[11px] text-[#667085] mt-0.5">Currently handled by <span className="font-medium text-[#344054]">{botType}</span></p>
-        </div>
-        <button type="button" onClick={handleClose} className="text-[#98A2B3] hover:text-[#475467] transition-colors ml-3 shrink-0">
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </div>
-
-      {/* Body */}
-      <div className="px-4 py-3 space-y-3">
-        {/* Alert checkbox */}
-        <label className="flex items-start gap-2.5 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={alertBot}
-            onChange={(e) => setAlertBot(e.target.checked)}
-            className="mt-0.5 h-3.5 w-3.5 rounded border-[#D0D5DD] accent-[#166CCA] cursor-pointer shrink-0"
-          />
-          <span className="text-[12px] text-[#344054] leading-snug">
-            Notify <span className="font-medium">{botType}</span> that you are taking over
-          </span>
-        </label>
-
-        {/* Reason textarea */}
-        <textarea
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          placeholder="Reason for taking over (optional)"
-          rows={3}
-          className="w-full resize-none rounded-lg border border-[#D0D5DD] px-3 py-2 text-[12px] text-[#344054] placeholder:text-[#98A2B3] focus:border-[#166CCA] focus:outline-none focus:ring-1 focus:ring-[#166CCA]/20 transition-colors"
-        />
-      </div>
-
-      {/* Footer */}
-      <div className="flex items-center justify-end gap-2 border-t border-border bg-[#F9FAFB] px-4 py-2.5">
-        <button
-          type="button"
-          onClick={handleClose}
-          className="rounded-md border border-[#D0D5DD] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#344054] hover:bg-[#F9FAFB] transition-colors"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={() => onConfirm(reason, alertBot)}
-          className="rounded-md bg-[#166CCA] px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-[#1260B0] transition-colors"
-        >
-          Confirm Takeover
-        </button>
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
-// ─── TakeoverButton ───────────────────────────────────────────────────────────
-// Shows the TakeoverPopover. On confirm it builds the handoff-stamped initial
-// conversation synchronously (before acceptIssue is called) so the correct
-// messages are stored from the very first render — avoiding the navigate() race.
-
-function TakeoverButton({
-  botType,
-  customerName,
-  customerRecordId,
-  channel,
-  onTakeover,
-  className,
-}: {
-  botType: string;
-  customerName: string;
-  customerRecordId: string;
-  channel: string;
-  onTakeover: (handoffConversation: SharedConversationData) => void;
-  className?: string;
-}) {
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const [showPopover, setShowPopover] = useState(false);
-  const [triggerRect, setTriggerRect] = useState<DOMRect | null>(null);
-
-  const buildHandoffConversation = (): SharedConversationData => {
-    const convChannel = (channel === "sms" ? "sms" : "chat") as "chat" | "sms";
-    const seed = customerRecordId
-      ? createConversationState(customerRecordId, convChannel)
-      : { customerName, label: botType, timelineLabel: "", status: "open" as const, draft: "", messages: [] };
-    const time = new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-    const firstName = customerName.split(" ")[0];
-    const baseId = Date.now();
-    return {
-      ...seed,
-      messages: [
-        // Stamp every prior agent message with the bot's name so it renders as the bot, not JC
-        ...seed.messages.map((msg) =>
-          msg.role === "agent" && !msg.author ? { ...msg, author: botType } : msg
-        ),
-        // Customer-facing transfer notice authored by the bot
-        {
-          id: baseId,
-          role: "agent" as const,
-          author: botType,
-          content: `${firstName}, I'm transferring you now to ${CURRENT_AGENT_NAME}, a human specialist who will take it from here.`,
-          time,
-        },
-        // Internal-only handoff card — visible to the agent, not the customer
-        {
-          id: baseId + 1,
-          role: "agent" as const,
-          author: botType,
-          content: `I have transferred the assignment. You are now live with customer ${customerName}.`,
-          time,
-          isInternal: true,
-          isHandoffCard: true,
-        },
-      ],
-    };
-  };
-
-  const handleConfirm = (_reason: string, _alertBot: boolean) => {
-    setShowPopover(false);
-    const handoff = buildHandoffConversation();
-    // Write to the module-level store BEFORE calling onTakeover.
-    // Layout.tsx reads this in both acceptIssue (new assignment path) and
-    // setConversationStateForAssignment (already-open path), so it is applied
-    // regardless of React state batching or navigation timing.
-    if (customerRecordId) pendingHandoffConversations.set(customerRecordId, handoff);
-    onTakeover(handoff);
-  };
-
-  return (
-    <>
-      {showPopover && triggerRect && (
-        <TakeoverPopover
-          botType={botType}
-          customerName={customerName}
-          triggerRect={triggerRect}
-          onClose={() => setShowPopover(false)}
-          onConfirm={handleConfirm}
-        />
-      )}
-      <button
-        ref={buttonRef}
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          const rect = buttonRef.current?.getBoundingClientRect();
-          if (rect) { setTriggerRect(rect); setShowPopover(true); }
-        }}
-        className={className ?? "rounded-md bg-[#166CCA] px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-[#1260B0] transition-colors"}
-      >
-        Takeover
-      </button>
-    </>
-  );
-}
 
 // ─── IssueRow ─────────────────────────────────────────────────────────────────
 
@@ -2424,14 +1692,6 @@ type RowData = StaticAssignment & {
 
 // ─── BulkResponseModal ────────────────────────────────────────────────────────
 
-const BULK_AI_RESPONSES: Record<string, string> = {
-  "Login & Authentication":  "We're aware of an issue affecting login access and are actively working to resolve it. Our engineering team expects a fix within the next 30 minutes. We apologize for the inconvenience and appreciate your patience.",
-  "Payment & Billing":       "We've identified an issue affecting payment processing. Our team is investigating urgently to restore normal service. We'll ensure no incorrect charges are applied and will notify you once resolved.",
-  "System & Technical":      "We're currently experiencing a technical issue that may be impacting your experience. Our engineering team is aware and actively working on a resolution. We appreciate your patience.",
-  "Account Management":      "We're aware of an issue affecting account management features and are working to resolve it quickly. Your account data is safe. We'll notify you once full functionality is restored.",
-  "Security & Fraud":        "Our security team has been alerted and is investigating immediately. As a precaution, please review your recent account activity and contact us directly if you notice anything suspicious.",
-  "Service & Support":       "We sincerely apologize for the delay. We're aware this doesn't meet our standards and are prioritising your case. A dedicated agent will be in touch shortly.",
-};
 
 function BulkResponseModal({
   label,
@@ -2588,12 +1848,6 @@ function BulkResponseModal({
 
 // ─── QueueCardView — full-detail card grid for card view mode ────────────────
 
-const CARD_COPILOT_STEPS = [
-  "Reviewing case history and prior customer interactions...",
-  "Analyzing attempted resolutions and their outcomes...",
-  "Cross-referencing similar resolved cases in the knowledge base...",
-  "Synthesizing recommended next steps and action items...",
-];
 
 function QueueCard({ caseData }: { caseData: RowData }) {
   const { pushTransferredToast } = useLayoutContext();
@@ -2871,10 +2125,10 @@ function MonitorCard({ caseData, isActive }: { caseData: RowData; isActive: bool
             <div className="flex items-center gap-1.5 shrink-0">
               <button
                 type="button"
-                onClick={() => caseData.onSupervise()}
-                className="hidden rounded-md bg-[#F59E0B] px-4 py-1.5 text-[11px] font-semibold text-white hover:bg-[#D97706] transition-colors"
+                onClick={() => caseData.onMonitor()}
+                className="rounded-md border border-[#D0D5DD] bg-white px-4 py-1.5 text-[11px] font-semibold text-[#344054] hover:bg-[#F9FAFB] transition-colors"
               >
-                Monitor
+                Review
               </button>
               <TakeoverButton
                 botType={caseData.botType}
@@ -3198,7 +2452,7 @@ function CaseDetailPanel({ caseData, onClose }: { caseData: RowData; onClose: ()
   }
 
   return (
-    <div className="w-[360px] flex-shrink-0 border-l border-border flex flex-col bg-white dark:bg-[#0F1629] overflow-hidden transition-all duration-300">
+    <div className="w-[360px] flex-shrink-0 border-l border-border flex flex-col bg-white dark:bg-[#0F1629] overflow-hidden">
       {/* Header */}
       <div className="shrink-0 px-5 py-4 border-b border-border">
         <div className="flex items-start gap-3">
@@ -3368,6 +2622,59 @@ function CaseDetailPanel({ caseData, onClose }: { caseData: RowData; onClose: ()
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── AnimatedCaseDetailPanel — wrapper that slides the detail panel in/out ─────
+
+function AnimatedCaseDetailPanel({
+  caseData,
+  onClose,
+}: {
+  caseData: RowData | null;
+  onClose: () => void;
+}) {
+  const [visible, setVisible] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [activeCase, setActiveCase] = useState<RowData | null>(null);
+
+  useEffect(() => {
+    if (caseData) {
+      // Opening: mount first, then trigger slide-in on next frame
+      setActiveCase(caseData);
+      setMounted(true);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => setVisible(true));
+      });
+    } else {
+      // Closing: trigger slide-out, then unmount after transition
+      setVisible(false);
+      const timer = setTimeout(() => {
+        setMounted(false);
+        setActiveCase(null);
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [caseData]);
+
+  if (!mounted || !activeCase) return null;
+
+  return (
+    <div
+      className="flex-shrink-0 overflow-hidden transition-all duration-300 ease-out"
+      style={{
+        width: visible ? 360 : 0,
+      }}
+    >
+      <div
+        className="w-[360px] h-full transition-transform duration-300 ease-out"
+        style={{
+          transform: visible ? "translateX(0)" : "translateX(100%)",
+        }}
+      >
+        <CaseDetailPanel caseData={activeCase} onClose={onClose} />
       </div>
     </div>
   );
@@ -4446,12 +3753,10 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
               </div>
 
               {/* Detail panel */}
-              {(() => {
-                const selectedCase = assignedRows.find((r) => r.id === selectedCaseId) ?? null;
-                return selectedCase ? (
-                  <CaseDetailPanel caseData={selectedCase} onClose={() => setSelectedCaseId(null)} />
-                ) : null;
-              })()}
+              <AnimatedCaseDetailPanel
+                caseData={assignedRows.find((r) => r.id === selectedCaseId) ?? null}
+                onClose={() => setSelectedCaseId(null)}
+              />
             </div>
           </div>
         );
@@ -4933,15 +4238,12 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
             </div>{/* end queue list flex-col */}
 
             {/* Case detail panel — slides in from the right (list view only) */}
-            {viewMode === "list" && selectedCaseId && (() => {
-              const selectedCase = allRows.find((r) => r.id === selectedCaseId);
-              return selectedCase ? (
-                <CaseDetailPanel
-                  caseData={selectedCase}
-                  onClose={() => setSelectedCaseId(null)}
-                />
-              ) : null;
-            })()}
+            {viewMode === "list" && (
+              <AnimatedCaseDetailPanel
+                caseData={allRows.find((r) => r.id === selectedCaseId) ?? null}
+                onClose={() => setSelectedCaseId(null)}
+              />
+            )}
           </div>
 
 

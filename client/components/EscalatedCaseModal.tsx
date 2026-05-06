@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   Check,
   ChevronDown,
+  CircleStop,
   Sparkles,
   X,
 } from "lucide-react";
@@ -11,26 +12,19 @@ import { cn } from "@/lib/utils";
 import ConversationPanel, { type ConversationMessage } from "@/components/ConversationPanel";
 import { createConversationState, getCustomerRecord } from "@/lib/customer-database";
 import { getEscalationStart } from "@/lib/escalation-timers";
-
-// ─── Escalation live timer ────────────────────────────────────────────────────
-function EscalationTimer({ customerId }: { customerId?: string }) {
-  const startRef = useRef(customerId ? getEscalationStart(customerId) : Date.now());
-  const [elapsed, setElapsed] = useState(() => Math.floor((Date.now() - startRef.current) / 1000));
-  useEffect(() => {
-    const id = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
-    }, 1000);
-    return () => clearInterval(id);
-  }, []);
-  const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
-  const ss = String(elapsed % 60).padStart(2, "0");
-  const chip = elapsed >= 60
-    ? "border-[#E32926] text-[#E32926]"
-    : elapsed >= 30
-    ? "border-[#FFB800] text-[#FFB800]"
-    : "border-[#98A2B3] text-[#98A2B3]";
-  return <span className={`rounded border bg-white px-1.5 py-0.5 text-[10px] font-semibold leading-none tabular-nums ${chip}`}>{mm}:{ss}</span>;
-}
+import { EscalationTimer } from "@/components/EscalationTimer";
+import { priorityStyles } from "@/lib/priority-styles";
+import {
+  Agent,
+  agentRoster,
+  supervisorRoster,
+  availabilityOrder,
+  availabilityDot,
+  scoreAgent,
+  getSmartPopoverPosition,
+} from "@/lib/agent-roster";
+import { TransferPopover } from "@/components/TransferPopover";
+import { CopilotResponseCard } from "@/components/CopilotResponseCard";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -57,15 +51,6 @@ export type EscalatedCaseModalData = {
   autoApprove?: boolean;
 };
 
-// ─── Priority styles ──────────────────────────────────────────────────────────
-
-const priorityStyles: Record<string, string> = {
-  Critical: "border-[#E53935] bg-[#FDEAEA] text-[#C71D1A]",
-  High:     "border-[#FFB800] bg-[#FFF6E0] text-[#A37A00]",
-  Medium:   "border-[#BFDBFE] bg-[#EBF4FD] text-[#166CCA]",
-  Low:      "border-[#24943E] bg-[#EFFBF1] text-[#208337]",
-};
-
 // ─── Copilot constants ────────────────────────────────────────────────────────
 
 const COPILOT_REASONING_STEPS = [
@@ -90,279 +75,6 @@ const POTENTIAL_NEXT_STEPS = [
   "Run connection diagnostics to confirm stability",
 ];
 
-// ─── Agent roster & transfer popover ─────────────────────────────────────────
-
-type AgentAvailability = "Available" | "In a Call" | "Away" | "Offline";
-
-interface Agent {
-  id: string;
-  name: string;
-  initials: string;
-  availability: AgentAvailability;
-  skills: string[];
-  activeCount: number;
-}
-
-const agentRoster: Agent[] = [
-  { id: "agent-1", name: "Jeff Comstock",  initials: "JC", availability: "Available",  skills: ["Billing", "Account Management", "Escalations"],     activeCount: 2 },
-  { id: "agent-2", name: "Priya Mehra",    initials: "PM", availability: "Available",  skills: ["Technical Support", "API Integration", "Security"],   activeCount: 1 },
-  { id: "agent-3", name: "Sam Torres",     initials: "ST", availability: "Available",  skills: ["Compliance", "Data Exports", "Contract Renewals"],    activeCount: 3 },
-  { id: "agent-4", name: "Kenji Watanabe", initials: "KW", availability: "In a Call", skills: ["Payments", "Fraud", "Wire Transfers"],                 activeCount: 4 },
-  { id: "agent-5", name: "Amara Osei",     initials: "AO", availability: "Available",  skills: ["Enterprise Accounts", "Licensing", "Escalations"],    activeCount: 2 },
-  { id: "agent-6", name: "Lena Fischer",   initials: "LF", availability: "Away",       skills: ["Billing", "Refunds", "Account Management"],           activeCount: 1 },
-  { id: "agent-7", name: "Marcus Webb",    initials: "MW", availability: "Available",  skills: ["Security", "Identity Management", "SSO"],              activeCount: 2 },
-  { id: "agent-8", name: "Chloe Nguyen",   initials: "CN", availability: "Offline",    skills: ["Technical Support", "Logistics", "Customs"],          activeCount: 0 },
-];
-
-const supervisorRoster: Agent[] = [
-  { id: "sup-1", name: "Rachel Kim",    initials: "RK", availability: "Available",  skills: ["Escalations", "Enterprise Accounts", "Compliance"], activeCount: 3 },
-  { id: "sup-2", name: "David Okafor",  initials: "DO", availability: "Available",  skills: ["Fraud", "Risk Management", "Wire Transfers"],        activeCount: 2 },
-  { id: "sup-3", name: "Sandra Howell", initials: "SH", availability: "In a Call", skills: ["Billing", "Licensing", "Contract Renewals"],         activeCount: 4 },
-  { id: "sup-4", name: "Tom Ellison",   initials: "TE", availability: "Away",       skills: ["Security", "Identity Management", "Escalations"],    activeCount: 1 },
-];
-
-const availabilityOrder: Record<AgentAvailability, number> = { Available: 0, "In a Call": 1, Away: 2, Offline: 3 };
-const availabilityDot: Record<AgentAvailability, string> = {
-  Available: "bg-[#208337]", "In a Call": "bg-[#FFB800]", Away: "bg-[#D0D5DD]", Offline: "bg-[#98A2B3]",
-};
-
-function scoreAgent(agent: Agent, priority: string, preview: string): number {
-  const text = preview.toLowerCase();
-  let score = 0;
-  for (const skill of agent.skills) {
-    if (text.includes(skill.toLowerCase().split(" ")[0])) score += 2;
-  }
-  if (priority === "Critical" || priority === "High") {
-    if (agent.skills.some((s) => s.toLowerCase().includes("escalation"))) score += 3;
-  }
-  score -= agent.activeCount * 0.5;
-  return score;
-}
-
-function getSmartPopoverPosition(triggerRect: DOMRect, popoverWidth: number, estimatedHeight: number, gap = 6, margin = 8) {
-  const spaceBelow = window.innerHeight - triggerRect.bottom - gap - margin;
-  const spaceAbove = triggerRect.top - gap - margin;
-  const openBelow = spaceBelow >= estimatedHeight || spaceBelow >= spaceAbove;
-  const left = Math.max(margin, Math.min(triggerRect.left, window.innerWidth - popoverWidth - margin));
-  if (openBelow) return { left, top: triggerRect.bottom + gap, maxHeight: Math.max(160, spaceBelow), transform: "none" as const };
-  return { left, top: triggerRect.top - gap, maxHeight: Math.max(160, spaceAbove), transform: "translateY(-100%)" as const };
-}
-
-type TransferTab = "Agents" | "Supervisors";
-
-function TransferPopover({ priority, preview, triggerRect, onClose, onAssign }: {
-  priority: string;
-  preview: string;
-  triggerRect: DOMRect;
-  onClose: () => void;
-  onAssign: (agent: Agent) => void;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [assigned, setAssigned] = useState<string | null>(null);
-  const [tab, setTab] = useState<TransferTab>("Agents");
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [onClose]);
-
-  const sortedAgents = [...agentRoster].sort((a, b) => {
-    const avail = availabilityOrder[a.availability] - availabilityOrder[b.availability];
-    if (avail !== 0) return avail;
-    return scoreAgent(b, priority, preview) - scoreAgent(a, priority, preview);
-  });
-  const sortedSupervisors = [...supervisorRoster].sort(
-    (a, b) => availabilityOrder[a.availability] - availabilityOrder[b.availability],
-  );
-  const roster = tab === "Agents" ? sortedAgents : sortedSupervisors;
-
-  const handleAssign = (agent: Agent) => {
-    setAssigned(agent.id);
-    setTimeout(() => { onAssign(agent); onClose(); }, 800);
-  };
-
-  const POPOVER_WIDTH = 300;
-  const { left, top, maxHeight, transform } = getSmartPopoverPosition(triggerRect, POPOVER_WIDTH, 370);
-
-  return createPortal(
-    <div
-      ref={ref}
-      className="fixed z-[10001] rounded-xl border border-border bg-white shadow-[0_8px_24px_rgba(16,24,40,0.12)] overflow-hidden"
-      style={{ left, top, width: POPOVER_WIDTH, transform }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-        <p className="text-[12px] font-semibold text-[#333333]">Transfer to</p>
-        <button type="button" onClick={onClose} className="text-[#98A2B3] hover:text-[#475467] transition-colors">
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </div>
-      <div className="flex border-b border-border">
-        {(["Agents", "Supervisors"] as const).map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            className={cn(
-              "relative flex-1 py-2.5 text-[12px] font-medium transition-colors",
-              tab === t ? "text-[#166CCA]" : "text-[#667085] hover:text-[#344054]",
-            )}
-          >
-            {t}
-            {tab === t && <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-t-full bg-[#166CCA]" />}
-          </button>
-        ))}
-      </div>
-      <div className="overflow-y-auto divide-y divide-border" style={{ maxHeight: Math.min(224, maxHeight - 120) }}>
-        {roster.map((agent) => {
-          const isAssigned = assigned === agent.id;
-          const isDisabled = agent.availability === "Offline" || (assigned !== null && !isAssigned);
-          return (
-            <button
-              key={agent.id}
-              type="button"
-              disabled={isDisabled}
-              onClick={() => handleAssign(agent)}
-              className={cn(
-                "w-full flex items-center gap-3 px-4 py-3 text-left transition-colors",
-                isAssigned ? "bg-[#EBF4FD]" : "hover:bg-[#F9FAFB]",
-                isDisabled && "opacity-40 cursor-not-allowed",
-              )}
-            >
-              <div className="relative shrink-0">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F2F4F7] text-[11px] font-bold text-[#475467]">
-                  {agent.initials}
-                </div>
-                <span className={cn("absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white", availabilityDot[agent.availability])} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="text-[12px] font-semibold text-[#1D2939] truncate">{agent.name}</p>
-                  {isAssigned && <span className="text-[10px] font-semibold text-[#166CCA]">Transferred</span>}
-                </div>
-                <p className="text-[10px] text-[#98A2B3] truncate">{agent.skills.join(" · ")}</p>
-              </div>
-              <span className="shrink-0 text-[10px] text-[#667085]">{agent.activeCount} active</span>
-            </button>
-          );
-        })}
-      </div>
-      <div className="px-4 py-2.5 border-t border-border bg-[#F9FAFB]">
-        <p className="text-[10px] text-[#98A2B3]">Sorted by availability · best skill match</p>
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
-// ─── CopilotResponseCard ──────────────────────────────────────────────────────
-
-function CopilotResponseCard({
-  query,
-  phase,
-  reasoningVisible,
-  isOpen,
-  onToggle,
-}: {
-  query: string;
-  phase: "thinking" | "done";
-  reasoningVisible: number;
-  isOpen: boolean;
-  onToggle: () => void;
-}) {
-  const [isReasoningOpen, setIsReasoningOpen] = useState(false);
-
-  return (
-    <div className="rounded-xl border border-[#BFDBFE] bg-white overflow-hidden">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center justify-between px-4 py-3 text-left"
-      >
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-3.5 w-3.5 text-[#166CCA]" />
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#1260B0]">
-            Copilot Response
-          </p>
-          {phase === "thinking" && (
-            <span className="flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#166CCA] animate-bounce [animation-delay:0ms]" />
-              <span className="h-1.5 w-1.5 rounded-full bg-[#166CCA] animate-bounce [animation-delay:150ms]" />
-              <span className="h-1.5 w-1.5 rounded-full bg-[#166CCA] animate-bounce [animation-delay:300ms]" />
-            </span>
-          )}
-        </div>
-        <ChevronDown
-          className={cn(
-            "h-3.5 w-3.5 text-[#1260B0] transition-transform duration-200",
-            isOpen && "rotate-180",
-          )}
-        />
-      </button>
-
-      <div
-        className={cn(
-          "grid transition-all duration-200 ease-out",
-          isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
-        )}
-      >
-        <div className="overflow-hidden">
-          <div className="px-4 pb-4 space-y-3">
-            <p className="text-[11px] text-[#98A2B3] italic">"{query}"</p>
-
-            {reasoningVisible > 0 && (
-              <div>
-                <button
-                  type="button"
-                  onClick={() => setIsReasoningOpen((v) => !v)}
-                  className="flex items-center gap-1 text-[11px] text-[#98A2B3] hover:text-[#667085] transition-colors"
-                >
-                  <span>{phase === "thinking" ? "Thinking…" : "Thought process"}</span>
-                  <ChevronDown
-                    className={cn(
-                      "h-3 w-3 transition-transform duration-200",
-                      isReasoningOpen && "rotate-180",
-                    )}
-                  />
-                </button>
-                <div
-                  className={cn(
-                    "grid transition-all duration-200 ease-out",
-                    isReasoningOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
-                  )}
-                >
-                  <div className="overflow-hidden">
-                    <div className="pt-2 space-y-1.5 border-l-2 border-[#C5DEF5] ml-1 pl-3">
-                      {COPILOT_REASONING_STEPS.slice(0, reasoningVisible).map((step, i) => (
-                        <div
-                          key={i}
-                          className="text-[11px] text-[#98A2B3] animate-in fade-in slide-in-from-bottom-1 duration-300"
-                        >
-                          {step}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {phase === "done" && (
-              <div className="animate-in fade-in slide-in-from-bottom-2 duration-400 rounded-lg bg-[#EBF4FD] border border-[#BFDBFE] px-3 py-2.5">
-                <p className="text-[12px] text-[#344054] leading-relaxed">
-                  Based on the case analysis, the customer's issue appears to stem from an account configuration mismatch. The previous resolution attempts addressed symptoms but not the root cause. I recommend verifying the account settings directly, issuing a service credit for the disruption, and scheduling a follow-up within 48 hours to confirm resolution.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ─── EscalatedCaseModal ───────────────────────────────────────────────────────
 
@@ -698,8 +410,8 @@ export function EscalatedCaseModal({
             </p>
           )}
 
-          {/* Confidence meter — hidden while regenerating */}
-          {!isRegeneratingNote && (() => {
+          {/* Confidence meter — only for escalated cases, hidden while regenerating */}
+          {caseData.status === "escalated" && !isRegeneratingNote && (() => {
             const displayConfidence = regeneratedNoteContext
               ? (regeneratedConfidence ?? confidence)
               : confidence;
@@ -720,8 +432,8 @@ export function EscalatedCaseModal({
             );
           })()}
 
-          {/* Action buttons — hidden in supervise mode */}
-          {!isRegeneratingNote && !showQuickActions && (
+          {/* Action buttons — only for escalated cases, hidden in supervise mode */}
+          {caseData.status === "escalated" && !isRegeneratingNote && !showQuickActions && (
             caseData.customerRecordId === "marcus" ? (
               <button
                 type="button"
@@ -2170,7 +1882,7 @@ export function EscalatedCaseModal({
                 <AlertTriangle className="h-3.5 w-3.5 text-[#B54708]" />
               </div>
               <div>
-                <p className="text-[12px] font-semibold text-[#B54708] leading-tight">Supervising this conversation</p>
+                <p className="text-[12px] font-semibold text-[#B54708] leading-tight">Monitoring this conversation</p>
                 <p className="text-[11px] text-[#92400E]/70 leading-tight">You are monitoring the AI agent in real time</p>
               </div>
             </div>
@@ -2201,7 +1913,7 @@ export function EscalatedCaseModal({
                   : "border-border bg-white text-[#344054] hover:bg-[#F2F4F7]",
               )}
             >
-              {showQuickActions ? "Stop Supervising" : "Supervise"}
+              {showQuickActions ? <><CircleStop className="inline h-3.5 w-3.5 mr-1.5 -mt-px" />Stop Monitoring</> : "Monitor"}
             </button>
             <button
               ref={transferBtnRef}

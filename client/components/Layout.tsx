@@ -121,9 +121,119 @@ import { getEscalationStart, recordEscalationStart } from "@/lib/escalation-time
 import { SCENARIO_CHANNEL } from "@/lib/scenario-channel";
 import type { AppMsg, ControllerMsg } from "@/lib/scenario-channel";
 import { toast } from "sonner";
-
-// The logged-in agent's display name — used to mark cases as "assigned to me" on dismiss.
-const CURRENT_AGENT_NAME = "Jeff Comstock";
+import { CURRENT_AGENT_NAME } from "@/lib/agent-roster";
+import { WhatsAppIcon } from "@/components/icons/WhatsAppIcon";
+import {
+  type FloatingPanelId,
+  type CombinedInteractionPanelTab,
+  type AgentStatus,
+  type WorkspaceOption,
+  type QueueSortOption,
+  type GroupedQueueItem,
+  type CallPopunderPosition,
+  type CallPopunderSize,
+  type ConversationPopunderPosition,
+  type ConversationPopunderSize,
+  type CustomerInfoPopunderPosition,
+  type CustomerInfoPopunderSize,
+  type DeskCanvasPopunderPosition,
+  type DeskCanvasPopunderSize,
+  type TranscriptLine,
+  type TranscriptPopunderPosition,
+  type TranscriptPopunderSize,
+  type CallPopunderMode,
+  type AgentChatNotification,
+  statusOptions,
+  initialWorkspaceOptions,
+  conversationStatusOptions,
+  getConversationStatusChipClasses,
+  getConversationStateKey,
+  createFreshConversationState,
+  CALL_POPUNDER_WIDTH,
+  CALL_POPUNDER_MARGIN,
+  CALL_POPUNDER_GAP,
+  CONVERSATION_POPOUNDER_MARGIN,
+  CONVERSATION_POPOUNDER_GAP,
+  DOCKED_CONVERSATION_MIN_WIDTH,
+  DOCKED_CONVERSATION_DEFAULT_WIDTH,
+  DOCKED_CONVERSATION_MAX_WIDTH,
+  DOCKED_CONVERSATION_GAP,
+  DOCKED_CONVERSATION_CONTENT_ENTER_DELAY_MS,
+  DOCKED_CONVERSATION_CONTENT_TRANSITION_MS,
+  CUSTOMER_INFO_PANEL_CONTENT_ENTER_DELAY_MS,
+  CUSTOMER_INFO_PANEL_CONTENT_TRANSITION_MS,
+  INLINE_APP_SPACE_PANEL_ENTER_DELAY_MS,
+  MIN_MAIN_WORKSPACE_WIDTH,
+  CUSTOMER_INFO_PANEL_MIN_WIDTH,
+  CUSTOMER_INFO_PANEL_DEFAULT_WIDTH,
+  CUSTOMER_INFO_PANEL_MAX_WIDTH,
+  CUSTOMER_INFO_PANEL_GAP,
+  CUSTOMER_INFO_PANEL_BREAKPOINT,
+  CUSTOMER_INFO_POPOUNDER_MARGIN,
+  CUSTOMER_INFO_POPOUNDER_GAP,
+  DESK_CANVAS_POPOUNDER_MARGIN,
+  DESK_CANVAS_POPOUNDER_MIN_HEIGHT,
+  DESK_CANVAS_POPOUNDER_DESK_MIN_WIDTH,
+  DESK_CANVAS_POPOUNDER_COPILOT_MIN_WIDTH,
+  DESK_CANVAS_POPOUNDER_DESK_DEFAULT_WIDTH,
+  DESK_CANVAS_POPOUNDER_COPILOT_DEFAULT_WIDTH,
+  ASSIGNMENTS_POPOVER_Z_INDEX,
+  FLOATING_PANEL_BASE_Z_INDEX,
+  COPILOT_DOCK_BREAKPOINT,
+  COMBINED_INTERACTION_PANEL_BREAKPOINT,
+  COMBINED_INTERACTION_PANEL_CANVAS_BREAKPOINT,
+  CALL_DISPOSITION_OPTIONS,
+  getDeskCanvasPopunderMinWidth,
+  getDeskCanvasPopunderDefaultWidth,
+  getAvailableDockedPanelWidth,
+  getDockedConversationMaxWidth,
+  getDockedCustomerInfoMaxWidth,
+  getDockedCopilotMaxWidth,
+  getBalancedDockedPanelWidths,
+  formatRecentInteractionTimestamp,
+  getDispositionStatusColor,
+} from "@/lib/layout-constants";
+import {
+  queueIconMap,
+  launchedAssignmentIconMap,
+  baseAssignmentChannelByCustomerRecordId,
+  randomIncomingChannels,
+  queuePreviewItems,
+  queuePreviewItemsByCustomerRecordId,
+  priorityRankMap,
+  priorityClassNameMap,
+  priorityBadgeColorMap,
+  priorityDotClassNameMap,
+  priorityIconClassNameMap,
+  initialVisibleAssignments,
+  initialVisibleAssignmentIds,
+  initialSelectedAssignment,
+  initialSelectedAssignmentId,
+  getLaunchedAssignmentPreview,
+  createLaunchedAssignment,
+  getRecentInteractionAssignmentStatus,
+  getAssignmentChannelFromRecentInteractionType,
+  formatRecentInteractionAssignmentTime,
+  createRecentInteractionAssignment,
+  groupQueueItems,
+} from "@/lib/queue-helpers";
+import {
+  defaultConversationState,
+  createCustomConversationState,
+  taskAiOverviewByCustomerId,
+  getTaskAiOverview,
+  getIncomingCustomerIssue,
+  lastCustomerMessageByKey,
+  overviewActionsByCustomerName,
+  getOverviewActions,
+  SUMMARY_COPILOT_REASONING_STEPS,
+  getCustomerIssueSummary,
+  getConversationOverviewSummary,
+  getInteractionOverview,
+  getAgentNextSteps,
+  getAiActionsTaken,
+  getWhyAgentIsNeeded,
+} from "@/lib/conversation-state-helpers";
 
 // When a case is transferred, this captures the recipient name so the resolved
 // assignment record shows the correct "Assigned to" instead of the current agent.
@@ -146,769 +256,8 @@ interface LayoutProps {
   children: React.ReactNode;
 }
 
-type FloatingPanelId = "conversation" | "customerInfo" | "deskCanvas" | "call" | "addNew" | "chat" | "notifications" | "transcript";
-type CombinedInteractionPanelTab = "conversation" | "customerInfo" | "canvas";
-
-// Agent roster used for the Transfer sub-menu in the case header dropdown
-export type AgentChatNotification = {
-  id: string;
-  conversationId: string;   // matches ChatPopover conversation id
-  agentName: string;
-  agentRole: string;
-  agentInitials: string;
-  agentAvatarColor: string;
-  message: string;          // preview of the inbound message
-  time: string;
-};
-
-type AgentStatus = "Available" | "Busy" | "Away" | "Offline" | "In a Call";
-type WorkspaceOption = {
-  id: string;
-  name: string;
-  description: string;
-  routePath?: string;
-};
-
-const statusOptions: Array<{
-  label: AgentStatus;
-  dotClassName: string;
-  textClassName: string;
-}> = [
-  { label: "Available", dotClassName: "bg-[#208337]", textClassName: "text-[#208337]" },
-  { label: "Busy", dotClassName: "bg-[#E32926]", textClassName: "text-[#C71D1A]" },
-  { label: "Away", dotClassName: "bg-[#FFB800]", textClassName: "text-[#A37A00]" },
-  { label: "Offline", dotClassName: "bg-[#A3A3A3]", textClassName: "text-[#A3A3A3]" },
-  { label: "In a Call", dotClassName: "bg-[#E32926]", textClassName: "text-[#C71D1A]" },
-];
-
-const initialWorkspaceOptions: WorkspaceOption[] = [
-  { id: "control-panel", name: "Control Center", description: "", routePath: "/control-center" },
-  { id: "review", name: "Activity", description: "", routePath: "/activity" },
-  { id: "wem", name: "WEM", description: "", routePath: "/wem" },
-  { id: "schedule", name: "Schedule", description: "", routePath: "/schedule" },
-  { id: "settings", name: "Settings", description: "", routePath: "/settings" },
-  { id: "reporting", name: "Reporting", description: "", routePath: "/reporting" },
-];
-
-const conversationStatusOptions: Array<{ value: QueueAssignmentStatus; label: string }> = [
-  { value: "open", label: "Open" },
-  { value: "pending", label: "Pending" },
-  { value: "resolved", label: "Resolved" },
-  { value: "escalated", label: "Escalated" },
-];
-
-function getConversationStatusChipClasses(status: QueueAssignmentStatus) {
-  if (status === "open") {
-    return "border-[#24943E] bg-[#EFFBF1] text-[#208337] hover:bg-[#EFFBF1]";
-  }
-
-  if (status === "pending") {
-    return "border-[#D0D5DD] bg-[#F2F4F7] text-[#667085] hover:bg-[#E4E7EC]";
-  }
-
-  if (status === "resolved") {
-    return "border-[#24943E] bg-[#EFFBF1] text-[#208337] hover:bg-[#EFFBF1]";
-  }
-
-  if (status === "escalated") {
-    return "border-[#E53935] bg-[#FDEAEA] text-[#C71D1A] hover:bg-[#FDEAEA]";
-  }
-
-  if (status === "parked") {
-    return "border-[#D0D5DD] bg-[#F2F4F7] text-[#344054] hover:bg-[#E4E7EC]";
-  }
-
-  return "border-[#D0D5DD] bg-white text-[#667085] hover:bg-[#F9FAFB]";
-}
-
-function WhatsAppIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={className} aria-hidden="true">
-      <path d="M12 3.25C7.163 3.25 3.25 7.119 3.25 11.882C3.25 13.549 3.734 15.149 4.638 16.529L3.75 20.75L8.097 19.9C9.406 20.647 10.898 21.042 12.421 21.042C17.258 21.042 21.171 17.172 21.171 12.41C21.171 7.647 16.837 3.25 12 3.25Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M9.428 8.867C9.206 8.373 8.97 8.362 8.761 8.354C8.59 8.347 8.394 8.347 8.198 8.347C8.002 8.347 7.683 8.421 7.413 8.715C7.143 9.009 6.389 9.703 6.389 11.117C6.389 12.531 7.438 13.897 7.585 14.093C7.732 14.289 9.634 17.287 12.611 18.437C15.086 19.392 15.589 19.203 16.123 19.154C16.657 19.105 17.839 18.485 18.084 17.815C18.329 17.144 18.329 16.566 18.255 16.444C18.182 16.321 17.986 16.248 17.692 16.101C17.397 15.954 15.957 15.235 15.687 15.137C15.417 15.039 15.22 14.99 15.024 15.284C14.828 15.578 14.27 16.248 14.098 16.444C13.926 16.64 13.754 16.665 13.459 16.518C13.165 16.37 12.218 16.061 11.095 15.059C10.221 14.28 9.632 13.319 9.46 13.025C9.289 12.731 9.442 12.571 9.589 12.424C9.722 12.292 9.883 12.081 10.03 11.91C10.177 11.738 10.226 11.615 10.324 11.419C10.422 11.223 10.373 11.052 10.299 10.905C10.226 10.758 9.679 9.312 9.428 8.867Z" fill="currentColor" />
-    </svg>
-  );
-}
-
-function getConversationStateKey(assignmentId: string) {
-  return assignmentId;
-}
-
-type QueueSortOption = "created-desc" | "created-asc" | "updated-desc" | "updated-asc";
-
-type GroupedQueueItem = {
-  customerRecordId: string;
-  name: string;
-  initials: string;
-  channels: QueuePreviewItem[]; // sorted: selected/most-recent first
-  lastActiveChannel: QueuePreviewItem;
-  isAnyActive: boolean;
-  priority: string;
-  priorityClassName: string;
-  badgeColor: string;
-};
-
-const queueIconMap: Record<CustomerQueueIcon, typeof Phone> = {
-  phone: Phone,
-  clipboardList: ClipboardList,
-  messageSquare: MessageSquare,
-};
-
-const launchedAssignmentIconMap: Record<AssignmentChannel, React.ElementType> = {
-  chat: MessageCircle,
-  sms: MessageSquare,
-  email: Mail,
-  voice: Phone,
-  whatsapp: WhatsAppIcon,
-};
-
-const baseAssignmentChannelByCustomerRecordId: Partial<Record<string, AssignmentChannel>> = {
-  olivia: "chat",
-};
-
-const randomIncomingChannels: AssignmentChannel[] = ["sms", "email", "whatsapp", "chat", "whatsapp", "sms", "email", "whatsapp"];
-
-const queuePreviewItems: QueuePreviewItem[] = customerDatabase.map((customer, index) => {
-  const assignmentChannel =
-    baseAssignmentChannelByCustomerRecordId[customer.id] ??
-    randomIncomingChannels[index % randomIncomingChannels.length];
-
-  return {
-    id: customer.id,
-    customerRecordId: customer.id,
-    channel: assignmentChannel,
-    initials: customer.initials,
-    name: customer.name,
-    customerId: customer.customerId,
-    lastUpdated: customer.lastUpdated,
-    time: customer.queue.time,
-    preview: customer.queue.preview,
-    priority: customer.queue.priority,
-    priorityClassName: customer.queue.priorityClassName,
-    badgeColor: customer.queue.badgeColor,
-    icon: launchedAssignmentIconMap[assignmentChannel],
-    isActive: customer.queue.isActive,
-    createdAt: customer.queue.createdAt,
-    updatedAt: customer.queue.updatedAt,
-  };
-});
-
-const queuePreviewItemsByCustomerRecordId = Object.fromEntries(
-  queuePreviewItems.map((item) => [item.customerRecordId, item]),
-) as Record<string, QueuePreviewItem>;
-
-const priorityRankMap: Record<string, number> = {
-  critical: 0,
-  high: 1,
-  medium: 2,
-  low: 3,
-};
-
-const priorityClassNameMap: Record<string, string> = {
-  critical: "border-[#E53935] bg-[#FDEAEA] text-[#C71D1A]",
-  high:     "border-[#FFB800] bg-[#FFF6E0] text-[#A37A00]",
-  medium:   "border-[#BFDBFE] bg-[#EBF4FD] text-[#166CCA]",
-  low:      "border-[#24943E] bg-[#EFFBF1] text-[#208337]",
-};
-
-const priorityBadgeColorMap: Record<string, string> = {
-  critical: "bg-[#E32926]",
-  high:     "bg-[#FFB800]",
-  medium:   "bg-[#166CCA]",
-  low:      "bg-[#208337]",
-};
-
-
-const visibleAssignmentNames = new Set([
-  "Noah Patel",
-  "Olivia Reed",
-  "Ethan Zhang",
-]);
-
-const initialVisibleAssignments = queuePreviewItems.filter((item) => visibleAssignmentNames.has(item.name));
-const initialVisibleAssignmentIds = initialVisibleAssignments.map((item) => item.id);
-// Default to Noah Patel (or the first visible assignment if not found)
-const initialSelectedAssignment =
-  initialVisibleAssignments.find((item) => item.name === "Noah Patel") ??
-  initialVisibleAssignments[0] ??
-  queuePreviewItemsByCustomerRecordId[defaultCustomerId] ??
-  queuePreviewItems[0];
-const initialSelectedAssignmentId = initialSelectedAssignment.id;
-const defaultConversationState: SharedConversationData = createConversationState(
-  initialSelectedAssignment.customerRecordId,
-  initialSelectedAssignment.channel,
-);
-
-function createFreshConversationState(customerId: string, channel: CustomerChannel): SharedConversationData {
-  const conversation = createConversationState(customerId, channel);
-
-  return {
-    ...conversation,
-    timelineLabel: `${conversation.label} · New conversation`,
-    messages: [],
-    draft: "",
-    status: "open",
-    isCustomerTyping: false,
-  };
-}
-
-function createCustomConversationState(
-  name: string,
-  channel: AssignmentChannel,
-  preview: string,
-): SharedConversationData {
-  const base = createConversationState(initialSelectedAssignment.customerRecordId, channel);
-  const timestamp = new Date();
-  return {
-    ...base,
-    customerName: name,
-    timelineLabel: `${base.label} · Accepted from queue`,
-    messages: [
-      {
-        id: 1,
-        role: "customer" as const,
-        content: preview,
-        time: timestamp.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
-        isInternal: false,
-      },
-    ],
-    draft: "",
-    status: "open",
-    isCustomerTyping: false,
-  };
-}
-
-// ─── Task AI Overview ─────────────────────────────────────────────────────────
-
-const taskAiOverviewByCustomerId: Record<string, { actions: string[]; whyNeeded: string }> = {
-  noah: {
-    actions: [
-      "Reviewed the full SMS thread and extracted the core data-export failure from Noah's messages.",
-      "Cross-referenced Noah's account permissions and recent failed export job logs.",
-      "Confirmed the issue is tied to a quarterly report generation timeout — not a permissions error.",
-      "Prepared a step-by-step remediation draft and flagged the relevant knowledge base article.",
-    ],
-    whyNeeded: "The export failure requires a manual queue reset that the AI cannot trigger autonomously. A human agent is needed to confirm the correct reporting period, initiate the fix, and validate the output before sending it to Noah.",
-  },
-  olivia: {
-    actions: [
-      "Reviewed the full chat thread and identified a billing discrepancy tied to a mid-cycle plan upgrade.",
-      "Checked Olivia's subscription history and confirmed the pro-rated charge was applied incorrectly.",
-      "Assessed tone — Olivia is frustrated after two prior contacts on the same issue.",
-      "Drafted an apology response and prepared a credit memo for agent review.",
-    ],
-    whyNeeded: "Olivia has contacted support twice for the same billing issue without resolution. She is showing clear frustration signals. A human agent is needed to acknowledge the repeated failure, issue the correct credit, and personally confirm the account is now accurate.",
-  },
-  ethan: {
-    actions: [
-      "Reviewed the SMS thread and identified a wire transfer flagged incorrectly by the fraud filter.",
-      "Cross-referenced Ethan's transaction history and confirmed the transfer destination is a known payee.",
-      "Checked compliance flags and found no active holds — the block appears to be a false positive.",
-      "Prepared a suggested resolution path and escalation note for the payments team.",
-    ],
-    whyNeeded: "Releasing a flagged wire transfer requires agent-level authorisation that cannot be granted autonomously. A human agent must verify Ethan's identity, confirm the payee details, and manually clear the hold in the payments system.",
-  },
-};
-
-function getTaskAiOverview(customerRecordId: string, name: string, channel: string) {
-  if (taskAiOverviewByCustomerId[customerRecordId]) return taskAiOverviewByCustomerId[customerRecordId];
-  const firstName = name.split(" ")[0] ?? name;
-  return {
-    actions: [
-      `Reviewed the full ${channel} thread and extracted the core issue from ${firstName}'s messages.`,
-      "Checked account history and cross-referenced any recent interactions flagged on the account.",
-      "Assessed conversation tone and confirmed standard escalation path was appropriate.",
-      "Prepared a suggested response draft and identified relevant knowledge base articles.",
-    ],
-    whyNeeded: `The issue ${firstName} raised requires judgment and account-level context that the AI cannot act on autonomously. A human agent is needed to review the details, confirm the right course of action, and deliver a personalised resolution that closes the loop.`,
-  };
-}
-
-// Lookup: last customer message per customerRecordId::channel
-const lastCustomerMessageByKey: Record<string, string> = (() => {
-  const map: Record<string, string> = {};
-  for (const customer of customerDatabase) {
-    for (const [channel, convo] of Object.entries(customer.conversations)) {
-      const messages = (convo as { messages: Array<{ role: string; content: string }> }).messages;
-      const last = [...messages].reverse().find((m) => m.role === "customer");
-      if (last) map[`${customer.id}::${channel}`] = last.content;
-    }
-  }
-  return map;
-})();
-
-function getIncomingCustomerIssue(customerRecordId: string, name: string, channel: string): string {
-  const firstName = name.split(" ")[0] ?? name;
-  const msg = lastCustomerMessageByKey[`${customerRecordId}::${channel}`];
-  if (!msg) return `${firstName}'s current issue has not been fully captured in the thread yet.`;
-  const snippet = msg.length > 160 ? `${msg.slice(0, 157)}…` : msg;
-  return `${firstName} is reporting: "${snippet}"`;
-}
-
-function getLaunchedAssignmentPreview(channel: AssignmentChannel) {
-  if (channel === "voice") {
-    return "Live call in progress.";
-  }
-
-  return `New ${channel.toUpperCase()} conversation started.`;
-}
-
-function createLaunchedAssignment(customerRecordId: string, channel: AssignmentChannel, existingAssignment?: QueuePreviewItem): QueuePreviewItem {
-  // Prefer static lookup, then any existing assignment for this customer, then the first
-  // static item as a last-resort shape fallback (display data only — id/customerRecordId are always overridden below).
-  const baseAssignment = queuePreviewItemsByCustomerRecordId[customerRecordId] ?? existingAssignment ?? queuePreviewItems[0];
-  const timestamp = new Date();
-  const isoTimestamp = timestamp.toISOString();
-
-  return {
-    ...baseAssignment,
-    id: `${customerRecordId}-${channel}-${timestamp.getTime()}`,
-    // Always use the requested customerRecordId — the fallback baseAssignment is only
-    // used for display fields (name, initials, etc.), never for the identity key.
-    customerRecordId: customerRecordId,
-    channel,
-    icon: launchedAssignmentIconMap[channel],
-    isActive: false,
-    time: "Now",
-    lastUpdated: formatRecentInteractionTimestamp(timestamp),
-    preview: getLaunchedAssignmentPreview(channel),
-    createdAt: isoTimestamp,
-    updatedAt: isoTimestamp,
-  };
-}
-
-function getRecentInteractionAssignmentStatus(status: string): QueueAssignmentStatus {
-  const normalizedStatus = status.trim().toLowerCase();
-
-  if (normalizedStatus === "resolved") {
-    return "resolved";
-  }
-
-  if (normalizedStatus === "pending") {
-    return "pending";
-  }
-
-  if (normalizedStatus === "escalated") {
-    return "escalated";
-  }
-
-  return "open";
-}
-
-function getAssignmentChannelFromRecentInteractionType(type: RecentInteractionItem["type"]): AssignmentChannel {
-  if (type === "email") {
-    return "email";
-  }
-
-  if (type === "voice") {
-    return "voice";
-  }
-
-  if (type === "ai-agent") {
-    return "chat";
-  }
-
-  return "sms";
-}
-
-function formatRecentInteractionAssignmentTime(createdAt: string) {
-  const timeParts = createdAt.trim().split(" ");
-
-  return timeParts.slice(-2).join(" ") || createdAt;
-}
-
-function createRecentInteractionAssignment(
-  interaction: RecentInteractionItem,
-  customerRecordId: string,
-): QueuePreviewItem {
-  const baseAssignment = queuePreviewItemsByCustomerRecordId[customerRecordId] ?? queuePreviewItems[0];
-  const channel = getAssignmentChannelFromRecentInteractionType(interaction.type);
-  const directionLabel = interaction.direction === "inbound" ? "Inbound" : "Outbound";
-
-  return {
-    ...baseAssignment,
-    id: `recent-interaction-${customerRecordId}-${interaction.id}`,
-    customerRecordId: baseAssignment.customerRecordId,
-    channel,
-    icon: launchedAssignmentIconMap[channel],
-    isActive: false,
-    time: formatRecentInteractionAssignmentTime(interaction.createdAt),
-    lastUpdated: interaction.createdAt,
-    preview: `${directionLabel} · ${interaction.channel}`,
-    createdAt: interaction.createdAt,
-    updatedAt: interaction.createdAt,
-  };
-}
-
-const priorityDotClassNameMap: Record<string, string> = {
-  critical: "bg-[#E32926]",
-  high: "bg-[#FFB800]",
-  medium: "bg-[#166CCA]",
-  low: "bg-[#208337]",
-};
-
-const priorityIconClassNameMap: Record<string, string> = {
-  critical: "text-[#E32926]",
-  high: "text-[#FFB800]",
-  medium: "text-[#166CCA]",
-  low: "text-[#208337]",
-};
-
-function groupQueueItems(items: QueuePreviewItem[], selectedAssignmentId: string): GroupedQueueItem[] {
-  const orderMap = new Map<string, number>();
-  const groupMap = new Map<string, QueuePreviewItem[]>();
-
-  for (const item of items) {
-    if (!groupMap.has(item.customerRecordId)) {
-      orderMap.set(item.customerRecordId, orderMap.size);
-      groupMap.set(item.customerRecordId, []);
-    }
-    groupMap.get(item.customerRecordId)!.push(item);
-  }
-
-  return [...orderMap.entries()]
-    .sort(([, a], [, b]) => a - b)
-    .map(([customerRecordId]) => {
-      const channels = groupMap.get(customerRecordId)!;
-      // Stable order: first opened at top, subsequent channels below (by createdAt asc)
-      const sortedChannels = [...channels].sort(
-        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-      );
-      const isAnyActive = channels.some((c) => c.id === selectedAssignmentId || c.isActive);
-      // Last active channel for the collapsed icon: selected one first, then most recently updated
-      const lastActiveChannel =
-        sortedChannels.find((c) => c.id === selectedAssignmentId) ??
-        [...channels].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0];
-      const highestPriority = [...channels].sort(
-        (a, b) =>
-          (priorityRankMap[a.priority.toLowerCase()] ?? Number.MAX_SAFE_INTEGER) -
-          (priorityRankMap[b.priority.toLowerCase()] ?? Number.MAX_SAFE_INTEGER),
-      )[0];
-
-      return {
-        customerRecordId,
-        name: channels[0].name,
-        initials: channels[0].initials,
-        channels: sortedChannels,
-        lastActiveChannel,
-        isAnyActive,
-        priority: highestPriority.priority,
-        priorityClassName: highestPriority.priorityClassName,
-        badgeColor: highestPriority.badgeColor,
-      };
-    });
-}
-
-type CallPopunderPosition = {
-  x: number;
-  y: number;
-};
-
-type CallPopunderSize = {
-  width: number;
-  height: number;
-};
-
-type ConversationPopunderPosition = {
-  x: number;
-  y: number;
-};
-
-type ConversationPopunderSize = {
-  width: number;
-  height: number;
-};
-
-type CustomerInfoPopunderPosition = {
-  x: number;
-  y: number;
-};
-
-type CustomerInfoPopunderSize = {
-  width: number;
-  height: number;
-};
-
-type DeskCanvasPopunderPosition = {
-  x: number;
-  y: number;
-};
-
-type DeskCanvasPopunderSize = {
-  width: number;
-  height: number;
-};
-
-type TranscriptLine = {
-  id: string;
-  speaker: "agent" | "customer" | "system";
-  text: string;
-  elapsed: number; // seconds since call start
-};
-
-type TranscriptPopunderPosition = { x: number; y: number };
-type TranscriptPopunderSize = { width: number; height: number };
-
-type CallPopunderMode = "setup" | "connecting" | "controls" | "disposition";
-
-const CALL_POPUNDER_WIDTH = 272;
-const CALL_POPUNDER_MARGIN = 16;
-const CALL_POPUNDER_GAP = 12;
-const CONVERSATION_POPOUNDER_MARGIN = 16;
-const CONVERSATION_POPOUNDER_GAP = 12;
-const DOCKED_CONVERSATION_MIN_WIDTH = 360;
-const DOCKED_CONVERSATION_DEFAULT_WIDTH = 450;
-const DOCKED_CONVERSATION_MAX_WIDTH = 560;
-const DOCKED_CONVERSATION_GAP = 16;
-const DOCKED_CONVERSATION_CONTENT_ENTER_DELAY_MS = 0;
-const DOCKED_CONVERSATION_CONTENT_TRANSITION_MS = 520;
-const CUSTOMER_INFO_PANEL_CONTENT_ENTER_DELAY_MS = 120;
-const CUSTOMER_INFO_PANEL_CONTENT_TRANSITION_MS = 220;
-const INLINE_APP_SPACE_PANEL_ENTER_DELAY_MS = 20;
-const MIN_MAIN_WORKSPACE_WIDTH = 360;
-const CUSTOMER_INFO_PANEL_MIN_WIDTH = 360;
-const CUSTOMER_INFO_PANEL_DEFAULT_WIDTH = 425;
-const CUSTOMER_INFO_PANEL_MAX_WIDTH = 560;
-const CUSTOMER_INFO_PANEL_GAP = 16;
-const CUSTOMER_INFO_PANEL_BREAKPOINT = 1024;
-const CUSTOMER_INFO_POPOUNDER_MARGIN = 16;
-const CUSTOMER_INFO_POPOUNDER_GAP = 12;
-const DESK_CANVAS_POPOUNDER_MARGIN = 16;
-const DESK_CANVAS_POPOUNDER_MIN_HEIGHT = 420;
-const DESK_CANVAS_POPOUNDER_DESK_MIN_WIDTH = 360;
-const DESK_CANVAS_POPOUNDER_COPILOT_MIN_WIDTH = 360;
-const DESK_CANVAS_POPOUNDER_DESK_DEFAULT_WIDTH = 360;
-const DESK_CANVAS_POPOUNDER_COPILOT_DEFAULT_WIDTH = 360;
-const ASSIGNMENTS_POPOVER_Z_INDEX = 90;
-const FLOATING_PANEL_BASE_Z_INDEX = 300;
-const COPILOT_DOCK_BREAKPOINT = 1280;
-const COMBINED_INTERACTION_PANEL_BREAKPOINT = 1024;
-const COMBINED_INTERACTION_PANEL_CANVAS_BREAKPOINT = 1280;
-const CALL_DISPOSITION_OPTIONS = [
-  "Resolved",
-  "Escalated",
-  "Follow-up needed",
-  "Transferred",
-  "No answer / Voicemail",
-  "Customer callback requested",
-  "Wrong number",
-  "Duplicate case",
-] as const;
-
-function getDeskCanvasPopunderMinWidth(view: DeskCanvasView) {
-  return view === "copilot"
-    ? DESK_CANVAS_POPOUNDER_COPILOT_MIN_WIDTH
-    : DESK_CANVAS_POPOUNDER_DESK_MIN_WIDTH;
-}
-
-function getDeskCanvasPopunderDefaultWidth(view: DeskCanvasView) {
-  return view === "copilot"
-    ? DESK_CANVAS_POPOUNDER_COPILOT_DEFAULT_WIDTH
-    : DESK_CANVAS_POPOUNDER_DESK_DEFAULT_WIDTH;
-}
-
-function getAvailableDockedPanelWidth({
-  hasDesktopRightPanel,
-  reserveMainWorkspace,
-  visiblePanelCount,
-  hasMainCanvas,
-}: {
-  hasDesktopRightPanel: boolean;
-  reserveMainWorkspace: boolean;
-  visiblePanelCount: number;
-  hasMainCanvas: boolean;
-}) {
-  if (typeof window === "undefined") {
-    return 0;
-  }
-
-  const rightPanelWidth = hasDesktopRightPanel && window.innerWidth >= 1024 ? 380 : 0;
-  const reservedMainWorkspaceWidth = reserveMainWorkspace ? MIN_MAIN_WORKSPACE_WIDTH : 0;
-  const gapCount = visiblePanelCount === 0 ? 0 : Math.max(0, visiblePanelCount - 1) + (hasMainCanvas ? 1 : 0);
-
-  return Math.max(
-    0,
-    window.innerWidth - 56 - rightPanelWidth - reservedMainWorkspaceWidth - gapCount * DOCKED_CONVERSATION_GAP - 16,
-  );
-}
-
-function getDockedConversationMaxWidth({
-  hasDesktopRightPanel,
-  customerInfoPanelWidth,
-  hasCustomerInfoPanel,
-  reserveMainWorkspace,
-  hasMainCanvas,
-}: {
-  hasDesktopRightPanel: boolean;
-  customerInfoPanelWidth: number;
-  hasCustomerInfoPanel: boolean;
-  reserveMainWorkspace: boolean;
-  hasMainCanvas: boolean;
-}) {
-  if (typeof window === "undefined") {
-    return DOCKED_CONVERSATION_MAX_WIDTH;
-  }
-
-  const availableWidth = getAvailableDockedPanelWidth({
-    hasDesktopRightPanel,
-    reserveMainWorkspace,
-    visiblePanelCount: hasCustomerInfoPanel ? 2 : 1,
-    hasMainCanvas,
-  });
-
-  return Math.max(
-    DOCKED_CONVERSATION_MIN_WIDTH,
-    availableWidth - (hasCustomerInfoPanel ? customerInfoPanelWidth : 0),
-  );
-}
-
-function getDockedCustomerInfoMaxWidth({
-  hasDesktopRightPanel,
-  isConversationPanelOpen,
-  dockedConversationWidth,
-  reserveMainWorkspace,
-  hasMainCanvas,
-}: {
-  hasDesktopRightPanel: boolean;
-  isConversationPanelOpen: boolean;
-  dockedConversationWidth: number;
-  reserveMainWorkspace: boolean;
-  hasMainCanvas: boolean;
-}) {
-  if (typeof window === "undefined") {
-    return CUSTOMER_INFO_PANEL_MAX_WIDTH;
-  }
-
-  const hasDockedConversation = isConversationPanelOpen && window.innerWidth >= 800;
-  const availableWidth = getAvailableDockedPanelWidth({
-    hasDesktopRightPanel,
-    reserveMainWorkspace,
-    visiblePanelCount: hasDockedConversation ? 2 : 1,
-    hasMainCanvas,
-  });
-
-  return Math.max(
-    CUSTOMER_INFO_PANEL_MIN_WIDTH,
-    availableWidth - (hasDockedConversation ? dockedConversationWidth : 0),
-  );
-}
-
-function getDockedCopilotMaxWidth({
-  hasDesktopRightPanel,
-  isConversationPanelOpen,
-  dockedConversationWidth,
-}: {
-  hasDesktopRightPanel: boolean;
-  isConversationPanelOpen: boolean;
-  dockedConversationWidth: number;
-}) {
-  if (typeof window === "undefined") {
-    return 320;
-  }
-
-  const rightPanelWidth = hasDesktopRightPanel && window.innerWidth >= 1024 ? 380 : 0;
-  const conversationWidth = isConversationPanelOpen && window.innerWidth >= 800
-    ? dockedConversationWidth + DOCKED_CONVERSATION_GAP
-    : 0;
-
-  return Math.max(
-    315,
-    window.innerWidth - 56 - conversationWidth - rightPanelWidth - MIN_MAIN_WORKSPACE_WIDTH - 16,
-  );
-}
-
-function getBalancedDockedPanelWidths({
-  hasDesktopRightPanel,
-  reserveMainWorkspace,
-  showConversation,
-  showCustomerInfo,
-  hasMainCanvas,
-  currentConversationWidth,
-  currentCustomerInfoWidth,
-}: {
-  hasDesktopRightPanel: boolean;
-  reserveMainWorkspace: boolean;
-  showConversation: boolean;
-  showCustomerInfo: boolean;
-  hasMainCanvas: boolean;
-  currentConversationWidth?: number;
-  currentCustomerInfoWidth?: number;
-}) {
-  if (typeof window === "undefined") {
-    return {
-      conversationWidth: DOCKED_CONVERSATION_DEFAULT_WIDTH,
-      customerInfoWidth: CUSTOMER_INFO_PANEL_DEFAULT_WIDTH,
-    };
-  }
-
-  const visiblePanelCount = (showConversation ? 1 : 0) + (showCustomerInfo ? 1 : 0);
-  const availableWidth = getAvailableDockedPanelWidth({
-    hasDesktopRightPanel,
-    reserveMainWorkspace,
-    visiblePanelCount,
-    hasMainCanvas,
-  });
-
-  if (!showCustomerInfo) {
-    return {
-      conversationWidth: Math.max(DOCKED_CONVERSATION_MIN_WIDTH, availableWidth),
-      customerInfoWidth: CUSTOMER_INFO_PANEL_DEFAULT_WIDTH,
-    };
-  }
-
-  if (!showConversation) {
-    return {
-      conversationWidth: DOCKED_CONVERSATION_DEFAULT_WIDTH,
-      customerInfoWidth: Math.max(CUSTOMER_INFO_PANEL_MIN_WIDTH, availableWidth),
-    };
-  }
-
-  const fallbackCustomerInfoWidth = Math.min(
-    availableWidth - DOCKED_CONVERSATION_MIN_WIDTH,
-    Math.max(CUSTOMER_INFO_PANEL_MIN_WIDTH, Math.round(availableWidth * 0.25)),
-  );
-  const fallbackConversationWidth = Math.max(DOCKED_CONVERSATION_MIN_WIDTH, availableWidth - fallbackCustomerInfoWidth);
-  const nextConversationWidth = Math.max(DOCKED_CONVERSATION_MIN_WIDTH, currentConversationWidth ?? fallbackConversationWidth);
-  const nextCustomerInfoWidth = Math.max(CUSTOMER_INFO_PANEL_MIN_WIDTH, currentCustomerInfoWidth ?? fallbackCustomerInfoWidth);
-  const combinedWidth = nextConversationWidth + nextCustomerInfoWidth;
-
-  if (combinedWidth <= 0) {
-    return {
-      conversationWidth: fallbackConversationWidth,
-      customerInfoWidth: Math.max(CUSTOMER_INFO_PANEL_MIN_WIDTH, fallbackCustomerInfoWidth),
-    };
-  }
-
-  const conversationRatio = nextConversationWidth / combinedWidth;
-  const maxConversationWidth = availableWidth - CUSTOMER_INFO_PANEL_MIN_WIDTH;
-  const conversationWidth = Math.min(
-    maxConversationWidth,
-    Math.max(DOCKED_CONVERSATION_MIN_WIDTH, Math.round(availableWidth * conversationRatio)),
-  );
-  const customerInfoWidth = Math.max(CUSTOMER_INFO_PANEL_MIN_WIDTH, availableWidth - conversationWidth);
-
-  return {
-    conversationWidth: availableWidth - customerInfoWidth,
-    customerInfoWidth,
-  };
-}
-function formatRecentInteractionTimestamp(date: Date) {
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
-  const year = date.getFullYear().toString().slice(-2);
-  const hours = date.getHours();
-  const hours12 = hours % 12 || 12;
-  const minutes = `${date.getMinutes()}`.padStart(2, "0");
-  const meridiem = hours >= 12 ? "PM" : "AM";
-
-  return `${month}/${day}/${year} ${hours12}:${minutes} ${meridiem}`;
-}
-
-function getDispositionStatusColor(disposition: (typeof CALL_DISPOSITION_OPTIONS)[number]) {
-  if (disposition === "Resolved") return "bg-[#208337]";
-  if (disposition === "Escalated") return "bg-[#E32926]";
-  return "bg-[#FFB800]";
-}
+// AgentChatNotification is imported below and re-exported
+export type { AgentChatNotification } from "@/lib/layout-constants";
 
 function ConversationStatusDropdown({
   status,
@@ -949,303 +298,6 @@ function ConversationStatusDropdown({
       </DropdownMenuContent>
     </DropdownMenu>
   );
-}
-
-function getCustomerIssueSummary(conversation: SharedConversationData) {
-  const customerFirstName = conversation.customerName.split(" ")[0] ?? conversation.customerName;
-  const latestCustomerMessage = [...conversation.messages].reverse().find((m) => m.role === "customer");
-  const content = latestCustomerMessage?.content?.replace(/\s+/g, " ").trim() ?? "";
-  const snippet = content.length > 170 ? `${content.slice(0, 167)}...` : content;
-  return snippet
-    ? `${customerFirstName} is dealing with this issue: ${snippet}`
-    : `${customerFirstName}'s current issue has not been fully captured in the thread yet.`;
-}
-
-function getConversationOverviewSummary(conversation: SharedConversationData) {
-  const customerFirstName = conversation.customerName.split(" ")[0] ?? conversation.customerName;
-  const latestCustomerMessage = [...conversation.messages].reverse().find((message) => message.role === "customer");
-
-  return latestCustomerMessage?.sentiment === "frustrated"
-    ? `${customerFirstName} was routed to this agent because the issue is still unresolved and the customer is showing frustration in the current ${conversation.label.toLowerCase()} thread.`
-    : `${customerFirstName} was routed to this agent because the current ${conversation.label.toLowerCase()} thread still needs active ownership to move the issue forward.`;
-}
-
-// Per-customer curated overview bullets, keyed by full name (lowercase).
-// These mirror the control panel queue card data so both views are consistent.
-const overviewActionsByCustomerName: Record<string, string[]> = {
-  "maria chen": [
-    "Reviewed the full chat thread and identified a recurring payment failure tied to an expired card token.",
-    "Cross-referenced Maria's billing profile and confirmed the card on file expired two billing cycles ago.",
-    "Checked if the failure triggered any automated retry logic — no retries were attempted due to hard decline.",
-    "Prepared a card-update prompt and drafted a payment link for agent delivery.",
-  ],
-  "james whitfield": [
-    "Reviewed James's enterprise contract and identified a tier pricing change applied at last renewal.",
-    "Cross-referenced the original quote with the invoiced amount — a $4,200 discrepancy was found.",
-    "Checked account notes and confirmed a verbal pricing commitment was made by the previous account manager.",
-    "Flagged the case for revenue operations review and prepared a dispute summary for the agent.",
-  ],
-  "priya sharma": [
-    "Reviewed the security alert and confirmed an unrecognised login from a foreign IP address.",
-    "Checked session history — the suspicious session accessed personal details but no transactions were made.",
-    "Initiated a temporary account lock and triggered a password reset notification to Priya's verified email.",
-    "Prepared an incident summary and recommended MFA enablement steps for the agent to walk Priya through.",
-  ],
-  "robert okafor": [
-    "Reviewed Robert's SMS thread and identified API authentication errors starting immediately post-migration.",
-    "Checked the developer portal — BlueLine's API keys were not re-issued after the platform version upgrade.",
-    "Confirmed the error pattern matches a known breaking change introduced in API v3.1.",
-    "Prepared a migration guide and new key generation steps for the agent to share.",
-  ],
-  "lisa montenegro": [
-    "Reviewed Lisa's email thread and confirmed a GDPR-mandated data export was requested 18 days ago.",
-    "Checked the data export queue — the request stalled due to a missing data-owner approval in the system.",
-    "Identified the responsible internal team and flagged the overdue approval to compliance ops.",
-    "Prepared an export status summary and escalation note for the agent.",
-  ],
-  "kevin tran": [
-    "Reviewed Kevin's billing history and confirmed duplicate invoices were generated for three consecutive months.",
-    "Identified a billing system sync error introduced during last quarter's ERP migration as the root cause.",
-    "Calculated the total overbilling: $12,600 across three invoices — all currently marked as overdue.",
-    "Prepared a credit memo draft and flagged the case to the billing engineering team.",
-  ],
-  "angela russo": [
-    "Reviewed Angela's chat and confirmed she is requesting a payment method update for her corporate account.",
-    "Verified Angela's identity meets the account's security threshold for payment detail changes.",
-    "Confirmed no active transactions are pending that would be affected by the card change.",
-    "Prepared a secure payment update link and draft confirmation message for the agent.",
-  ],
-  "marcus bell": [
-    "Reviewed Marcus's email thread and confirmed SSO broke immediately after an Azure AD directory sync.",
-    "Checked Vertex's SSO configuration — the entity ID and assertion consumer URL are now mismatched.",
-    "Confirmed the sync overwrote a custom attribute mapping that was set manually.",
-    "Prepared a re-configuration guide and flagged the issue to the identity team.",
-  ],
-  "sandra yip": [
-    "Reviewed Sandra's SMS thread and confirmed she cannot access the Q1 and Q2 report documents in the portal.",
-    "Checked her account permissions — the reports portal role was inadvertently removed during a user audit.",
-    "Confirmed the reports are available and the issue is entirely permission-based, not a data problem.",
-    "Prepared a permission restoration request and flagged it to the admin team.",
-  ],
-  "derek owens": [
-    "Reviewed Derek's account and identified his annual contract expires in 11 days with no renewal initiated.",
-    "Cross-referenced the contract terms — a 30-day notice clause means renewal is technically overdue.",
-    "Identified two pricing options available under the current commercial framework.",
-    "Prepared a contract summary and renewal options brief for the agent.",
-  ],
-  "jordan davis": [
-    "Pulled Jordan's account and identified router model: CloudMesh Pro v3 running firmware 4.0.8 — a known mismatch against the current stable release 4.1.2.",
-    "Reviewed 24 hours of diagnostic telemetry — confirmed recurring connection drops consistent with the firmware version mismatch.",
-    "Initiated a step-by-step guided factory reset sequence with Jordan, confirming each action in real time.",
-    "Flagged the conversation for human assist — Jordan's custom port forwarding rules may not survive the factory reset; firmware-specific backup behavior requires expert confirmation.",
-  ],
-  "tom hargrove": [
-    "Reviewed Tom's email and confirmed he is following up on a refund issued 22 days ago.",
-    "Checked the refund status — the credit was processed but the bank return is still pending clearance.",
-    "Confirmed the refund amount of $340 is within the expected processing window for Tom's bank.",
-    "Prepared a refund status update and estimated clearance timeline for the agent to share.",
-  ],
-  "nadia petrov": [
-    "Reviewed Nadia's SMS thread and confirmed her international wire transfer is 3 days past the SLA window.",
-    "Checked with the correspondent bank — the transfer is held pending SWIFT compliance screening.",
-    "Identified a flag on the beneficiary country code that triggered an automated compliance hold.",
-    "Prepared a compliance hold explanation and escalation path for the agent.",
-  ],
-  "carlos mendez": [
-    "Reviewed Carlos's call notes and confirmed a real-time data feed outage affecting pipeline monitoring dashboards.",
-    "Checked system status — the outage is caused by a broken WebSocket connection in the v4.2 API gateway.",
-    "Confirmed the engineering team is aware and a fix is in progress, estimated resolution in 2 hours.",
-    "Prepared an outage briefing and interim monitoring workaround for the agent to share.",
-  ],
-  "ingrid holmberg": [
-    "Reviewed Ingrid's email and identified an HS code classification error on a recent shipment declaration.",
-    "Cross-referenced the declared goods with the correct tariff schedule — the error affects duty calculations.",
-    "Confirmed the shipment is currently held at customs pending a corrected declaration.",
-    "Prepared a corrected HS code recommendation and amendment filing instructions for the agent.",
-  ],
-  "darius knox": [
-    "Reviewed Darius's chat and confirmed a $47,500 transfer was sent to an incorrect beneficiary account.",
-    "Checked the transfer status — the transaction completed 8 minutes ago and has not yet been settled.",
-    "Identified the receiving institution and initiated a recall request through the payments network.",
-    "Flagged the case as a priority incident and prepared a reversal brief for the agent.",
-  ],
-  // Live assignment customers (names from customer-database.ts)
-  "alex kowalski": [
-    "Reviewed the full SMS thread and identified a payment-blocking error on Alex's upgrade attempt.",
-    "Checked Alex's account and confirmed the Visa ending in 4092 is valid but encountering a recurring gateway error.",
-    "Identified the error is tied to a temporary payment processing hold, not the card itself.",
-    "Prepared a payment unlock step and drafted a confirmation message for the agent to share.",
-  ],
-  "sarah miller": [
-    "Reviewed Sarah's case and confirmed she missed her scheduled flight and needs a same-day rebooking.",
-    "Checked available same-day options on the relevant route and identified two viable alternatives.",
-    "Confirmed Sarah's booking terms allow a same-day change without a rebooking fee given the circumstances.",
-    "Prepared a rebooking summary with available flight options for the agent to present.",
-  ],
-  "emily chen": [
-    "Reviewed Emily's chat and confirmed her discount code is returning an error at checkout.",
-    "Checked the promo code validity — the code is active but has a tier restriction not shown on the landing page.",
-    "Identified the issue is a backend eligibility mismatch between the code and Emily's current account tier.",
-    "Prepared a manual discount override request and a corrected promo option for the agent to apply.",
-  ],
-  "david brown": [
-    "Reviewed David's inquiry and confirmed a subscription plan change coincided with a potential duplicate charge.",
-    "Checked billing history — two charges were posted during the plan transition window, one of which is a duplicate.",
-    "Confirmed the duplicate is tied to the mid-cycle proration logic and has not yet been reversed.",
-    "Prepared a credit memo for the duplicate charge and a corrected subscription state for agent review.",
-  ],
-  "priya nair": [
-    "Reviewed Priya's case and confirmed her account was locked after five consecutive failed sign-in attempts.",
-    "Checked the sign-in logs — the failed attempts originated from a recognised device and IP address.",
-    "Confirmed the lockout is a standard security trigger and no unauthorised access has occurred.",
-    "Prepared an account unlock flow and identity verification steps for the agent to walk Priya through.",
-  ],
-  "miguel santos": [
-    "Reviewed Miguel's complaint and confirmed an order cancellation did not prevent a charge from completing.",
-    "Checked the order lifecycle — the cancellation was submitted after the payment had already been captured.",
-    "Confirmed a full refund is eligible and the charge has not yet been disputed with the card issuer.",
-    "Prepared a refund initiation summary and estimated processing timeline for the agent to share.",
-  ],
-  "olivia reed": [
-    "Reviewed Olivia's request and confirmed her shipment has a delivery exception due to an address issue.",
-    "Checked the carrier tracking — the package is held at a regional depot and eligible for address correction.",
-    "Confirmed the reroute window is open but closes within 24 hours if no action is taken.",
-    "Prepared the reroute request and carrier contact details for the agent to process immediately.",
-  ],
-  "jamal carter": [
-    "Reviewed Jamal's report and confirmed recent changes saved on mobile are not syncing to desktop.",
-    "Checked the sync logs — a conflict error is preventing the mobile save from propagating to the cloud account state.",
-    "Confirmed the data is not lost — it is queued locally on the mobile device pending a sync resolution.",
-    "Prepared a manual sync trigger procedure and conflict resolution guide for the agent to walk Jamal through.",
-  ],
-  "hannah brooks": [
-    "Reviewed Hannah's invoice query and confirmed the renewal amount is higher than the rate quoted at last renewal.",
-    "Checked account pricing history — a rate adjustment was applied automatically at renewal without notice.",
-    "Confirmed the original quoted rate was documented in account notes but not locked in the billing system.",
-    "Prepared a billing correction request and draft response honouring the original quoted rate for agent review.",
-  ],
-  "noah patel": [
-    "Reviewed the full SMS thread and confirmed an analytics export failed ahead of a stakeholder meeting.",
-    "Cross-referenced Noah's account permissions and recent failed export job logs.",
-    "Confirmed the issue is tied to a report generation timeout — not a permissions error.",
-    "Prepared a step-by-step remediation draft and flagged the relevant knowledge base article.",
-  ],
-  "lauren kim": [
-    "Reviewed Lauren's request and confirmed a seat expansion is blocked by an admin permission error.",
-    "Checked the account admin settings — the billing contact role does not have seat management permissions enabled.",
-    "Confirmed the seat expansion is within plan limits and the only blocker is a permission configuration issue.",
-    "Prepared a permission update request and seat expansion steps for the agent to process with Lauren.",
-  ],
-  "ethan zhang": [
-    "Reviewed Ethan's report and confirmed multiple API sync jobs are stalled due to repeated rate-limit errors.",
-    "Checked the API usage logs — Ethan's integration is hitting the hourly rate cap due to a misconfigured retry interval.",
-    "Identified the retry logic is set to an aggressive interval that compounds the rate-limit violations.",
-    "Prepared a rate-limit configuration fix and backoff strategy guide for the agent to share with Ethan.",
-  ],
-};
-
-function getOverviewActions(conversation: SharedConversationData): string[] | null {
-  const key = conversation.customerName.toLowerCase().trim();
-  return overviewActionsByCustomerName[key] ?? null;
-}
-
-const SUMMARY_COPILOT_REASONING_STEPS = [
-  "Reviewing case history and prior customer interactions...",
-  "Analyzing attempted resolutions and their outcomes...",
-  "Cross-referencing similar resolved cases in the knowledge base...",
-  "Synthesizing recommended next steps and action items...",
-];
-
-function getInteractionOverview(conversation: SharedConversationData): string {
-  const customerFirstName = conversation.customerName.split(" ")[0] ?? conversation.customerName;
-  const latestCustomerMessage = [...conversation.messages].reverse().find((m) => m.role === "customer");
-  const isFrustrated = latestCustomerMessage?.sentiment === "frustrated";
-  const channel = conversation.label;
-
-  const firstCustomerMessage = conversation.messages.find((m) => m.role === "customer");
-  const ticketTime = firstCustomerMessage?.time ?? "today";
-
-  const base = latestCustomerMessage?.content
-    ? `${customerFirstName} reached out via ${channel} regarding: ${latestCustomerMessage.content.slice(0, 120).trim()}${latestCustomerMessage.content.length > 120 ? "…" : ""}`
-    : `${customerFirstName} reached out via ${channel} with an open issue that requires agent follow-up.`;
-
-  const tone = isFrustrated
-    ? ` ${customerFirstName} has expressed frustration — a de-escalation approach is recommended.`
-    : "";
-
-  const ticket = firstCustomerMessage
-    ? ` A ticket has been opened as of ${ticketTime}.`
-    : "";
-
-  return `${base}${tone}${ticket}`;
-}
-
-function getAgentNextSteps(conversation: SharedConversationData): string[] {
-  // Prefer per-customer database entry for unique, context-specific next steps.
-  const entry = getCustomerAssignmentEntry(conversation.customerName);
-  if (entry) return entry.nextSteps;
-
-  // Fallback: keyword-based generic steps.
-  const latestCustomerMessage = [...conversation.messages].reverse().find((m) => m.role === "customer");
-  const content = latestCustomerMessage?.content?.toLowerCase() ?? "";
-  const isFrustrated = latestCustomerMessage?.sentiment === "frustrated";
-
-  if (content.includes("billing") || content.includes("charged") || content.includes("payment")) {
-    return [
-      "Update Salesforce Record with the billing discrepancy details",
-      "Create ADP Ticket to document the charge issue",
-      "Send Discount Coupon as goodwill if a billing error is confirmed",
-      "Set Case to Resolved after communicating the outcome",
-    ];
-  }
-  if (isFrustrated || content.includes("frustrated") || content.includes("escalat")) {
-    return [
-      "Escalate to Supervisor given the elevated frustration signals",
-      "Update Salesforce Record with the escalation notes",
-      "Set Case to Resolved once the supervisor has taken over",
-    ];
-  }
-  if (content.includes("error") || content.includes("failed") || content.includes("retry")) {
-    return [
-      "Create ADP Ticket to document the error and assign it for investigation",
-      "Update Salesforce Record with the root cause and remediation steps",
-      "Schedule Callback to verify the issue is resolved after the fix is applied",
-    ];
-  }
-  return [
-    "Update Salesforce Record with the latest interaction details",
-    "Create ADP Ticket to log the open issue for the support team",
-    "Schedule Callback to follow up on the resolution",
-    "Set Case to Resolved once the customer confirms the issue is closed",
-  ];
-}
-
-function getAiActionsTaken(conversation: SharedConversationData) {
-  const customerFirstName = conversation.customerName.split(" ")[0] ?? conversation.customerName;
-  const channel = conversation.label.toLowerCase();
-  const latestCustomerMessage = [...conversation.messages].reverse().find((m) => m.role === "customer");
-  const isFrustrated = latestCustomerMessage?.sentiment === "frustrated";
-
-  const actions = [
-    `Reviewed the full ${channel} thread and extracted the core issue from ${customerFirstName}'s messages.`,
-    `Checked account history and cross-referenced any recent interactions flagged on the account.`,
-    isFrustrated
-      ? `Detected elevated frustration signals and applied de-escalation routing criteria.`
-      : `Assessed conversation tone and confirmed standard escalation path was appropriate.`,
-    `Prepared a suggested response draft and identified relevant knowledge base articles.`,
-  ];
-  return actions;
-}
-
-function getWhyAgentIsNeeded(conversation: SharedConversationData) {
-  const customerFirstName = conversation.customerName.split(" ")[0] ?? conversation.customerName;
-  const latestCustomerMessage = [...conversation.messages].reverse().find((m) => m.role === "customer");
-  const isFrustrated = latestCustomerMessage?.sentiment === "frustrated";
-
-  if (isFrustrated) {
-    return `${customerFirstName} is showing clear signs of frustration after prior interactions left the issue unresolved. Automated responses have reached their limit — a human agent is needed to rebuild trust, acknowledge the experience empathetically, and drive a concrete resolution in this session.`;
-  }
-  return `The issue ${customerFirstName} raised requires judgment and account-level context that the AI cannot act on autonomously. A human agent is needed to review the details, confirm the right course of action, and deliver a personalised resolution that closes the loop.`;
 }
 
 function ConversationHeaderSubhead({
@@ -9183,16 +8235,26 @@ function LeftQueueRail({
   return (
     <div
       className={cn(
-        "relative z-[80] block h-full shrink-0 transition-[width] duration-300 ease-out",
+        "relative z-[80] block h-full shrink-0 ease-out",
         isOpen ? "w-[347px]" : "w-[60px]",
       )}
+      style={{
+        transition: isOpen
+          ? "width 300ms ease-out"                    /* opening: width starts immediately */
+          : "width 300ms ease-out 150ms",             /* closing: width waits for content to fade out */
+      }}
     >
       <div className="relative flex h-full bg-[#F8F8F9]">
         <aside
           className={cn(
-            "flex h-full shrink-0 flex-col items-center overflow-visible bg-[#F8F8F9] pb-3 pt-0 transition-[width,opacity] duration-300 ease-out",
+            "flex h-full shrink-0 flex-col items-center overflow-visible bg-[#F8F8F9] pb-3 pt-0 ease-out",
             isOpen ? "w-0 opacity-0 pointer-events-none" : "w-[60px] opacity-100",
           )}
+          style={{
+            transition: isOpen
+              ? "width 300ms ease-out, opacity 150ms ease-out"          /* rail opens → collapsed aside hides immediately */
+              : "width 300ms ease-out 150ms, opacity 200ms ease-out 300ms", /* rail closes → collapsed aside appears after width settles */
+          }}
           aria-hidden={isOpen}
         >
           <div className="flex h-full w-full flex-col items-center">
@@ -9424,15 +8486,25 @@ function LeftQueueRail({
 
         <div
           className={cn(
-            "h-full min-h-0 overflow-hidden transition-[width,opacity] duration-300 ease-out",
-            isOpen ? "w-[347px] opacity-100" : "w-0 opacity-0",
+            "h-full min-h-0 overflow-hidden ease-out",
+            isOpen ? "w-[347px]" : "w-0",
           )}
+          style={{
+            transition: isOpen
+              ? "width 300ms ease-out"            /* opening: width expands immediately */
+              : "width 300ms ease-out 150ms",     /* closing: width waits for content to fade out */
+          }}
         >
           <div
             className={cn(
-              "flex h-full min-h-0 w-full flex-col overflow-y-auto bg-[#F8F8F9] transition-transform duration-300 ease-out [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden",
-              isOpen ? "" : "-translate-x-8",
+              "flex h-full min-h-0 w-[347px] flex-col overflow-y-auto bg-[#F8F8F9] ease-out [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden",
+              isOpen ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-3",
             )}
+            style={{
+              transition: isOpen
+                ? "opacity 200ms ease-out 200ms, transform 200ms ease-out 200ms"  /* opening: fade in after width expands */
+                : "opacity 120ms ease-out, transform 120ms ease-out",              /* closing: fade out immediately */
+            }}
           >
             {/* Assignments section */}
             <div className="shrink-0 px-3 pb-2 pt-3">
@@ -11867,8 +10939,8 @@ export default function Layout({ children }: LayoutProps) {
           ...baseConversation,
           messages: [
             ...baseConversation.messages,
-            // Marcus already has a "Hang on Marcus, I'm connecting you with…" handoff message in
-            // the static conversation data, so skip injecting the generic transfer bubble for him.
+            // Marcus already has a generic handoff message in the static conversation data,
+            // so skip injecting the transfer bubble for him to avoid duplication.
             ...(!isMarcusTakeover ? [{
               id: (baseConversation.messages[baseConversation.messages.length - 1]?.id ?? 0) + 1,
               role: "agent" as const,
@@ -14177,8 +13249,8 @@ export default function Layout({ children }: LayoutProps) {
                   ...conversation,
                   messages: [
                     ...conversation.messages,
-                    // Marcus already has a "Hang on Marcus, I'm connecting you with…" handoff message in
-                    // the static conversation data, so skip injecting the generic transfer bubble for him.
+                    // Marcus already has a generic handoff message in the static conversation data,
+                    // so skip injecting the transfer bubble for him to avoid duplication.
                     ...(!isModalMarcus ? [{
                       id: (conversation.messages[conversation.messages.length - 1]?.id ?? 0) + 1,
                       role: "agent" as const,
