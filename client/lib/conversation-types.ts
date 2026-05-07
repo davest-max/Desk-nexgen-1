@@ -26,6 +26,14 @@ export type ConversationMessage = {
    * context card) and should be hidden while the case is in review/pending-acceptance mode.
    */
   isHandoffMessage?: boolean;
+  /** When set, renders a star rating row below the message bubble. */
+  starRating?: number;
+  /** When set, renders an AI-suggested action card below the message. */
+  aiAction?: {
+    label: string;
+    description: string;
+    actionId: string;
+  };
 };
 
 export type ConversationStatus = "open" | "pending";

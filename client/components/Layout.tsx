@@ -91,7 +91,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import CopilotPopunder, { CopilotContent, type CopilotDragActivation } from "@/components/CopilotPopunder";
-import ConversationPanel, { type ConversationStatus, type InlineSuggestion, type SharedConversationData } from "@/components/ConversationPanel";
+import ConversationPanel, { type ConversationMessage, type ConversationStatus, type InlineSuggestion, type SharedConversationData } from "@/components/ConversationPanel";
 import DeskDataTable from "@/components/DeskDataTable";
 import DirectoryPanel from "@/components/DirectoryPanel";
 import AddPanelContent from "@/components/AddPanelContent";
@@ -1546,6 +1546,7 @@ function DockedConversationPanel({
   aiConfidenceReason,
   botLabel,
   customerContext,
+  onAiActionClick,
 }: {
   isOpen: boolean;
   conversation: SharedConversationData;
@@ -1603,6 +1604,8 @@ function DockedConversationPanel({
   botLabel?: string;
   /** Context summary from the bot for the inline review card. */
   customerContext?: string;
+  /** Called when the agent clicks an AI-suggested action card embedded in a message. */
+  onAiActionClick?: (actionId: string) => void;
 }) {
   const contentInitializedRef = useRef(false);
   const panelContainerRef = useRef<HTMLDivElement>(null);
@@ -2725,6 +2728,7 @@ function DockedConversationPanel({
                     voiceRightPanel={voiceRightPanel}
                     voiceContentOverlay={voiceContentOverlay}
                     onVoiceOpeningLineClick={onVoiceOpeningLineClick}
+                    onAiActionClick={onAiActionClick}
                   />
                 )}
               </div>
@@ -4300,6 +4304,41 @@ function TerryLeadForm({ onClose }: { onClose: () => void }) {
 // Live Sales Intelligence panel — renders inside the conversation content during Terry's call.
 // Phase is derived from how many transcript lines have appeared:
 //   0 = call just started, 1 = after Terry's 1st reply, 2 = after 2nd, 3 = after 3rd, 4 = email captured.
+// ── EditableField — stable component identity to avoid re-mount animation loops ──
+const leadCaptureEditIcon = (
+  <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-0 group-hover:opacity-60 text-[#98A2B3]"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+);
+
+function LeadCaptureField({ label, value, onChange, disabled }: { label: string; value: string; onChange: (v: string) => void; disabled?: boolean }) {
+  const [editing, setEditing] = useState(false);
+  const [hasAnimated, setHasAnimated] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setHasAnimated(true), 350); return () => clearTimeout(t); }, []);
+  return (
+    <div className={hasAnimated ? "" : "animate-in fade-in slide-in-from-bottom-1 duration-300"}>
+      <p className="text-[9px] font-semibold uppercase tracking-wide text-[#98A2B3] mb-0.5">{label}</p>
+      {editing && !disabled ? (
+        <input
+          autoFocus
+          className="w-full rounded border border-[#166CCA] bg-[#EBF4FD] px-1.5 py-0.5 text-[12px] text-[#1D2939] outline-none"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={() => setEditing(false)}
+          onKeyDown={(e) => { if (e.key === "Enter") setEditing(false); }}
+        />
+      ) : (
+        <button
+          type="button"
+          className="flex items-center gap-1 text-[12px] text-[#344054] font-medium hover:text-[#166CCA] group text-left"
+          onClick={() => { if (!disabled) setEditing(true); }}
+        >
+          {value}
+          {!disabled && leadCaptureEditIcon}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function TerryCallPanel({ lineCount, callKey, isCallActive, onLeadSaved }: {
   lineCount: number;
   callKey: string;
@@ -4379,10 +4418,39 @@ function TerryCallPanel({ lineCount, callKey, isCallActive, onLeadSaved }: {
   };
   const currentSuggestion = isCallActive && phase >= 1 && phase <= 4 ? aiSuggestions[phase] : null;
 
-  const tagClass = "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold";
+  // ── Editable form field state — seeded with AI-captured values, agent can modify ──
+  const [formPainPoint, setFormPainPoint] = useState("Legacy TMS · Integration failures");
+  const [formTimeline, setFormTimeline] = useState("Q4 deadline");
+  const [formUrgency, setFormUrgency] = useState("High");
+  const [formBudget, setFormBudget] = useState("$400K / yr");
+  const [formDealType, setFormDealType] = useState("Enterprise — New Logo");
+  const [formDecisionMaker, setFormDecisionMaker] = useState("CTO approval needed");
+  const [formNextStep, setFormNextStep] = useState("Technical deep-dive · This week");
+  const [formEngagement, setFormEngagement] = useState("High");
+  const [formEmail, setFormEmail] = useState("t.williams@nexusfreight.com");
+
+  // Snapshot of form values at last save — used to detect edits after saving
+  const [savedSnapshot, setSavedSnapshot] = useState<Record<string, string> | null>(null);
+  const currentFormValues = { formPainPoint, formTimeline, formUrgency, formBudget, formDealType, formDecisionMaker, formNextStep, formEngagement, formEmail };
+  const isDirtyAfterSave = isSaved && savedSnapshot !== null && Object.keys(savedSnapshot).some((k) => savedSnapshot[k] !== (currentFormValues as any)[k]);
+
+  // Reset form fields on new call
+  if (callKey !== prevKeyRef.current) {
+    // (prevKeyRef already updated above)
+    setFormPainPoint("Legacy TMS · Integration failures");
+    setFormTimeline("Q4 deadline");
+    setFormUrgency("High");
+    setFormBudget("$400K / yr");
+    setFormDealType("Enterprise — New Logo");
+    setFormDecisionMaker("CTO approval needed");
+    setFormNextStep("Technical deep-dive · This week");
+    setFormEngagement("High");
+    setFormEmail("t.williams@nexusfreight.com");
+  }
 
   return (
     <>
+    {/* Sales Intelligence — identity card */}
     <div className="flex flex-col gap-3 rounded-xl border border-[#E4E7EC] bg-white overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 pt-3.5 pb-0">
@@ -4403,7 +4471,7 @@ function TerryCallPanel({ lineCount, callKey, isCallActive, onLeadSaved }: {
       </div>
 
       {/* Static identity fields */}
-      <div className="px-4 grid grid-cols-2 gap-x-4 gap-y-2">
+      <div className="px-4 pb-3 grid grid-cols-2 gap-x-4 gap-y-2">
         {[
           { label: "Lead Name", value: "Terry Williams" },
           { label: "Company", value: "Nexus Freight" },
@@ -4438,107 +4506,11 @@ function TerryCallPanel({ lineCount, callKey, isCallActive, onLeadSaved }: {
           )}
         </div>
       </div>
-
-      {/* Divider */}
-      <div className="mx-4 h-px bg-[#F2F4F7]" />
-
-      {/* Dynamic captured fields */}
-      <div className="px-4 pb-4 flex flex-col gap-2">
-        {phase >= 1 && (
-          <div className="flex flex-col gap-1.5 animate-in fade-in slide-in-from-bottom-2 duration-400">
-            <p className="text-[9px] font-semibold uppercase tracking-wide text-[#98A2B3]">Captured · Q1</p>
-            <div className="flex flex-wrap gap-1.5">
-              <span className={cn(tagClass, "bg-[#FEF3F2] text-[#B42318] border border-[#FECDCA]")}>Legacy TMS · Integration failures</span>
-              <span className={cn(tagClass, "bg-[#FFF4E5] text-[#B54708] border border-[#FEDF89]")}>Q4 deadline</span>
-              <span className={cn(tagClass, "bg-[#FEF3F2] text-[#B42318] border border-[#FECDCA]")}>Urgency: High</span>
-            </div>
-          </div>
-        )}
-        {phase >= 2 && (
-          <div className="flex flex-col gap-1.5 animate-in fade-in slide-in-from-bottom-2 duration-400">
-            <p className="text-[9px] font-semibold uppercase tracking-wide text-[#98A2B3]">Captured · Q2</p>
-            <div className="flex flex-wrap gap-1.5">
-              <span className={cn(tagClass, "bg-[#EFFBF1] text-[#208337] border border-[#ABEFC6]")}>Budget: $400K / yr</span>
-              <span className={cn(tagClass, "bg-[#EBF4FD] text-[#166CCA] border border-[#BFDBFE]")}>Enterprise — New Logo</span>
-              <span className={cn(tagClass, "bg-[#F9FAFB] text-[#344054] border border-[#E4E7EC]")}>CTO approval needed</span>
-            </div>
-          </div>
-        )}
-        {phase >= 3 && (
-          <div className="flex flex-col gap-1.5 animate-in fade-in slide-in-from-bottom-2 duration-400">
-            <p className="text-[9px] font-semibold uppercase tracking-wide text-[#98A2B3]">Captured · Q3</p>
-            <div className="flex flex-wrap gap-1.5">
-              <span className={cn(tagClass, "bg-[#EBF4FD] text-[#166CCA] border border-[#BFDBFE]")}>Technical deep-dive · This week</span>
-              <span className={cn(tagClass, "bg-[#EFFBF1] text-[#208337] border border-[#ABEFC6]")}>Engagement: High</span>
-            </div>
-          </div>
-        )}
-        {phase >= 4 && (
-          <div className="flex flex-col gap-1.5 animate-in fade-in slide-in-from-bottom-2 duration-400">
-            <p className="text-[9px] font-semibold uppercase tracking-wide text-[#98A2B3]">Captured · Q4</p>
-            <div className="flex flex-wrap gap-1.5">
-              <span className={cn(tagClass, "bg-[#F9FAFB] text-[#344054] border border-[#E4E7EC] font-mono")}>t.williams@nexusfreight.com</span>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Save Lead / Review Lead Form buttons — appear once email is captured */}
-      {phase >= 4 && !isSaved && (
-        <div className="px-4 pb-4 flex gap-2 animate-in fade-in duration-400">
-          <button
-            type="button"
-            onClick={() => { setIsSaved(true); onLeadSaved?.(); }}
-            className="flex-1 rounded-lg bg-[#166CCA] px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-[#1260B0]"
-          >
-            Save Lead
-          </button>
-          <button
-            type="button"
-            onClick={() => setIsLeadFormOpen((prev) => !prev)}
-            className={cn(
-              "flex-1 rounded-lg border px-4 py-2 text-[13px] font-semibold transition-colors",
-              isLeadFormOpen
-                ? "border-[#166CCA] bg-[#EBF4FD] text-[#166CCA] hover:bg-[#DBEAFE]"
-                : "border-[#D0D5DD] bg-white text-[#344054] hover:bg-[#F9FAFB]",
-            )}
-          >
-            Review Lead Form
-          </button>
-        </div>
-      )}
-      {phase >= 4 && isSaved && (
-        <div className="px-4 pb-4 flex gap-2">
-          <div className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#EFFBF1] border border-[#ABEFC6] px-4 py-2">
-            <CheckCircle2 className="h-4 w-4 text-[#208337]" />
-            <span className="text-[13px] font-semibold text-[#208337]">Lead Saved</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setIsLeadFormOpen((prev) => !prev)}
-            className={cn(
-              "flex-1 rounded-lg border px-4 py-2 text-[13px] font-semibold transition-colors",
-              isLeadFormOpen
-                ? "border-[#166CCA] bg-[#EBF4FD] text-[#166CCA] hover:bg-[#DBEAFE]"
-                : "border-[#D0D5DD] bg-white text-[#344054] hover:bg-[#F9FAFB]",
-            )}
-          >
-            Review Lead Form
-          </button>
-        </div>
-      )}
     </div>
 
-    {/* Lead Form — collapsible, below Sales Intelligence card */}
-    {isLeadFormOpen && (
-      <TerryLeadForm onClose={() => setIsLeadFormOpen(false)} />
-    )}
-
-    {/* AI cards — outside the Sales Intelligence card.
-        key={phase} forces remount (and re-animation) each time phase advances. */}
+    {/* AI cards — Analysis + Suggested Response */}
     {currentSuggestion && (
       <React.Fragment key={phase}>
-        {/* Analysis card */}
         <div className="rounded-lg border border-[#E4E7EC] bg-white px-3 py-2.5 animate-in fade-in slide-in-from-bottom-2 duration-400">
           <div className="flex items-center gap-1.5 mb-1.5">
             <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#667085] shrink-0"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
@@ -4546,7 +4518,6 @@ function TerryCallPanel({ lineCount, callKey, isCallActive, onLeadSaved }: {
           </div>
           <p className="text-[12px] leading-relaxed text-[#344054]">{currentSuggestion.analysis}</p>
         </div>
-        {/* Suggested response card */}
         <div className="rounded-lg border border-[#BFDBFE] bg-[#EBF4FD] px-3 py-2.5 animate-in fade-in slide-in-from-bottom-2 duration-400">
           <div className="flex items-center gap-1.5 mb-1.5">
             <Sparkles className="h-3 w-3 text-[#166CCA] shrink-0" />
@@ -4555,6 +4526,80 @@ function TerryCallPanel({ lineCount, callKey, isCallActive, onLeadSaved }: {
           <p className="text-[12px] leading-relaxed text-[#1D2939]">{currentSuggestion.response}</p>
         </div>
       </React.Fragment>
+    )}
+
+    {/* Lead Capture Form — builds progressively as data is captured from the call */}
+    {phase >= 1 && (
+      <div className="flex flex-col rounded-xl border border-[#E4E7EC] bg-white overflow-hidden">
+        <div className="flex items-center justify-between px-4 pt-3 pb-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-[#667085]">Lead Capture</span>
+            {phase < 4 && (
+              <span className="flex items-center gap-1 rounded-full bg-[#FFF4E5] px-2 py-0.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#F79009] animate-pulse" />
+                <span className="text-[9px] font-semibold uppercase tracking-wide text-[#B54708]">Capturing</span>
+              </span>
+            )}
+            {phase >= 4 && !isSaved && (
+              <span className="flex items-center gap-1 rounded-full bg-[#EFFBF1] px-2 py-0.5">
+                <span className="text-[9px] font-semibold uppercase tracking-wide text-[#208337]">Complete</span>
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="px-4 pb-3 grid grid-cols-2 gap-x-4 gap-y-2.5">
+          {/* Phase 1 fields */}
+          <LeadCaptureField label="Pain Point" value={formPainPoint} onChange={setFormPainPoint} />
+          <LeadCaptureField label="Timeline" value={formTimeline} onChange={setFormTimeline} />
+          <LeadCaptureField label="Urgency" value={formUrgency} onChange={setFormUrgency} />
+
+          {/* Phase 2 fields */}
+          {phase >= 2 && (
+            <>
+              <LeadCaptureField label="Budget" value={formBudget} onChange={setFormBudget} />
+              <LeadCaptureField label="Deal Type" value={formDealType} onChange={setFormDealType} />
+              <LeadCaptureField label="Decision Maker" value={formDecisionMaker} onChange={setFormDecisionMaker} />
+            </>
+          )}
+
+          {/* Phase 3 fields */}
+          {phase >= 3 && (
+            <>
+              <LeadCaptureField label="Next Step" value={formNextStep} onChange={setFormNextStep} />
+              <LeadCaptureField label="Engagement" value={formEngagement} onChange={setFormEngagement} />
+            </>
+          )}
+
+          {/* Phase 4 fields */}
+          {phase >= 4 && (
+            <div className="col-span-2">
+              <LeadCaptureField label="Contact Email" value={formEmail} onChange={setFormEmail} />
+            </div>
+          )}
+        </div>
+
+        {/* Save Lead / Lead Saved footer */}
+        {phase >= 4 && (!isSaved || isDirtyAfterSave) && (
+          <div className="px-4 pb-3 pt-1 border-t border-[#F2F4F7] animate-in fade-in duration-400">
+            <button
+              type="button"
+              onClick={() => { setIsSaved(true); setSavedSnapshot({ ...currentFormValues }); onLeadSaved?.(); }}
+              className="w-full rounded-lg bg-[#166CCA] px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-[#1260B0]"
+            >
+              Save Lead
+            </button>
+          </div>
+        )}
+        {phase >= 4 && isSaved && !isDirtyAfterSave && (
+          <div className="px-4 pb-3 pt-1 border-t border-[#F2F4F7]">
+            <div className="flex items-center justify-center gap-2 rounded-lg bg-[#EFFBF1] border border-[#ABEFC6] px-4 py-2">
+              <CheckCircle2 className="h-4 w-4 text-[#208337]" />
+              <span className="text-[13px] font-semibold text-[#208337]">Lead Saved</span>
+            </div>
+          </div>
+        )}
+      </div>
     )}
 
 </>
@@ -6356,6 +6401,7 @@ function GroupedQueueCard({
     reviewPendingAssignment,
     activatedChannelIds,
     liveLastCustomerCommentByAssignmentId,
+    historyOnlyAssignmentIds,
   } = useLayoutContext();
 
   // Task-level status — the case owns the status, not individual channels.
@@ -6434,22 +6480,28 @@ function GroupedQueueCard({
         {/* Task description — task-level, shown once in the header.
             Use the first channel whose preview is a real task description (not a
             "New X…" / "Live call…" placeholder) so the description stays visible
-            even when the agent switches to a freshly-launched channel. */}
+            even when the agent switches to a freshly-launched channel.
+            Also check the static queue data as a fallback for cases where all
+            visible channels have placeholder previews (e.g. launched-call-only). */}
         {(() => {
           const isPlaceholder = (p: string) =>
             p.startsWith("New ") || p === "Live call in progress.";
           const taskPreview =
             group.channels.find((ch) => !isPlaceholder(ch.preview))?.preview ?? null;
-          return taskPreview ? (
+          // Fallback: look up the static assignment data for the original case description
+          const finalPreview = taskPreview
+            ?? queuePreviewItemsByCustomerRecordId[group.customerRecordId]?.preview
+            ?? null;
+          return finalPreview ? (
             <p className="mt-1 line-clamp-2 text-[12px] leading-[1.45] text-[#444444] font-medium">
-              {taskPreview}
+              {finalPreview}
             </p>
           ) : null;
         })()}
       </div>
 
-      {/* Channel rows — omit rows that have been moved to task summary view */}
-      {group.channels.filter((item) => !(taskSummaryIds?.has(item.id))).map((item, index) => {
+      {/* Channel rows — omit rows that have been moved to task summary view or are in history-only mode */}
+      {group.channels.filter((item) => !(taskSummaryIds?.has(item.id)) && !historyOnlyAssignmentIds.has(item.id)).map((item, index) => {
         const ItemIcon = item.icon;
         const channelLabel =
           conversationChannelOptions.find((o) => o.channel === item.channel)?.label ?? item.channel;
@@ -6461,14 +6513,19 @@ function GroupedQueueCard({
         const isNewChannel =
           item.preview.startsWith("New ") || item.preview === "Live call in progress.";
 
+        // Active voice call — always show "Live call in progress." regardless of the stored preview
+        const isActiveVoiceCall = isAgentInCall && item.id === activeCallAssignmentId && item.channel === "voice";
+
         // Last customer comment: prefer the live conversation state (updated in real-time
         // as messages arrive), fall back to the static database snapshot, or null for voice
         // and channels with no history (omits the row entirely).
-        const lastCustomerComment: string | null = isNewChannel
-          ? item.preview
-          : (liveLastCustomerCommentByAssignmentId[item.id]
-              ?? lastCustomerMessageByKey[`${item.customerRecordId}::${item.channel}`]
-              ?? null);
+        const lastCustomerComment: string | null = isActiveVoiceCall
+          ? "Live call in progress."
+          : isNewChannel
+            ? item.preview
+            : (liveLastCustomerCommentByAssignmentId[item.id]
+                ?? lastCustomerMessageByKey[`${item.customerRecordId}::${item.channel}`]
+                ?? null);
 
         return (
           <div key={item.id}>
@@ -7042,6 +7099,7 @@ function IncomingAssignmentCard({
   onApproveResolved,
   onDismissResolved,
   onLaunchCall,
+  onReviewLead,
   isLaunching = false,
   isInline = false,
   dismissDirection = "down",
@@ -7060,6 +7118,8 @@ function IncomingAssignmentCard({
   onDismissResolved?: (item: QueuePreviewItem) => void;
   /** Called when the agent clicks Launch Call on a lead card — opens the call popunder. */
   onLaunchCall?: (item: QueuePreviewItem) => void;
+  /** Called when the agent clicks Review on a lead card — opens the case in history-only mode. */
+  onReviewLead?: (item: QueuePreviewItem) => void;
   /** When true, the lead card shows a "Connecting call…" state and hides the Launch Call button. */
   isLaunching?: boolean;
   /** When true, suppresses auto-minimize timer. Use for the active-case top-left overlay. */
@@ -7284,22 +7344,31 @@ function IncomingAssignmentCard({
           </div>
         </div>
 
-        {/* Footer — Launch Call button */}
-        <div className="px-4 pb-4">
+        {/* Footer — Review + Launch Call buttons */}
+        <div className="flex items-center gap-2 border-t border-[#F2F4F7] px-4 py-2.5">
           {isLaunching ? (
-            <div className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#EBF4FD] border border-[#BFDBFE] px-4 py-2.5 text-[13px] font-semibold text-[#166CCA]">
-              <div className="h-3.5 w-3.5 rounded-full border-2 border-[#166CCA]/30 border-t-[#166CCA] animate-spin" />
+            <div className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#EBF4FD] border border-[#BFDBFE] py-1.5 text-[12px] font-semibold text-[#166CCA]">
+              <div className="h-3 w-3 rounded-full border-[1.5px] border-[#166CCA]/30 border-t-[#166CCA] animate-spin" />
               Connecting call…
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={() => onLaunchCall?.(item)}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#166CCA] px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-[#1260B0] active:scale-[0.98] transition-all"
-            >
-              <Phone className="h-3.5 w-3.5" />
-              Launch Call
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => onReviewLead?.(item)}
+                className="flex-1 rounded-lg border border-[#D0D5DD] bg-white py-1.5 text-[12px] font-semibold text-[#344054] transition-colors hover:bg-[#F9FAFB]"
+              >
+                Review
+              </button>
+              <button
+                type="button"
+                onClick={() => onLaunchCall?.(item)}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#166CCA] py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-[#1260B0]"
+              >
+                <Phone className="h-3 w-3" />
+                Launch Call
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -7585,26 +7654,6 @@ function IncomingAssignmentCard({
                     <p className="text-[10px] font-semibold uppercase tracking-widest text-[#1260B0]">{item.label ?? "Aria"}</p>
                   </div>
                   <p className="text-[13px] font-medium leading-5 text-[#344054]">{customerContext}</p>
-
-                  {/* Takeover / Review buttons — shown inline when there is no AI confidence meter (e.g. Marcus) */}
-                  {item.statusLabel === "Escalated" && item.aiConfidence === undefined && (
-                    <div className="mt-3 flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => onTakeover(item)}
-                        className="flex-1 rounded-lg bg-[#166CCA] px-3 py-2 text-[13px] font-semibold text-white hover:bg-[#1260B0] transition-colors"
-                      >
-                        Takeover
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onMonitor(item)}
-                        className="flex-1 rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-[13px] font-semibold text-[#344054] hover:bg-[#F9FAFB] transition-colors"
-                      >
-                        Review
-                      </button>
-                    </div>
-                  )}
 
                   {/* AI Confidence + Approve / Approving state — driven by aiConfidence in static assignment */}
                   {item.statusLabel === "Escalated" && item.aiConfidence !== undefined && (
@@ -7941,6 +7990,7 @@ function NotificationStack({
   onApproveResolved,
   onDismissResolved,
   onLaunchCall,
+  onReviewLead,
   launchingAssignmentId = null,
   onChatOpen,
   onChatDismiss,
@@ -7955,6 +8005,7 @@ function NotificationStack({
   onApproveResolved?: (item: QueuePreviewItem) => void;
   onDismissResolved?: (item: QueuePreviewItem) => void;
   onLaunchCall?: (item: QueuePreviewItem) => void;
+  onReviewLead?: (item: QueuePreviewItem) => void;
   launchingAssignmentId?: string | null;
   onChatOpen: (notif: AgentChatNotification) => void;
   onChatDismiss: (notif: AgentChatNotification) => void;
@@ -8035,6 +8086,7 @@ function NotificationStack({
         onApproveResolved={onApproveResolved}
         onDismissResolved={onDismissResolved}
         onLaunchCall={onLaunchCall}
+        onReviewLead={onReviewLead}
         isLaunching={item.assignmentData.id === launchingAssignmentId}
       />
     ) : (
@@ -8703,12 +8755,29 @@ function formatConversationReplyTime(date: Date) {
   });
 }
 
-function generateSimulatedCustomerReply(conversation: SharedConversationData, agentMessage: string) {
+function generateSimulatedCustomerReply(conversation: SharedConversationData, agentMessage: string): string | { content: string; starRating?: number; aiAction?: ConversationMessage["aiAction"] } {
   const normalizedMessage = agentMessage.toLowerCase();
   const latestCustomerContext = [...conversation.messages]
     .reverse()
     .find((message) => message.role === "customer")
     ?.content.toLowerCase() ?? "";
+
+  // ── Marcus Webb — refund confirmation reply with 5-star review ──
+  if (
+    conversation.customerName === "Marcus Webb" &&
+    (normalizedMessage.includes("refund") || normalizedMessage.includes("processed")) &&
+    (normalizedMessage.includes("wb-88214") || normalizedMessage.includes("order"))
+  ) {
+    return {
+      content: "Thank you so much! I really appreciate it.",
+      starRating: 5,
+      aiAction: {
+        label: "Resolve & Close Case",
+        description: "Customer gave a 5-star rating. Auto-resolve, dismiss, and unassign this case.",
+        actionId: "auto-resolve-dismiss",
+      },
+    };
+  }
 
   // ── Fraud / takeover handoff — Jeff introducing himself after Sofia's case ──
   if (
@@ -8813,6 +8882,12 @@ export default function Layout({ children }: LayoutProps) {
   };
   const [isLeftRailOpen, setIsLeftRailOpen] = useState(false);
   const [incomingNotifications, setIncomingNotifications] = useState<QueuePreviewItem[]>([]);
+  /** Notification IDs (by customerRecordId) where the agent has taken an action (monitor, takeover, review, launch call, etc.). */
+  const [actedOnNotifications, setActedOnNotifications] = useState<Set<string>>(new Set());
+  /** Lead notifications that persist on the Home tab even after the toast is dismissed. */
+  const [activeLeadNotifications, setActiveLeadNotifications] = useState<QueuePreviewItem[]>([]);
+  /** Assignment IDs that should display in history-only mode (no channel tabs, Customer History active). */
+  const [historyOnlyAssignmentIds, setHistoryOnlyAssignmentIds] = useState<Set<string>>(new Set());
   /** Increment to imperatively expand the Case Overview accordion in the active DockedConversationPanel. */
   const [caseOverviewOpenTrigger, setCaseOverviewOpenTrigger] = useState(0);
 
@@ -9099,6 +9174,89 @@ export default function Layout({ children }: LayoutProps) {
   const [pendingCallAccountNumber, setPendingCallAccountNumber] = useState("");
   const [launchingLeadId, setLaunchingLeadId] = useState<string | null>(null);
   const leadLaunchTimerRef = useRef<number | null>(null);
+
+  /**
+   * Shared lead-call launch logic — starts the 2-second connecting delay, then
+   * transitions into the in-call state. Used by both the toast's Launch Call button
+   * and the Home tab alert's Launch Call button.
+   */
+  const launchLeadCall = useCallback((item: QueuePreviewItem) => {
+    if (leadLaunchTimerRef.current !== null) {
+      window.clearTimeout(leadLaunchTimerRef.current);
+    }
+    if (item.customerRecordId === "terry") {
+      setPendingCallAccountNumber("NF-408-0174");
+    }
+    setPendingCallCustomerRecordId(item.customerRecordId);
+    setLaunchingLeadId(item.id);
+    const capturedLeadItem = item;
+    leadLaunchTimerRef.current = window.setTimeout(() => {
+      leadLaunchTimerRef.current = null;
+      layoutContextValue.startCallStatus();
+
+      // If a history-only voice assignment already exists for this customer (created
+      // by "Review Lead"), reuse it instead of creating a duplicate.
+      // Use refs to get the current state (this callback has an empty dep array).
+      const currentVisibleIds = visibleAssignmentIdsRef.current;
+      const currentItemsById = assignmentItemsByIdRef.current;
+      const currentHistoryOnlyIds = historyOnlyAssignmentIdsRef.current;
+      const existingVoiceAssignment = currentVisibleIds
+        .map((id) => currentItemsById[id])
+        .find(
+          (a) =>
+            a?.customerRecordId === capturedLeadItem.customerRecordId &&
+            a?.channel === "voice" &&
+            currentHistoryOnlyIds.has(a.id),
+        );
+
+      let voiceAssignmentId: string;
+      if (existingVoiceAssignment) {
+        // Clear history-only flag so the channel row becomes visible in the rail
+        setHistoryOnlyAssignmentIds((prev) => {
+          const next = new Set(prev);
+          next.delete(existingVoiceAssignment.id);
+          return next;
+        });
+        setSelectedAssignmentId(existingVoiceAssignment.id);
+        voiceAssignmentId = existingVoiceAssignment.id;
+      } else {
+        const nextVoiceAssignment = openCustomerConversation(capturedLeadItem.customerRecordId, "voice");
+        voiceAssignmentId = nextVoiceAssignment.id;
+      }
+      setActiveCallAssignmentId(voiceAssignmentId);
+      setPendingCallAccountNumber("");
+      setIsLeftRailOpen(true);
+      navigate("/activity");
+      setCopilotPopunderPosition(getAnchoredCopilotPopunderPosition());
+      setIsCopilotPopoverOpen(true);
+      // Auto-open the Customer Information popunder with the lead intelligence overview card
+      const li = capturedLeadItem.leadIntelligence;
+      if (li) {
+        const ariaAvatarUrl = "https://cdn.builder.io/api/v1/image/assets%2F9d3d716b4b844ab4bcf3267b33310813%2F054057b71e64441097a4902d7dcea754?format=webp&width=800&height=1200";
+        setCustomerInfoTakeoverCard({
+          botType: capturedLeadItem.label ?? "Aria",
+          botAvatarUrl: ariaAvatarUrl,
+          customerContext: li.ariaMessage ?? li.formMessage,
+          aiConfidence: li.aiConfidence ?? 78,
+          aiConfidenceReason: li.aiConfidenceReason ?? "Based on 3 similar resolved cases and firmware documentation match.",
+        });
+        setCustomerInfoTakeoverStartTime(Date.now());
+        if (!customerInfoHasBeenPositionedRef.current) {
+          setCustomerInfoPopunderSize({ width: 360, height: 600 });
+          setCustomerInfoPopunderPosition(getAnchoredCustomerInfoPopunderPosition());
+          customerInfoHasBeenPositionedRef.current = true;
+        }
+        bringFloatingPanelToFront("customerInfo");
+        setIsTakeoverInfoOpen(true);
+      }
+      setLaunchingLeadId(null);
+      // Dismiss both the toast and the Home tab alert
+      setIncomingNotifications((prev) => prev.filter((n) => n.id !== capturedLeadItem.id));
+      layoutContextValue.dismissLeadNotification(capturedLeadItem.customerRecordId);
+    }, 2000) as unknown as number;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [callPopunderMode, setCallPopunderMode] = useState<CallPopunderMode>("setup");
   const [isJoiningCallPopunder, setIsJoiningCallPopunder] = useState(false);
   const [joiningCallCustomerName, setJoiningCallCustomerName] = useState("");
@@ -9173,6 +9331,10 @@ export default function Layout({ children }: LayoutProps) {
   const autoAssignTimerRef = useRef<number | null>(null);
   const visibleAssignmentIdsRef = useRef(visibleAssignmentIds);
   visibleAssignmentIdsRef.current = visibleAssignmentIds;
+  const assignmentItemsByIdRef = useRef(assignmentItemsById);
+  assignmentItemsByIdRef.current = assignmentItemsById;
+  const historyOnlyAssignmentIdsRef = useRef(historyOnlyAssignmentIds);
+  historyOnlyAssignmentIdsRef.current = historyOnlyAssignmentIds;
 
   // ── Scenario Controller BroadcastChannel ───────────────────────────────────
   // Helpers that fire each escalation immediately (no setTimeout) when triggered by the controller.
@@ -9259,20 +9421,26 @@ export default function Layout({ children }: LayoutProps) {
     if (visibleAssignmentIdsRef.current.includes("static-terry")) return;
     if (visibleAssignmentIdsRef.current.some((id) => id.includes("terry"))) return;
     const sa = staticAssignments.find((s) => s.customerRecordId === "terry");
+    const leadItem: QueuePreviewItem = {
+      id: "escalation-static-terry", customerRecordId: "terry", channel: "voice" as const,
+      initials: "TW", name: "Terry Williams", customerId: "CST-14201", label: "Aria",
+      lastUpdated: "0m", time: "0m",
+      preview: "Inbound callback — VP of Ops at Nexus Freight evaluating TMS replacement",
+      statusLabel: "lead", priority: "High",
+      priorityClassName: "border-[#F79009] bg-[#FEF0C7] text-[#B54708]", badgeColor: "#F79009",
+      icon: Phone, isActive: true,
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      escalatedAt: Date.now(),
+      leadIntelligence: sa?.leadIntelligence,
+    };
     setIncomingNotifications((prev) => {
       if (prev.some((n) => n.id === "escalation-static-terry")) return prev;
-      return [...prev, {
-        id: "escalation-static-terry", customerRecordId: "terry", channel: "voice" as const,
-        initials: "TW", name: "Terry Williams", customerId: "CST-14201", label: "Aria",
-        lastUpdated: "0m", time: "0m",
-        preview: "Inbound callback — VP of Ops at Nexus Freight evaluating TMS replacement",
-        statusLabel: "lead", priority: "High",
-        priorityClassName: "border-[#F79009] bg-[#FEF0C7] text-[#B54708]", badgeColor: "#F79009",
-        icon: Phone, isActive: true,
-        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-        escalatedAt: Date.now(),
-        leadIntelligence: sa?.leadIntelligence,
-      }];
+      return [...prev, leadItem];
+    });
+    // Persist lead to the Home tab alert (survives toast dismissal)
+    setActiveLeadNotifications((prev) => {
+      if (prev.some((n) => n.id === "escalation-static-terry")) return prev;
+      return [...prev, leadItem];
     });
     scenarioChannelRef.current?.postMessage({ type: "CASE_STATUS", case: "terry", status: "active" } satisfies AppMsg);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -9507,11 +9675,15 @@ export default function Layout({ children }: LayoutProps) {
     if (isPostCallHistoryMode && postCallAssignmentIdRef.current === selectedAssignment.id) {
       return [] as CustomerChannel[];
     }
+    // History-only mode (e.g. reviewing a lead) — suppress all channel tabs.
+    if (historyOnlyAssignmentIds.has(selectedAssignment.id)) {
+      return [] as CustomerChannel[];
+    }
     const channels = visibleAssignments
       .filter((a) => a.customerRecordId === selectedAssignment.customerRecordId)
       .map((a) => a.channel);
     return [...new Set(channels)] as CustomerChannel[];
-  }, [isPostCallHistoryMode, visibleAssignments, selectedAssignment.customerRecordId, selectedAssignment.id]);
+  }, [isPostCallHistoryMode, historyOnlyAssignmentIds, visibleAssignments, selectedAssignment.customerRecordId, selectedAssignment.id]);
   const activeConversationStateKey = useMemo(
     () => getConversationStateKey(selectedAssignment.id),
     [selectedAssignment.id],
@@ -9705,6 +9877,11 @@ export default function Layout({ children }: LayoutProps) {
           return currentStates;
         }
 
+        const replyResult = generateSimulatedCustomerReply(currentConversationState, latestMessage.content);
+        const replyContent = typeof replyResult === "string" ? replyResult : replyResult.content;
+        const replyStarRating = typeof replyResult === "object" ? replyResult.starRating : undefined;
+        const replyAiAction = typeof replyResult === "object" ? replyResult.aiAction : undefined;
+
         return {
           ...currentStates,
           [targetConversationStateKey]: {
@@ -9715,8 +9892,10 @@ export default function Layout({ children }: LayoutProps) {
               {
                 id: currentConversationState.messages.reduce((maxId, message) => Math.max(maxId, message.id), 0) + 1,
                 role: "customer",
-                content: generateSimulatedCustomerReply(currentConversationState, latestMessage.content),
+                content: replyContent,
                 time: formatConversationReplyTime(new Date()),
+                starRating: replyStarRating,
+                aiAction: replyAiAction,
               },
             ],
           },
@@ -9746,6 +9925,13 @@ export default function Layout({ children }: LayoutProps) {
       });
       return;
     }
+    // Remove escalation alert from home tab for known escalated cases
+    const customerRecordId = selectedAssignment.customerRecordId;
+    const staticId = staticAssignments.find((a) => a.customerRecordId === customerRecordId)?.id;
+    if (staticId) pendingResolvedIds.add(staticId);
+    // Also decrement escalated badge if this was an escalated case
+    if (customerRecordId === "marcus") setIsMarcusResolved(true);
+
     handleRemoveVisibleAssignment(selectedAssignmentId);
     toast(`Case resolved — ${assignmentName}`, {
       description: "The case has been marked as resolved and removed from the queue.",
@@ -10453,6 +10639,24 @@ export default function Layout({ children }: LayoutProps) {
       }
     }
 
+    // Voice — reuse an existing history-only voice assignment if one exists (e.g. opened via "Review Lead")
+    if (channel === "voice") {
+      const existingVoice = visibleAssignmentIds
+        .map((id) => assignmentItemsById[id])
+        .find((item) => item?.customerRecordId === customerRecordId && item?.channel === "voice" && historyOnlyAssignmentIds.has(item.id));
+
+      if (existingVoice) {
+        setHistoryOnlyAssignmentIds((prev) => {
+          const next = new Set(prev);
+          next.delete(existingVoice.id);
+          return next;
+        });
+        setSelectedAssignmentId(existingVoice.id);
+        openConversationPanel();
+        return existingVoice;
+      }
+    }
+
     // Find any existing assignment for this customer so display data (name, initials, etc.)
     // is taken from their real card rather than falling back to the first static item.
     const existingAssignment = visibleAssignmentIds
@@ -10494,6 +10698,18 @@ export default function Layout({ children }: LayoutProps) {
         ...currentStates,
         [getConversationStateKey(nextAssignment.id)]: archived ?? createFreshConversationState(customerRecordId, channel),
       };
+    });
+    // Clear history-only mode for any assignments belonging to this customer — a channel is now open.
+    setHistoryOnlyAssignmentIds((prev) => {
+      const customerAssignmentIds = visibleAssignmentIds.filter(
+        (id) => assignmentItemsById[id]?.customerRecordId === customerRecordId,
+      );
+      if (customerAssignmentIds.some((id) => prev.has(id))) {
+        const next = new Set(prev);
+        customerAssignmentIds.forEach((id) => next.delete(id));
+        return next;
+      }
+      return prev;
     });
     openConversationPanel();
 
@@ -10893,6 +11109,7 @@ export default function Layout({ children }: LayoutProps) {
 
   /** Called when the agent approves from the toast and the animation fully resolves. */
   const resolveIncomingByApprove = (item: QueuePreviewItem) => {
+    markActedOn(item.customerRecordId);
     const sa = staticAssignments.find(
       (s) => s.customerRecordId === item.customerRecordId || s.customerId === item.customerId,
     );
@@ -10910,10 +11127,15 @@ export default function Layout({ children }: LayoutProps) {
     );
   };
 
+  const markActedOn = (customerRecordId: string) => {
+    setActedOnNotifications((prev) => { const next = new Set(prev); next.add(customerRecordId); return next; });
+  };
+
   const monitorIncomingAssignment = (item: QueuePreviewItem) => {
     // Cache the original item so that if the agent takes over via the modal we can
     // push a transferred toast. The toast is intentionally NOT removed here —
     // it stays visible until the agent clicks ✕ to dismiss or takes over the case.
+    markActedOn(item.customerRecordId);
     pendingTransferItemRef.current = item;
     // Always open the monitor modal on the current page — no navigation required
     const sa = staticAssignments.find(
@@ -10944,6 +11166,7 @@ export default function Layout({ children }: LayoutProps) {
 
   // Approve directly from the toast — opens the modal with autoApprove so the sequence plays immediately
   const approveIncomingAssignment = (item: QueuePreviewItem) => {
+    markActedOn(item.customerRecordId);
     removeIncoming(item.id);
     const sa = staticAssignments.find(
       (s) => s.customerRecordId === item.customerRecordId || s.customerId === item.customerId,
@@ -10970,6 +11193,7 @@ export default function Layout({ children }: LayoutProps) {
   };
 
   const takeoverIncomingAssignment = (item: QueuePreviewItem) => {
+    markActedOn(item.customerRecordId);
     // Always show the handoff toast — even if the original toast was already dismissed.
     pushTransferredToast(item);
     // Find the matching static assignment so acceptedStaticsStore is kept in sync
@@ -11115,6 +11339,10 @@ export default function Layout({ children }: LayoutProps) {
     setAssignmentStatusesById((current) => ({ ...current, [newItem.id]: data.status }));
     setSelectedAssignmentId(newItem.id);
     setConversationStatesByKey((current) => ({ ...current, [conversationStateKey]: conversationState }));
+    // When opening as history-only (e.g. a lead review), suppress channel tabs and start on Customer History.
+    if (data.openAsHistoryOnly) {
+      setHistoryOnlyAssignmentIds((prev) => new Set([...prev, newItem.id]));
+    }
     data.onCreated?.(newItem.id);
     setContentRevealTrigger((t) => t + 1);
 
@@ -11735,6 +11963,9 @@ export default function Layout({ children }: LayoutProps) {
       isAgentAvailable: status === "Available",
       isBriefingDismissed,
       incomingNotifications,
+      activeLeadNotifications,
+      dismissLeadNotification: (customerRecordId: string) =>
+        setActiveLeadNotifications((prev) => prev.filter((n) => n.customerRecordId !== customerRecordId)),
       pushToIncomingNotifications: (item: QueuePreviewItem) => setIncomingNotifications((prev) => [...prev, item]),
       dismissIncomingByCustomer,
       pendingMonitorCaseId,
@@ -11747,6 +11978,8 @@ export default function Layout({ children }: LayoutProps) {
       onMarcusCaseResolved: () => setIsMarcusResolved(true),
       showDismissalToast: (summary) => setDismissalToast(summary),
       pushTransferredToast,
+      historyOnlyAssignmentIds,
+      launchLeadCall,
       isConversationPanelOpen,
       isConversationPopunderOpen,
       activeConversationChannel,
@@ -12506,6 +12739,11 @@ export default function Layout({ children }: LayoutProps) {
                   s.customerRecordId === selectedAssignment.customerRecordId ||
                   s.customerId === selectedAssignment.customerId
                 )?.customerContext}
+                onAiActionClick={(actionId) => {
+                  if (actionId === "auto-resolve-dismiss") {
+                    handleResolveAssignment();
+                  }
+                }}
               />
             ) : null}
             <InlineAppSpacePanel isOpen={isInlineAppSpacePanelVisible && isDeskRoute}>
@@ -12600,7 +12838,7 @@ export default function Layout({ children }: LayoutProps) {
                   : null
               }
               voiceTopContent={
-                selectedAssignment.customerRecordId === "terry" && terryDemoStarted
+                selectedAssignment.customerRecordId === "terry" && status === "In a Call" && activeCallAssignmentId === selectedAssignment.id
                   ? <TerryCallPanel
                       lineCount={transcriptLines.length}
                       callKey={activeCallAssignmentId ?? "terry"}
@@ -12758,6 +12996,11 @@ export default function Layout({ children }: LayoutProps) {
                 }
                 setCustomerInfoTakeoverStartTime(Date.now());
                 setIsTakeoverInfoOpen(true);
+              }}
+              onAiActionClick={(actionId) => {
+                if (actionId === "auto-resolve-dismiss") {
+                  handleResolveAssignment();
+                }
               }}
             />
             {/* Customer info docked directly to the right of the conversation panel
@@ -13180,6 +13423,23 @@ export default function Layout({ children }: LayoutProps) {
         onTransfer={transferIncomingAssignment}
         onDismiss={(item) => {
           removeIncoming(item.id);
+          // If an action was taken on this notification, show the dismissal confirmation toast
+          if (actedOnNotifications.has(item.customerRecordId)) {
+            const sa = staticAssignments.find(
+              (s) => s.customerRecordId === item.customerRecordId || s.customerId === item.customerId,
+            );
+            setDismissalToast({
+              customerName: item.name,
+              customerId: item.customerId ?? "",
+              status: "dismissed",
+              resolvedStatus: "Resolved",
+              actions: sa?.aiOverview?.actions ?? [],
+              preview: item.preview ?? "",
+              botType: item.label ?? "Aria",
+              channel: item.channel,
+            });
+            setActedOnNotifications((prev) => { const next = new Set(prev); next.delete(item.customerRecordId); return next; });
+          }
         }}
         onApprove={approveIncomingAssignment}
         onApproveResolved={resolveIncomingByApprove}
@@ -13199,55 +13459,47 @@ export default function Layout({ children }: LayoutProps) {
           });
         }}
         onLaunchCall={(item) => {
+          markActedOn(item.customerRecordId);
           if (item.statusLabel === "lead") {
-            // Lead cards skip the Start Call popunder entirely — show a "Connecting call…"
-            // spinner inside the toast, then connect after 2 seconds (matching popunder flow).
-            if (leadLaunchTimerRef.current !== null) {
-              window.clearTimeout(leadLaunchTimerRef.current);
-            }
-            if (item.customerRecordId === "terry") {
-              setPendingCallAccountNumber("NF-408-0174");
-            }
-            setPendingCallCustomerRecordId(item.customerRecordId);
-            setLaunchingLeadId(item.id);
-            const capturedLeadItem = item;
-            leadLaunchTimerRef.current = window.setTimeout(() => {
-              leadLaunchTimerRef.current = null;
-              layoutContextValue.startCallStatus();
-              const nextVoiceAssignment = openCustomerConversation(capturedLeadItem.customerRecordId, "voice");
-              setActiveCallAssignmentId(nextVoiceAssignment.id);
-              setPendingCallAccountNumber("");
-              setIsLeftRailOpen(true);
-              navigate("/activity");
-              setCopilotPopunderPosition(getAnchoredCopilotPopunderPosition());
-              setIsCopilotPopoverOpen(true);
-              // Auto-open the Customer Information popunder with the lead intelligence overview card
-              const li = capturedLeadItem.leadIntelligence;
-              if (li) {
-                const ariaAvatarUrl = "https://cdn.builder.io/api/v1/image/assets%2F9d3d716b4b844ab4bcf3267b33310813%2F054057b71e64441097a4902d7dcea754?format=webp&width=800&height=1200";
-                setCustomerInfoTakeoverCard({
-                  botType: capturedLeadItem.label ?? "Aria",
-                  botAvatarUrl: ariaAvatarUrl,
-                  customerContext: li.ariaMessage ?? li.formMessage,
-                  aiConfidence: li.aiConfidence ?? 78,
-                  aiConfidenceReason: li.aiConfidenceReason ?? "Based on 3 similar resolved cases and firmware documentation match.",
-                });
-                setCustomerInfoTakeoverStartTime(Date.now());
-                if (!customerInfoHasBeenPositionedRef.current) {
-                  setCustomerInfoPopunderSize({ width: 360, height: 600 });
-                  setCustomerInfoPopunderPosition(getAnchoredCustomerInfoPopunderPosition());
-                  customerInfoHasBeenPositionedRef.current = true;
-                }
-                bringFloatingPanelToFront("customerInfo");
-                setIsTakeoverInfoOpen(true);
-              }
-              setLaunchingLeadId(null);
-              removeIncoming(capturedLeadItem.id);
-            }, 2000);
+            launchLeadCall(item);
           } else {
             layoutContextValue.toggleCallPopunder(null, item.customerRecordId);
             removeIncoming(item.id);
           }
+        }}
+        onReviewLead={(item) => {
+          markActedOn(item.customerRecordId);
+          // Dismiss the toast
+          removeIncoming(item.id);
+          // Dismiss the Home tab lead alert
+          if (item.customerRecordId) layoutContextValue.dismissLeadNotification(item.customerRecordId);
+          // Push a "transferred" toast so the customer info panel auto-opens
+          layoutContextValue.pushTransferredToast({
+            name: item.name,
+            customerRecordId: item.customerRecordId,
+            customerId: item.customerId,
+            channel: item.channel as AssignmentChannel,
+            label: item.label,
+            priority: item.priority,
+            preview: item.preview,
+          });
+          // Accept the case in history-only mode (no channel tabs, Customer History active)
+          layoutContextValue.acceptIssue({
+            id: item.id,
+            name: item.name,
+            customerId: item.customerId ?? "",
+            customerRecordId: item.customerRecordId,
+            channel: item.channel as AssignmentChannel,
+            priority: item.priority,
+            preview: item.preview,
+            status: "pending" as QueueAssignmentStatus,
+            waitTime: item.time ?? "0m",
+            openAsHistoryOnly: true,
+            onCreated: (assignmentId) => {
+              const sa = staticAssignments.find((s) => s.customerRecordId === item.customerRecordId);
+              if (sa) acceptedStaticsStore.set(sa.id, assignmentId);
+            },
+          });
         }}
         launchingAssignmentId={launchingLeadId}
         onChatOpen={openChatNotification}

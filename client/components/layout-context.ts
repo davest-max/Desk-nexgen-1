@@ -90,6 +90,8 @@ export type AcceptIssueData = {
   /** When provided, seeds the conversation panel with this state instead of a blank preview. */
   initialConversation?: SharedConversationData;
   onCreated?: (assignmentId: string) => void;
+  /** When true, opens the case in history-only mode — no channel tabs, Customer History tab active. */
+  openAsHistoryOnly?: boolean;
 };
 
 // ─── Context value ─────────────────────────────────────────────────────────────
@@ -153,6 +155,9 @@ export interface LayoutContextValue {
   openChatPopover: () => void;
   isBriefingDismissed: boolean;
   incomingNotifications: QueuePreviewItem[];
+  /** Lead notifications that persist on the Home tab even after the toast is dismissed. */
+  activeLeadNotifications: QueuePreviewItem[];
+  dismissLeadNotification: (customerRecordId: string) => void;
   pushToIncomingNotifications: (item: QueuePreviewItem) => void;
   /** Dismiss the incoming toast for a customer (by customerRecordId) when an action is taken from the queue/alert. */
   dismissIncomingByCustomer: (customerRecordId: string) => void;
@@ -170,6 +175,10 @@ export interface LayoutContextValue {
   onMarcusCaseResolved: () => void;
   /** Show the dismissal confirmation toast (bottom-right) with case summary + external system writes. */
   showDismissalToast: (summary: { customerName: string; customerId: string; status: string; resolvedStatus: string; actions: string[]; preview: string; botType: string; channel: string }) => void;
+  /** Assignment IDs that are in history-only mode (no active channel, Customer History tab shown). */
+  historyOnlyAssignmentIds: Set<string>;
+  /** Launch a lead call directly into in-call state (bypasses the Start Call modal). Returns immediately; the 2-second connecting delay runs internally. */
+  launchLeadCall: (item: QueuePreviewItem) => void;
   /** Always shows a "transferred" handoff toast for the given item, even if the original toast was already dismissed. */
   pushTransferredToast: (item: {
     name: string;

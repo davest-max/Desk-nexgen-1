@@ -2881,7 +2881,7 @@ const persistedState = {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-panel" } = {}) {
-  const { resolvedAssignments, assignmentStatusesById, acceptIssue, visibleAssignments, setAssignmentStatus, selectAssignment, openCopilot, isAgentAvailable, pendingMonitorCaseId, clearPendingMonitorCaseId, pendingTakeoverCaseId, clearPendingTakeoverCaseId, openCustomerConversation, dismissIncomingByCustomer, decrementEscalatedCount, onJordanCaseResolved, onSofiaCaseResolved, onMarcusCaseResolved, showDismissalToast, pushTransferredToast, setConversationStateForAssignment, incomingNotifications } = useLayoutContext();
+  const { resolvedAssignments, assignmentStatusesById, acceptIssue, visibleAssignments, setAssignmentStatus, selectAssignment, openCopilot, isAgentAvailable, pendingMonitorCaseId, clearPendingMonitorCaseId, pendingTakeoverCaseId, clearPendingTakeoverCaseId, openCustomerConversation, dismissIncomingByCustomer, decrementEscalatedCount, onJordanCaseResolved, onSofiaCaseResolved, onMarcusCaseResolved, showDismissalToast, pushTransferredToast, setConversationStateForAssignment, activeLeadNotifications, dismissLeadNotification, launchLeadCall } = useLayoutContext();
   const navigate = useNavigate();
   const [activePageTab, setActivePageTab] = useState<DeskPageTab>("queue");
   const [controlCenterTab, setControlCenterTab] = useState<"monitor" | "assigned" | "queue">(() => {
@@ -2899,6 +2899,15 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
   const [carouselDir, setCarouselDir] = useState<"next" | "prev">("next");
   const [groupMode, setGroupMode] = useState<"customer" | "case">(() => persistedState.groupMode);
   const filterPanelRef = useRef<HTMLDivElement>(null);
+
+  // ── Lead "Launch Call" connecting state ───────────────────────────────────────
+  const [launchingCallLeadId, setLaunchingCallLeadId] = useState<string | null>(null);
+  const leadCallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (leadCallTimerRef.current !== null) clearTimeout(leadCallTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!isFilterPanelOpen) return;
@@ -3484,9 +3493,9 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
               );
             })()}
 
-            {/* New Lead alert — shown when an incoming lead notification exists */}
+            {/* New Lead alert — shown when a lead has been triggered (persists after toast dismiss) */}
             {(() => {
-              const leadNotifications = incomingNotifications.filter((n) => n.statusLabel === "lead");
+              const leadNotifications = activeLeadNotifications;
               if (leadNotifications.length === 0) return null;
               return (
                 <div className="w-full max-w-4xl flex flex-col gap-2">
@@ -3516,15 +3525,71 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
                           </div>
                           <p className="mt-0.5 text-[12px] text-[#475467] leading-[1.4] truncate">{lead.preview}</p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            navigate("/activity");
-                          }}
-                          className="px-3 py-1 text-[11px] font-semibold rounded-md bg-[#F79009] text-white hover:bg-[#DC6803] transition-colors"
-                        >
-                          Review Lead
-                        </button>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {launchingCallLeadId !== lead.id && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                // Dismiss the Home tab alert
+                                if (lead.customerRecordId) dismissLeadNotification(lead.customerRecordId);
+                                // Push a "transferred" toast so the customer info panel auto-opens
+                                pushTransferredToast({
+                                  name: lead.name,
+                                  customerRecordId: lead.customerRecordId,
+                                  customerId: lead.customerId,
+                                  channel: lead.channel as AssignmentChannel,
+                                  label: lead.label,
+                                  priority: lead.priority,
+                                  preview: lead.preview,
+                                });
+                                // Accept the case in history-only mode (no channel tabs, Customer History active)
+                                acceptIssue({
+                                  id: lead.id,
+                                  name: lead.name,
+                                  customerId: lead.customerId,
+                                  customerRecordId: lead.customerRecordId,
+                                  channel: lead.channel as AssignmentChannel,
+                                  priority: lead.priority,
+                                  preview: lead.preview,
+                                  status: "pending" as QueueAssignmentStatus,
+                                  waitTime: lead.time ?? "0m",
+                                  openAsHistoryOnly: true,
+                                  onCreated: (assignmentId) => {
+                                    // Link the static assignment so the queue updates correctly
+                                    const sa = staticAssignments.find((s) => s.customerRecordId === lead.customerRecordId);
+                                    if (sa) acceptedStaticsStore.set(sa.id, assignmentId);
+                                  },
+                                });
+                              }}
+                              className="rounded-md border border-border bg-white px-3 py-1 text-[11px] font-semibold text-[#344054] hover:bg-[#F9FAFB] transition-colors"
+                            >
+                              Review Lead
+                            </button>
+                          )}
+                          {launchingCallLeadId === lead.id ? (
+                            <div className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-md bg-[#EBF4FD] border border-[#BFDBFE] text-[#166CCA]">
+                              <div className="h-3 w-3 rounded-full border-[1.5px] border-[#166CCA]/30 border-t-[#166CCA] animate-spin" />
+                              Connecting call…
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                // Show connecting state on this alert card
+                                setLaunchingCallLeadId(lead.id);
+                                // Dismiss the toast if it's still showing
+                                if (lead.customerRecordId) dismissIncomingByCustomer(lead.customerRecordId);
+                                // Launch the call directly into in-call state (shared logic handles the 2s delay,
+                                // opens voice conversation, copilot, customer info, and dismisses the lead alert)
+                                launchLeadCall(lead);
+                              }}
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-md bg-[#166CCA] text-white hover:bg-[#1260B0] transition-colors"
+                            >
+                              <Phone className="h-3 w-3" />
+                              Launch Call
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
