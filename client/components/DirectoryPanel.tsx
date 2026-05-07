@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { ChevronDown, Mail, MessageSquare, Phone, Search, SlidersHorizontal, Users, X } from "lucide-react";
 
 import { useLayoutContext } from "@/components/layout-context";
@@ -184,6 +185,7 @@ export default function DirectoryPanel({
 }: {
   onSelectCustomer?: (customerRecordId: string) => void;
 }) {
+  const navigate = useNavigate();
   const {
     selectedAssignment,
     toggleCallPopunder,
@@ -301,11 +303,15 @@ export default function DirectoryPanel({
     : activeTab === "Agent Teams" ? "Search teams…"
     : "Search skills or agents…";
 
-  const handleOpenChannel = (id: string, channel: Extract<CustomerChannel, "sms" | "email">) =>
+  const handleOpenChannel = (id: string, channel: Extract<CustomerChannel, "sms" | "email">) => {
     openCustomerConversation(id, channel);
+    navigate("/activity");
+  };
 
-  const handleStartCall = (id: string, anchorRect?: DOMRect | null) =>
+  const handleStartCall = (id: string, anchorRect?: DOMRect | null) => {
     toggleCallPopunder(anchorRect, id);
+    navigate("/activity");
+  };
 
   // Active filter chips (customers tab only)
   const activeChips = customerFilters.agent.map((v) => ({ key: "agent" as const, value: v }));

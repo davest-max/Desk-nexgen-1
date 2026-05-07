@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import {
   AlertTriangle,
   CalendarCheck,
+  CalendarDays,
   Check,
   CheckCircle,
   ChevronDown,
@@ -13,6 +14,7 @@ import {
   Mail,
   MessageCircle,
   MessageSquare,
+  PauseCircle,
   Phone,
   GalleryVertical,
   LayoutGrid,
@@ -2883,6 +2885,13 @@ const persistedState = {
 export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-panel" } = {}) {
   const { resolvedAssignments, assignmentStatusesById, acceptIssue, visibleAssignments, setAssignmentStatus, selectAssignment, openCopilot, isAgentAvailable, pendingMonitorCaseId, clearPendingMonitorCaseId, pendingTakeoverCaseId, clearPendingTakeoverCaseId, openCustomerConversation, dismissIncomingByCustomer, decrementEscalatedCount, onJordanCaseResolved, onSofiaCaseResolved, onMarcusCaseResolved, showDismissalToast, pushTransferredToast, setConversationStateForAssignment, activeLeadNotifications, dismissLeadNotification, launchLeadCall } = useLayoutContext();
   const navigate = useNavigate();
+  const peakEscalationCountRef = useRef(0);
+  const [homeTrendSlide, setHomeTrendSlide] = useState(0);
+  const homeTrendSlideCount = 5;
+  useEffect(() => {
+    const id = setInterval(() => setHomeTrendSlide((s) => (s + 1) % homeTrendSlideCount), 8000);
+    return () => clearInterval(id);
+  }, []);
   const [activePageTab, setActivePageTab] = useState<DeskPageTab>("queue");
   const [controlCenterTab, setControlCenterTab] = useState<"monitor" | "assigned" | "queue">(() => {
     if (mode === "inbox") return "queue";
@@ -3389,16 +3398,58 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
         const pendingCount  = tabCounts.pending;
         const openCount     = tabCounts.open;
 
+        const resolvedNote = resolvedCount > 5
+          ? `You've already resolved ${resolvedCount} cases — great momentum.`
+          : resolvedCount > 0
+          ? `You've resolved ${resolvedCount} case${resolvedCount !== 1 ? "s" : ""} so far today.`
+          : "No cases resolved yet today.";
+
         const trendText = criticalCount > 0
-          ? `You have ${criticalCount} critical case${criticalCount > 1 ? "s" : ""} that need immediate attention. You've already resolved ${resolvedCount} case${resolvedCount !== 1 ? "s" : ""}, which is a strong start. With ${openCount} open and ${pendingCount} pending, prioritise clearing blockers before your 09:00 callback. Keep an eye on handle time and aim to wrap responses within SLA windows.`
+          ? `You have ${criticalCount} critical case${criticalCount > 1 ? "s" : ""} that need immediate attention. ${resolvedNote} With ${openCount} open and ${pendingCount} pending, prioritise clearing blockers before your 09:00 callback. Keep an eye on handle time and aim to wrap responses within SLA windows.`
           : highCount > 0
-          ? `You have ${highCount} high-priority case${highCount > 1 ? "s" : ""} requiring attention. You've resolved ${resolvedCount} case${resolvedCount !== 1 ? "s" : ""} so far today. With ${openCount} open and ${pendingCount} pending, stay focused on timely responses and SLA compliance.`
-          : `Your queue is in good shape today. You've already resolved ${resolvedCount} case${resolvedCount !== 1 ? "s" : ""} and have ${openCount} open items remaining. Keep up the momentum and aim to close pending cases before end of shift.`;
+          ? `You have ${highCount} high-priority case${highCount > 1 ? "s" : ""} requiring attention. ${resolvedNote} With ${openCount} open and ${pendingCount} pending, stay focused on timely responses and SLA compliance.`
+          : `Your queue is looking manageable today. ${resolvedNote} With ${openCount} open and ${pendingCount} pending, keep up the momentum and aim to close pending cases before end of shift.`;
 
         const newChats = baseRows.filter((a) => a.channel === "chat" && a.status === "open").length;
 
+        const escalationCount = [...baseRows, ...resolvedNormalised].filter((a) => a.status === "escalated").length;
+
+        // Track peak escalation count so we know how many were handled when they drop to 0
+        if (escalationCount > peakEscalationCountRef.current) {
+          peakEscalationCountRef.current = escalationCount;
+        }
+        const escalationsHandled = peakEscalationCountRef.current;
+        const hadEscalations = escalationsHandled > 0 && escalationCount === 0;
+
         return (
-          <div className="flex flex-1 min-h-0 flex-col items-center justify-center gap-8 overflow-y-auto px-8 py-10">
+          <div className="relative flex flex-1 min-h-0 flex-col items-center gap-8 overflow-y-auto px-8 py-10">
+
+            {/* Greeting */}
+            <div className="w-full max-w-4xl">
+              <h2 className="text-xl font-semibold text-[#101828] dark:text-[#E2E8F0]">
+                {escalationCount > 1
+                  ? `You have ${escalationCount} escalations, Jeff`
+                  : escalationCount === 1
+                    ? "You have an escalation, Jeff"
+                    : hadEscalations
+                      ? "Nice work, Jeff"
+                      : "Good morning, Jeff"}
+              </h2>
+              <p className="mt-0.5 text-[13px] text-[#667085] dark:text-[#8898AB]">
+                {escalationCount > 0
+                  ? `${escalationCount} ${escalationCount === 1 ? "case requires" : "cases require"} immediate attention — review and take action to prevent SLA breaches`
+                  : hadEscalations
+                    ? "Last login: Today at 8:42 AM"
+                    : "Last login: Today at 8:42 AM"}
+              </p>
+              {escalationCount === 0 && (
+                <p className="mt-3 text-[13px] leading-relaxed text-[#475467] dark:text-[#94A3B8]">
+                  {hadEscalations
+                    ? `You've resolved ${escalationsHandled} escalated ${escalationsHandled === 1 ? "case" : "cases"} and ${resolvedCount} total ${resolvedCount === 1 ? "case" : "cases"} today. With ${openCount} open and ${pendingCount} pending, you're in a good position — keep clearing your queue and stay ahead of SLA targets.`
+                    : trendText}
+                </p>
+              )}
+            </div>
 
             {/* Escalated case alerts — shown above the summary cards when present */}
             {(() => {
@@ -3597,7 +3648,7 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
               );
             })()}
 
-            <div className="w-full max-w-4xl grid grid-cols-3 gap-4">
+            <div className="w-full max-w-4xl grid grid-cols-2 gap-4">
 
             {/* Overview card */}
             <div className="rounded-xl border border-border bg-white dark:bg-[#0F1629] dark:border-[#1E293B] shadow-sm p-4">
@@ -3691,62 +3742,167 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
             </div>
 
             {/* Trend Detection card */}
-            <div className="rounded-xl border border-border bg-white dark:bg-[#0F1629] dark:border-[#1E293B] shadow-sm p-4 flex flex-col">
-              <div className="flex items-center justify-between mb-2.5">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#98A2B3] dark:text-[#64748B]">Trend Detection</p>
-                <button type="button" className="text-[11px] font-medium text-[#166CCA] hover:underline">View All</button>
-              </div>
-              <p className="text-[12px] leading-[1.65] text-[#344054] dark:text-[#CBD5E1] flex-1">
-                {trendText}
-              </p>
-              <div className="flex items-center gap-1.5 mt-3">
-                <span className="h-1.5 w-4 rounded-full bg-[#166CCA]" />
-                <span className="h-1.5 w-1.5 rounded-full bg-[#D0D5DD]" />
-                <span className="h-1.5 w-1.5 rounded-full bg-[#D0D5DD]" />
-                <span className="h-1.5 w-1.5 rounded-full bg-[#D0D5DD]" />
-                <span className="h-1.5 w-1.5 rounded-full bg-[#D0D5DD]" />
-              </div>
-            </div>
-
-            {/* Statistics card */}
-            <div className="rounded-xl border border-border bg-white dark:bg-[#0F1629] dark:border-[#1E293B] shadow-sm p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#98A2B3] dark:text-[#64748B] mb-3">Statistics</p>
-              <div className="space-y-3">
-                <div>
-                  <p className="text-[12px] text-[#667085] dark:text-[#8898AB]">Total Cases Handled Today</p>
-                  <p className="text-[22px] font-bold text-[#101828] dark:text-[#E2E8F0] leading-none mt-0.5">{resolvedCount + openCount + pendingCount || 5}</p>
+            {(() => {
+              const trendSlides = [
+                "Login failure rates are up 18% compared to yesterday. Most failures are occurring between 08:00–10:00. Consider pre-emptively routing authentication cases to your fastest agents during this window.",
+                "Average handle time for billing cases has dropped by 22 seconds this week. Your team is resolving payment disputes faster — keep reinforcing the current approach.",
+                "3 cases have been waiting over 45 minutes without agent contact. Prioritise these immediately to avoid SLA breaches and escalation risk.",
+                "Customer satisfaction scores for chat interactions are trending 8% higher than voice this month. Consider channel-routing lower-complexity cases to chat where possible.",
+                "Peak case volume typically hits between 11:00–13:00. Ensure full agent coverage during this window to prevent queue build-up.",
+              ];
+              return (
+                <div className="rounded-xl border border-border bg-white dark:bg-[#0F1629] dark:border-[#1E293B] shadow-sm p-4 flex flex-col">
+                  <div className="mb-2.5">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#98A2B3] dark:text-[#64748B]">Trend Detection</p>
+                  </div>
+                  <p
+                    key={homeTrendSlide}
+                    className="text-[12px] leading-[1.65] text-[#344054] dark:text-[#CBD5E1] flex-1 min-h-[72px] animate-in fade-in slide-in-from-bottom-2 duration-300"
+                  >
+                    {trendSlides[homeTrendSlide]}
+                  </p>
+                  <div className="flex items-center gap-1.5 mt-3">
+                    {trendSlides.map((_, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => setHomeTrendSlide(i)}
+                        className={cn(
+                          "rounded-full transition-all duration-200",
+                          i === homeTrendSlide ? "h-1.5 w-5 bg-[#166CCA]" : "h-1.5 w-1.5 bg-[#D0D5DD] dark:bg-[#2A3448] hover:bg-[#BFDBFE]",
+                        )}
+                      />
+                    ))}
+                  </div>
                 </div>
-                <div className="border-t border-border pt-3">
-                  <p className="text-[12px] text-[#667085] dark:text-[#8898AB]">Connected Applications</p>
-                  <p className="text-[22px] font-bold text-[#101828] dark:text-[#E2E8F0] leading-none mt-0.5">13</p>
-                </div>
-              </div>
-            </div>
+              );
+            })()}
 
           </div>
 
-            {/* AI input bar */}
-            <div className="w-full max-w-[56rem]">
-              <div className="flex items-center gap-3 rounded-xl border border-border bg-white shadow-sm px-4 py-3">
-                <Sparkles className="h-4 w-4 shrink-0 text-[#166CCA]" />
-                <input
-                  type="text"
-                  placeholder="What would you like to do today?"
-                  className="flex-1 bg-transparent text-[13px] text-[#344054] placeholder:text-[#98A2B3] outline-none"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && e.currentTarget.value.trim()) {
-                      openCopilot();
-                    }
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => openCopilot()}
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#166CCA] text-white transition-colors hover:bg-[#1260B0]"
-                  aria-label="Ask AI"
-                >
-                  <Send className="h-3.5 w-3.5" />
-                </button>
+            {/* Horizontal stat cards */}
+            <div className="w-full max-w-4xl grid grid-cols-4 gap-4">
+              {/* Schedule */}
+              <div className="rounded-xl border border-border bg-white dark:bg-[#0F1629] dark:border-[#1E293B] shadow-sm p-4 flex flex-col">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[#EFF4FF]">
+                    <CalendarDays className="h-3.5 w-3.5 text-[#3B82F6]" />
+                  </div>
+                  <p className="text-[13px] font-semibold text-[#101828] dark:text-[#E2E8F0]">Schedule</p>
+                </div>
+                <div className="space-y-1.5 mb-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[12px] text-[#667085] dark:text-[#8898AB]">Total Events</span>
+                    <span className="text-[13px] font-semibold text-[#101828] dark:text-[#E2E8F0]">6</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[12px] text-[#667085] dark:text-[#8898AB]">Callbacks</span>
+                    <span className="text-[13px] font-semibold text-[#F59E0B]">3</span>
+                  </div>
+                </div>
+                <div className="mt-auto border-t border-border pt-2.5">
+                  <p className="text-[11px] text-[#667085] dark:text-[#8898AB]">Next up:</p>
+                  <p className="text-[12px] font-semibold text-[#101828] dark:text-[#E2E8F0] mt-0.5">Customer Callback</p>
+                  <p className="text-[11px] text-[#98A2B3]">09:00 AM</p>
+                </div>
+              </div>
+
+              {/* Performance */}
+              <div className="rounded-xl border border-border bg-white dark:bg-[#0F1629] dark:border-[#1E293B] shadow-sm p-4 flex flex-col">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[#EFFBF1]">
+                    <TrendingUp className="h-3.5 w-3.5 text-[#16A34A]" />
+                  </div>
+                  <p className="text-[13px] font-semibold text-[#101828] dark:text-[#E2E8F0]">Performance</p>
+                </div>
+                <div className="space-y-1.5 mb-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[12px] text-[#667085] dark:text-[#8898AB]">Cases Resolved</span>
+                    <span className="text-[13px] font-semibold text-[#101828] dark:text-[#E2E8F0]">12</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[12px] text-[#667085] dark:text-[#8898AB]">CSAT Score</span>
+                    <span className="text-[13px] font-semibold text-[#16A34A]">4.8</span>
+                  </div>
+                </div>
+                <div className="mt-auto border-t border-border pt-2.5">
+                  <p className="text-[11px] text-[#667085] dark:text-[#8898AB]">Handle Time:</p>
+                  <p className="text-[12px] font-semibold text-[#101828] dark:text-[#E2E8F0] mt-0.5">8m 32s</p>
+                  <p className="text-[11px] text-[#12B76A]">15% improvement</p>
+                </div>
+              </div>
+
+              {/* Messages */}
+              <div className="rounded-xl border border-border bg-white dark:bg-[#0F1629] dark:border-[#1E293B] shadow-sm p-4 flex flex-col">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[#F3EEFF]">
+                    <MessageSquare className="h-3.5 w-3.5 text-[#8B5CF6]" />
+                  </div>
+                  <p className="text-[13px] font-semibold text-[#101828] dark:text-[#E2E8F0]">Messages</p>
+                </div>
+                <div className="space-y-1.5 mb-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[12px] text-[#667085] dark:text-[#8898AB]">Unread</span>
+                    <span className="text-[13px] font-semibold text-[#101828] dark:text-[#E2E8F0]">3</span>
+                  </div>
+                </div>
+                <div className="mt-auto border-t border-border pt-2.5">
+                  <p className="text-[11px] text-[#667085] dark:text-[#8898AB]">Latest from:</p>
+                  <p className="text-[12px] font-semibold text-[#101828] dark:text-[#E2E8F0] mt-0.5">Sarah Johnson</p>
+                  <p className="text-[11px] text-[#98A2B3] truncate">Great job on the customer escalation yes...</p>
+                </div>
+              </div>
+
+              {/* Parked Work */}
+              <div className="rounded-xl border border-border bg-white dark:bg-[#0F1629] dark:border-[#1E293B] shadow-sm p-4 flex flex-col">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[#FFFAEB]">
+                    <PauseCircle className="h-3.5 w-3.5 text-[#F59E0B]" />
+                  </div>
+                  <p className="text-[13px] font-semibold text-[#101828] dark:text-[#E2E8F0]">Parked Work</p>
+                </div>
+                <div className="space-y-1.5 mb-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[12px] text-[#667085] dark:text-[#8898AB]">Total Parked</span>
+                    <span className="text-[13px] font-semibold text-[#101828] dark:text-[#E2E8F0]">3</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[12px] text-[#667085] dark:text-[#8898AB]">High Priority</span>
+                    <span className="text-[13px] font-semibold text-[#E53935]">1</span>
+                  </div>
+                </div>
+                <div className="mt-auto border-t border-border pt-2.5">
+                  <p className="text-[11px] text-[#667085] dark:text-[#8898AB]">Oldest:</p>
+                  <p className="text-[12px] font-semibold text-[#101828] dark:text-[#E2E8F0] mt-0.5">David Kim</p>
+                  <p className="text-[11px] text-[#F59E0B]">1 day ago</p>
+                </div>
+              </div>
+            </div>
+
+            {/* AI input bar — sticky to bottom of scroll area */}
+            <div className="sticky bottom-0 w-full max-w-4xl pt-3 pb-1">
+              <div className="rounded-xl border border-[#E4E7EC] bg-white/80 dark:bg-[#0F1629]/80 dark:border-[#1E293B] shadow-[0_-2px_16px_rgba(0,0,0,0.06)] transition-colors duration-150 hover:bg-white hover:border-[#D0D5DD] dark:hover:bg-[#0F1629] dark:hover:border-[#334155]">
+                <div className="flex items-center gap-3 px-4 py-3">
+                  <Sparkles className="h-4 w-4 shrink-0 text-[#166CCA]" />
+                  <input
+                    type="text"
+                    placeholder="What would you like to do today?"
+                    className="flex-1 bg-transparent text-[13px] text-[#344054] dark:text-[#CBD5E1] placeholder:text-[#98A2B3] outline-none"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && e.currentTarget.value.trim()) {
+                        openCopilot();
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => openCopilot()}
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#166CCA] text-white transition-colors hover:bg-[#1260B0]"
+                    aria-label="Ask AI"
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
             </div>
 

@@ -484,9 +484,7 @@ export function CopilotContent() {
     return (
       <>
         <div className="flex flex-1 flex-col items-center justify-center gap-5 px-6 py-8 min-h-0 overflow-y-auto">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#166CCA]/10">
-            <Sparkles className="h-8 w-8 text-[#166CCA]" strokeWidth={1.5} />
-          </div>
+          <img src={`${import.meta.env.BASE_URL}ai-indicator.svg`} alt="" className="h-24 w-24" />
 
           <div className="text-center space-y-2">
             <h2 className="text-[17px] font-semibold text-[#1D2939] dark:text-[#E2E8F0] leading-snug">
@@ -637,7 +635,7 @@ export default function CopilotPopunder({
         >
           <div className="flex items-center gap-3">
             <GripHorizontal className="h-4 w-4 flex-shrink-0 text-[#7A7A7A]" />
-            <h3 className="text-sm font-semibold tracking-tight text-[#333333]">NiCE Copilot</h3>
+            <h3 className="text-sm font-semibold tracking-tight text-[#333333]">AI Assistant</h3>
           </div>
 
           <div className="flex items-center gap-1" onMouseDown={(e) => e.stopPropagation()}>
@@ -661,7 +659,7 @@ export default function CopilotPopunder({
               type="button"
               onClick={onClose}
               className="flex h-7 w-7 items-center justify-center rounded-full text-[#7A7A7A] transition-colors hover:bg-white hover:text-[#333333]"
-              aria-label="Close NiCE Copilot"
+              aria-label="Close AI Assistant"
             >
               <X className="h-4 w-4" />
             </button>
@@ -673,7 +671,7 @@ export default function CopilotPopunder({
         {/* Resize handle */}
         <button
           type="button"
-          aria-label="Resize NiCE Copilot"
+          aria-label="Resize AI Assistant"
           className="absolute bottom-0 right-0 h-5 w-5 cursor-se-resize"
           onMouseDown={(e) => {
             e.preventDefault();

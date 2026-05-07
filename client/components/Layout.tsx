@@ -5203,7 +5203,7 @@ function DeskCanvasPopunder({
   const showingInlineCustomer = isDeskView && !!inlineCustomerId && !inlineAddOpen;
 
   const panelLabel = view === "copilot"
-    ? "Copilot"
+    ? "AI Assistant"
     : view === "notes"
       ? "Notes"
       : view === "add"
@@ -5686,18 +5686,17 @@ function HeaderIconButton({
         aria-expanded={ariaExpanded}
         aria-controls={ariaControls}
         aria-pressed={isActive}
-        className={`flex h-7 w-7 items-center justify-center rounded-full transition-colors ${
+        className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
           isActive
-            ? "text-[#166CCA] hover:bg-[#C5DEF5]"
-            : "text-[#7A7A7A] hover:bg-white/70 hover:text-[#333333]"
+            ? "bg-[#166CCA]/10 text-[#166CCA] hover:bg-[#166CCA]/20"
+            : "text-[#7A7A7A] hover:bg-[#F2F4F7] hover:text-[#333333]"
         }`}
       >
         {children}
       </button>
       {tooltip && (
-        <div className="pointer-events-none absolute left-1/2 top-full z-[9999] mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md bg-[#1D2939] px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100">
+        <div className="pointer-events-none absolute left-1/2 top-full z-[9999] mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-lg border border-[#E4E7EC] bg-white px-3 py-1.5 text-xs font-medium text-[#344054] opacity-0 shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-opacity duration-150 group-hover:opacity-100">
           {tooltip}
-          <div className="absolute -top-1 left-1/2 -translate-x-1/2 border-4 border-transparent border-b-[#1D2939]" />
         </div>
       )}
     </div>
@@ -5960,7 +5959,7 @@ function ConnectedAppsPopover({
   onClose,
   onDegradedCountChange,
 }: {
-  anchorRef: React.RefObject<HTMLDivElement>;
+  anchorRef: React.RefObject<HTMLElement | null>;
   onClose: () => void;
   onDegradedCountChange: (count: number) => void;
 }) {
@@ -6081,6 +6080,136 @@ function ConnectedAppsPopover({
         </div>,
         document.body,
       )}
+      <AppToastContainer toasts={toasts} onDismiss={dismissToast} />
+    </>
+  );
+}
+
+/** Inline flyout submenu for the status dropdown — shows connected apps to the left on hover. */
+function ConnectedAppsFlyout({
+  isOpen,
+  onOpen,
+  onClose,
+  degradedAppCount,
+  onDegradedCountChange,
+}: {
+  isOpen: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  degradedAppCount: number;
+  onDegradedCountChange: (count: number) => void;
+}) {
+  const [apps, setApps] = useState<ConnectedApp[]>(initialConnectedApps);
+  const [hoveredApp, setHoveredApp] = useState<string | null>(null);
+  const [refreshingApp, setRefreshingApp] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<AppToast[]>([]);
+
+  // Keep module-level snapshot in sync
+  useEffect(() => { connectedApps = apps; }, [apps]);
+
+  const dismissToast = (id: number) => setToasts((prev) => prev.filter((t) => t.id !== id));
+
+  const handleRefresh = (appName: string) => {
+    if (refreshingApp) return;
+    setRefreshingApp(appName);
+    setTimeout(() => {
+      setApps((prev) => {
+        const next = prev.map((a) => a.name === appName ? { ...a, status: "healthy" } : a);
+        connectedApps = next;
+        onDegradedCountChange(next.filter((a) => a.status !== "healthy").length);
+        return next;
+      });
+      setRefreshingApp(null);
+      setHoveredApp(null);
+      const id = ++_toastId;
+      setToasts((prev) => [...prev, { id, message: `${appName} reconnected successfully` }]);
+      setTimeout(() => dismissToast(id), 4000);
+    }, 1800);
+  };
+
+  const healthyCount = apps.filter((a) => a.status === "healthy").length;
+
+  return (
+    <>
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => isOpen ? onClose() : onOpen()}
+          className={cn(
+            "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-normal transition-colors duration-150",
+            isOpen
+              ? "bg-[#F2F4F7] text-[#333333] dark:bg-[#1C2536] dark:text-[#CBD5E1]"
+              : "text-[#333333] dark:text-[#CBD5E1] hover:bg-[#F2F4F7] dark:hover:bg-[#1C2536]",
+          )}
+        >
+          <Activity className="h-3.5 w-3.5 text-[#667085] dark:text-[#94A3B8]" />
+          <span>Connected Apps</span>
+          {degradedAppCount > 0 && (
+            <span className="ml-auto mr-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#F59E0B] px-1 text-[10px] font-bold leading-none text-white">
+              {degradedAppCount}
+            </span>
+          )}
+          <ChevronLeft className={cn("h-3 w-3 text-[#98A2B3]", degradedAppCount > 0 ? "" : "ml-auto")} />
+        </button>
+        {/* Flyout panel — opens to the left */}
+        {isOpen && (
+          <div
+            className="absolute right-full top-0 z-[9999] mr-2 w-[272px] rounded-xl border border-border bg-white dark:bg-[#0F1629] shadow-[0_20px_50px_rgba(0,0,0,0.18)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.55)] overflow-hidden"
+          >
+            {/* Header */}
+            <div className="px-4 py-3 border-b border-border">
+              <div className="flex items-center justify-between">
+                <p className="text-[12px] font-semibold text-[#333333] dark:text-[#E2E8F0]">Connected Applications</p>
+                <span className="text-[11px] text-[#98A2B3]">{healthyCount}/{apps.length} healthy</span>
+              </div>
+              <p className="text-[11px] text-[#98A2B3] mt-0.5">System health overview</p>
+            </div>
+            {/* App list */}
+            <div className="max-h-[320px] overflow-y-auto divide-y divide-border">
+              {apps.map((app) => {
+                const isHovered = hoveredApp === app.name;
+                const isRefreshing = refreshingApp === app.name;
+                const isDegraded = app.status !== "healthy";
+                return (
+                  <div
+                    key={app.name}
+                    className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-[#F9FAFB] dark:hover:bg-[#1C2536]"
+                    onMouseEnter={() => setHoveredApp(app.name)}
+                    onMouseLeave={() => setHoveredApp(null)}
+                  >
+                    <div className="shrink-0 flex h-7 w-7 items-center justify-center rounded-lg bg-[#F2F4F7] dark:bg-[#1C2A3A] text-[10px] font-bold text-[#475467] dark:text-[#94A3B8]">
+                      {connectedAppIconLetters[app.name] ?? app.name[0]}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[12px] font-medium text-[#1D2939] dark:text-[#E2E8F0] truncate">{app.name}</p>
+                      <p className={cn("text-[10px]", isRefreshing ? "text-[#F59E0B]" : "text-[#98A2B3]")}>
+                        {isRefreshing ? "Reconnecting…" : `${app.latency} · ${app.uptime} uptime`}
+                      </p>
+                    </div>
+                    <div className="shrink-0 flex h-6 w-6 items-center justify-center">
+                      {(isHovered || isRefreshing) && isDegraded ? (
+                        <button
+                          onClick={() => handleRefresh(app.name)}
+                          disabled={!!refreshingApp}
+                          className="flex h-6 w-6 items-center justify-center rounded-full text-[#F59E0B] hover:bg-[#FEF3C7] dark:hover:bg-[#2A1E00] transition-colors disabled:cursor-not-allowed"
+                          title="Reconnect"
+                        >
+                          <RefreshCw className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")} />
+                        </button>
+                      ) : (
+                        <div className={cn(
+                          "h-2 w-2 rounded-full",
+                          app.status === "healthy" ? "bg-[#208337]" : "bg-[#F59E0B]",
+                        )} />
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
       <AppToastContainer toasts={toasts} onDismiss={dismissToast} />
     </>
   );
@@ -8562,7 +8691,7 @@ function LeftQueueRail({
                         </div>
                       </TooltipTrigger>
                       <TooltipContent side="right">
-                        <span className="font-medium">{label}</span>
+                        <span>{label}</span>
                         {label === "Control Center" && escalatedRailCount > 0 && (
                           <span className="mt-0.5 block text-[11px] font-normal text-[#E53935]">
                             {escalatedRailCount} escalated
@@ -8657,6 +8786,8 @@ function LeftQueueRail({
                 ].map(({ label, icon: Icon, path }) => {
                   const isActive = location.pathname === path;
                   const caseCount = label === "Queue" ? totalQueueCount : 0;
+                  const escalatedCount = label === "Control Center" ? escalatedRailCount : 0;
+                  const badgeCount = caseCount || escalatedCount;
                   return (
                     <button
                       key={label}
@@ -8671,14 +8802,14 @@ function LeftQueueRail({
                     >
                       <Icon className={cn("h-4 w-4 shrink-0 stroke-[1.5]", isActive ? "text-white" : "text-[#667085] dark:text-[#8898AB]")} />
                       <span className="flex-1 text-left">{label}</span>
-                      {caseCount > 0 && (
+                      {badgeCount > 0 && (
                         <span className={cn(
                           "flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[11px] font-bold leading-none",
                           isActive
                             ? "bg-white/25 text-white"
                             : "bg-[#E32926] text-white",
                         )}>
-                          {caseCount > 99 ? "99+" : caseCount}
+                          {badgeCount > 99 ? "99+" : badgeCount}
                         </span>
                       )}
                     </button>
@@ -9051,7 +9182,7 @@ export default function Layout({ children }: LayoutProps) {
     setStatusMenuOpen(true);
   };
   const closeStatusMenu = () => {
-    statusMenuTimeout.current = setTimeout(() => setStatusMenuOpen(false), 120);
+    statusMenuTimeout.current = setTimeout(() => { setStatusMenuOpen(false); setIsConnectedAppsOpen(false); }, 120);
   };
   const [notificationCount, setNotificationCount] = useState(0);
   // Pre-seed with the unread messages already in the chat (Sarah Kim 2 + Emma Larsen 1 + Risk & Compliance 3 = 6)
@@ -9282,7 +9413,6 @@ export default function Layout({ children }: LayoutProps) {
   const chatButtonRef = useRef<HTMLDivElement | null>(null);
   const addNewButtonRef = useRef<HTMLDivElement | null>(null);
   const copilotButtonRef = useRef<HTMLDivElement | null>(null);
-  const connectedAppsButtonRef = useRef<HTMLDivElement | null>(null);
   const [isConnectedAppsOpen, setIsConnectedAppsOpen] = useState(false);
   const [degradedAppCount, setDegradedAppCount] = useState(
     () => initialConnectedApps.filter((a) => a.status !== "healthy").length,
@@ -12224,9 +12354,8 @@ export default function Layout({ children }: LayoutProps) {
             >
               <PanelLeft className="h-4 w-4" />
             </button>
-            <div className="pointer-events-none absolute left-full top-1/2 z-[9999] ml-2 -translate-y-1/2 whitespace-nowrap rounded-md bg-[#1D2939] px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100">
+            <div className="pointer-events-none absolute left-full top-1/2 z-[9999] ml-2 -translate-y-1/2 whitespace-nowrap rounded-lg border border-[#E4E7EC] bg-white px-3 py-1.5 text-xs font-medium text-[#344054] opacity-0 shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-opacity duration-150 group-hover:opacity-100">
               {isLeftRailOpen ? "Close navigation" : "Open navigation"}
-              <div className="absolute -left-1 top-1/2 -translate-y-1/2 border-4 border-transparent border-r-[#1D2939]" />
             </div>
           </div>
           <div
@@ -12237,17 +12366,7 @@ export default function Layout({ children }: LayoutProps) {
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="hidden">
                 <path d="M23.7188 5.89062C23.8757 5.89077 24.0015 6.01655 24 6.17188C23.8494 15.8941 15.9182 23.7747 6.13379 23.9238C5.97839 23.9255 5.85077 23.7999 5.85059 23.6445V19.3848C5.85059 19.2325 5.97502 19.1097 6.12891 19.1064C13.2448 18.9606 19.0048 13.236 19.1523 6.16602C19.1556 6.01217 19.2788 5.88872 19.4326 5.88867L23.7188 5.89062ZM12.2559 0.0771484C13.8714 0.0772122 15.1804 1.37836 15.1807 2.98242C15.1807 4.58668 13.8716 5.88861 12.2559 5.88867C10.6401 5.88867 9.33008 4.58672 9.33008 2.98242C9.33031 1.37832 10.6402 0.0771484 12.2559 0.0771484ZM2.92578 0.0761719C4.5412 0.0763851 5.85033 1.3775 5.85059 2.98145C5.85059 4.58561 4.54135 5.88748 2.92578 5.8877C1.31003 5.8877 0 4.58574 0 2.98145C0.000253194 1.37736 1.31018 0.0761719 2.92578 0.0761719Z" fill="#2196F3"/>
               </svg>
-              <div>
-                <p className="text-base font-semibold text-[#333333] leading-none">Good morning, Jeff</p>
-                <p className="text-xs text-[#7A7A7A] mt-0.5">
-                  {(() => {
-                    const pendingCount = staticAssignments.filter(a => a.status === "pending" && a.channel !== "email").length;
-                    if (pendingCount === 0) return "Your queue is clear — great work!";
-                    if (pendingCount === 1) return "You have 1 pending case to review";
-                    return `You have ${pendingCount} pending cases to review`;
-                  })()}
-                </p>
-              </div>
+              <p className="text-base font-semibold text-[#333333] leading-none">Agent Workspace</p>
             </div>
 
             {/* Hover panel — kept in DOM but never shown */}
@@ -12348,7 +12467,7 @@ export default function Layout({ children }: LayoutProps) {
             >
               <div className="relative">
                 <Bell className="h-4 w-4 stroke-[1.5]" />
-                {notificationCount > 0 && !isNotificationsPopoverOpen && (
+                {notificationCount > 0 && (
                   <span className="absolute -right-1 -top-1 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-[#E32926] px-0.5 text-[9px] font-bold leading-none text-white">
                     {notificationCount > 9 ? "9+" : notificationCount}
                   </span>
@@ -12365,7 +12484,6 @@ export default function Layout({ children }: LayoutProps) {
                 if (isChatPopoverOpen) {
                   setIsChatPopoverOpen(false);
                 } else {
-                  setChatUnreadCount(0);
                   openChatPopover();
                 }
               }}
@@ -12373,7 +12491,7 @@ export default function Layout({ children }: LayoutProps) {
             >
               <div className="relative">
                 <MessageCircle className="h-4 w-4 stroke-[1.5]" />
-                {chatUnreadCount > 0 && !isChatPopoverOpen && (
+                {chatUnreadCount > 0 && (
                   <span className="absolute -right-1 -top-1 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-[#E32926] px-0.5 text-[9px] font-bold leading-none text-white">
                     {chatUnreadCount > 9 ? "9+" : chatUnreadCount}
                   </span>
@@ -12384,40 +12502,23 @@ export default function Layout({ children }: LayoutProps) {
 
           <div ref={addNewButtonRef} className="hidden" aria-hidden="true" />
 
-          {/* Connected Apps */}
-          <div ref={connectedAppsButtonRef}>
-            <HeaderIconButton
-              ariaLabel="Connected Applications"
-              tooltip="Connected Applications"
-              onClick={() => setIsConnectedAppsOpen((v) => !v)}
-              isActive={isConnectedAppsOpen}
-            >
-              <div className="relative">
-                <Activity className="h-4 w-4 stroke-[1.5]" />
-                {degradedAppCount > 0 && !isConnectedAppsOpen && (
-                  <span className="absolute -right-1.5 -top-1.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-[#F59E0B] px-0.5 text-[9px] font-bold leading-none text-white">
-                    {degradedAppCount}
-                  </span>
-                )}
-              </div>
-            </HeaderIconButton>
-          </div>
-
           <div ref={copilotButtonRef}>
-            <button
-              type="button"
-              aria-label="Open Copilot"
-              aria-pressed={isCopilotViewPopunderOpen}
-              onClick={() => isCopilotViewPopunderOpen ? setIsCopilotViewPopunderOpen(false) : openHeaderAppPanel("copilot")}
-              className={`flex h-7 items-center gap-1.5 rounded-full border px-3 text-[12px] font-medium transition-colors ${
-                isCopilotViewPopunderOpen
-                  ? "border-[#166CCA]/30 bg-[#166CCA] text-white hover:bg-[#1260B0]"
-                  : "border-[#166CCA]/25 bg-[#EBF4FD] text-[#166CCA] hover:bg-[#C5DEF5]"
-              }`}
-            >
-              <Sparkles className="h-3.5 w-3.5 shrink-0" />
-              Ask AI
-            </button>
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Ask AI"
+                    aria-pressed={isCopilotViewPopunderOpen}
+                    onClick={() => isCopilotViewPopunderOpen ? setIsCopilotViewPopunderOpen(false) : openHeaderAppPanel("copilot")}
+                    className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${isCopilotViewPopunderOpen ? "bg-[#166CCA]/10 hover:bg-[#166CCA]/20" : "hover:bg-[#F2F4F7]"}`}
+                  >
+                    <img src={`${import.meta.env.BASE_URL}ai-icon.svg`} alt="" className="h-5 w-5 shrink-0" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Ask AI</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
 
           <div
@@ -12458,7 +12559,7 @@ export default function Layout({ children }: LayoutProps) {
               <ChevronDown className={cn("h-3.5 w-3.5 text-[#666666] transition-transform duration-150", statusMenuOpen && "rotate-180")} />
             </button>
             {statusMenuOpen && (
-              <div className="absolute right-0 top-full z-50 mt-2 w-[180px] rounded-2xl border border-black/10 bg-white p-2 shadow-[0_10px_30px_rgba(0,0,0,0.18)]">
+              <div className="absolute right-0 top-full z-50 mt-2 w-[260px] rounded-2xl border border-black/10 bg-white p-2 shadow-[0_10px_30px_rgba(0,0,0,0.18)]">
                 <div className="space-y-1">
                   {statusOptions.filter((option) => option.label !== "In a Call").map((option) => (
                     <button
@@ -12490,6 +12591,15 @@ export default function Layout({ children }: LayoutProps) {
                     )}
                     <span>{isDarkMode ? "Light Mode" : "Dark Mode"}</span>
                   </button>
+
+                  {/* Connected Applications — hover flyout submenu */}
+                  <ConnectedAppsFlyout
+                    isOpen={isConnectedAppsOpen}
+                    onOpen={() => setIsConnectedAppsOpen(true)}
+                    onClose={() => setIsConnectedAppsOpen(false)}
+                    degradedAppCount={degradedAppCount}
+                    onDegradedCountChange={setDegradedAppCount}
+                  />
 
                   {/* Log Out */}
                   <button
@@ -13393,13 +13503,7 @@ export default function Layout({ children }: LayoutProps) {
         />
       )}
 
-      {isConnectedAppsOpen && (
-        <ConnectedAppsPopover
-          anchorRef={connectedAppsButtonRef}
-          onClose={() => setIsConnectedAppsOpen(false)}
-          onDegradedCountChange={setDegradedAppCount}
-        />
-      )}
+      {/* ConnectedAppsPopover is now rendered inline as a flyout submenu in the status dropdown */}
 
       {isNotificationsPopoverOpen && (
         <NotificationsPopoverContent

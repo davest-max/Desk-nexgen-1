@@ -421,7 +421,49 @@ const renderInteractionContent = (interaction: CustomerHistoryInteraction, custo
   }
 
   if (interaction.kind === "lead") {
-    return <p>Lead form details</p>;
+    const leadFields = [
+      { section: "Contact", fields: [
+        { label: "Name", value: "Terry Williams" },
+        { label: "Title", value: "VP of Operations" },
+        { label: "Company", value: "Nexus Freight" },
+        { label: "Email", value: "t.williams@nexusfreight.com" },
+        { label: "Phone", value: "+1 (408) 555-0134" },
+        { label: "Location", value: "San Jose, CA" },
+      ]},
+      { section: "Opportunity", fields: [
+        { label: "Lead Type", value: "Enterprise — New logo" },
+        { label: "Lead Source", value: "Web callback — pricing page" },
+        { label: "Annual Budget", value: "$400,000" },
+        { label: "Timeline", value: "Before Q4 2025" },
+        { label: "Industry", value: "Freight & Logistics" },
+        { label: "Company Size", value: "~200 employees" },
+      ]},
+      { section: "Qualification", fields: [
+        { label: "Pain Point", value: "Legacy TMS replacement; warehouse integration failures" },
+        { label: "Stakeholders", value: "Terry Williams (primary); CTO (to be confirmed)" },
+        { label: "Next Step", value: "Technical deep-dive with solutions engineer — this week" },
+      ]},
+    ];
+    return (
+      <div className="flex flex-col gap-5">
+        {leadFields.map((section) => (
+          <div key={section.section} className="flex flex-col gap-2.5">
+            <div className="flex items-center gap-3">
+              <span className="text-[9px] font-semibold uppercase tracking-widest text-[#98A2B3]">{section.section}</span>
+              <div className="flex-1 h-px bg-[#F2F4F7]" />
+            </div>
+            <div className="flex flex-col gap-2">
+              {section.fields.map((f) => (
+                <div key={f.label} className="flex items-baseline gap-2">
+                  <span className="shrink-0 text-[11px] font-medium text-[#98A2B3] w-[110px]">{f.label}</span>
+                  <span className="text-[11px] text-[#344054] dark:text-[#CBD5E1] leading-relaxed">{f.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
   }
 
   return null;

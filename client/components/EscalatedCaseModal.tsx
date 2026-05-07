@@ -235,13 +235,9 @@ export function EscalatedCaseModal({
     approveTimersRef.current.push(setTimeout(() => {
       setJordanTyping(false);
       const t1 = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-      setInjectedMessages((prev) => [...prev, { id: Date.now(), role: "customer" as const, content: "That's amazing, thank you!", time: t1 }]);
-    }, 3500));
-    approveTimersRef.current.push(setTimeout(() => {
-      const t2 = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-      setInjectedMessages((prev) => [...prev, { id: Date.now(), role: "customer" as const, content: "\u2605\u2605\u2605\u2605\u2605  Case resolution rated 5 stars", time: t2 }]);
+      setInjectedMessages((prev) => [...prev, { id: Date.now(), role: "customer" as const, content: "That's amazing, thank you!", time: t1, starRating: 5 }]);
       setSuperviseScrollTrigger((n) => n + 1);
-    }, 4500));
+    }, 3500));
     approveTimersRef.current.push(setTimeout(() => {
       setLocalStatus("resolved");
       setLocalPriority("Low");
@@ -626,28 +622,6 @@ export function EscalatedCaseModal({
                             <div className="text-right shrink-0">
                               <p className="text-[10px] text-[#98A2B3]">Balance</p>
                               <p className="text-[13px] font-semibold text-[#111827]">{profile.totalAUM}</p>
-                            </div>
-                          </div>
-                          {/* Stats */}
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="rounded-lg bg-[#F9FAFB] border border-[#E4E7EC] p-2.5">
-                              <p className="mb-1 text-[10px] text-[#667085]">Fraud Risk Score</p>
-                              <p className={cn("text-[15px] font-bold leading-none mb-1.5", profile.fraudRiskScore >= 70 ? "text-[#E32926]" : profile.fraudRiskScore >= 40 ? "text-[#A37A00]" : "text-[#208337]")}>
-                                {profile.fraudRiskScore} <span className="text-[11px] font-normal text-[#98A2B3]">/ 100</span>
-                              </p>
-                              <div className="h-1.5 rounded-full bg-[#E4E7EC] overflow-hidden">
-                                <div
-                                  className={cn("h-full rounded-full", profile.fraudRiskScore >= 70 ? "bg-[#E32926]" : profile.fraudRiskScore >= 40 ? "bg-[#A37A00]" : "bg-[#208337]")}
-                                  style={{ width: `${profile.fraudRiskScore}%` }}
-                                />
-                              </div>
-                            </div>
-                            <div className="rounded-lg bg-[#F9FAFB] border border-[#E4E7EC] p-2.5">
-                              <p className="mb-1 text-[10px] text-[#667085]">Prior Disputes</p>
-                              <p className="text-[15px] font-bold leading-none text-[#111827]">{profile.priorDisputeCount === 0 ? "None" : profile.priorDisputeCount}</p>
-                              <p className={cn("mt-1 text-[10px]", profile.cardBlocked ? "text-[#E32926] font-medium" : "text-[#667085]")}>
-                                Card: {profile.cardBlocked ? "BLOCKED" : "NOT blocked"}
-                              </p>
                             </div>
                           </div>
                           {/* Tags */}

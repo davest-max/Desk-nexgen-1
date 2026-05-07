@@ -34,7 +34,7 @@ export default function Desk() {
   const isCustomerView = view === "customer";
   const isNotificationsView = view === "notifications";
   const panelLabel = isCopilotView
-    ? "Copilot"
+    ? "AI Assistant"
     : isNotesView
       ? "Notes"
       : isAddView
