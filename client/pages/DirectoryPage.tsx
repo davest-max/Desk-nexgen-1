@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import DirectoryPanel from "@/components/DirectoryPanel";
 import AddPanelContent from "@/components/AddPanelContent";
 import NotesPanel from "@/components/NotesPanel";
@@ -14,7 +13,6 @@ import { ChevronLeft, Plus } from "lucide-react";
  *   - Customer detail → NotesPanel for a specific customer
  */
 export default function DirectoryPage() {
-  const navigate = useNavigate();
   const [inlineCustomerId, setInlineCustomerId] = useState<string | null>(null);
   const [inlineAddOpen, setInlineAddOpen] = useState(false);
 

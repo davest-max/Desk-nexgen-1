@@ -3,6 +3,7 @@ import type { SharedConversationData } from "@/components/ConversationPanel";
 import { createConversationState } from "@/lib/customer-database";
 import { pendingHandoffConversations } from "@/lib/queue-state";
 import { CURRENT_AGENT_NAME } from "@/lib/control-panel-data";
+import { staticAssignments } from "@/lib/static-assignments";
 import { TakeoverPopover } from "./TakeoverPopover";
 
 // TakeoverButton shows the TakeoverPopover. On confirm it builds the handoff-stamped
@@ -43,13 +44,25 @@ export function TakeoverButton({
     const time = new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
     const firstName = customerName.split(" ")[0];
     const baseId = Date.now();
+    // Find the existing handoff card from the seed, or build context from the static assignment
+    const existingHandoffCard = seed.messages.find((msg) => msg.isHandoffCard);
+    const sa = staticAssignments.find((s) => s.customerRecordId === customerRecordId);
+    const contextSummary = existingHandoffCard?.content
+      ?? (sa?.aiOverview?.whyNeeded
+        ? `Flagging for human agent now. Context: ${sa.aiOverview.whyNeeded}`
+        : null);
+    const combinedHandoffContent = contextSummary
+      ? `${contextSummary}\n\nI have transferred the assignment. You are now live with customer ${customerName}.`
+      : `I have transferred the assignment. You are now live with customer ${customerName}.`;
     return {
       ...seed,
       messages: [
-        // Stamp every prior agent message with the bot's name so it renders as the bot, not JC
-        ...seed.messages.map((msg) =>
-          msg.role === "agent" && !msg.author ? { ...msg, author: botType } : msg
-        ),
+        // Stamp every prior agent message with the bot's name; remove the original handoff card
+        ...seed.messages
+          .filter((msg) => !msg.isHandoffCard)
+          .map((msg) =>
+            msg.role === "agent" && !msg.author ? { ...msg, author: botType } : msg
+          ),
         // Customer-facing transfer notice authored by the bot
         {
           id: baseId,
@@ -58,12 +71,12 @@ export function TakeoverButton({
           content: `${firstName}, I'm transferring you now to ${CURRENT_AGENT_NAME}, a human specialist who will take it from here.`,
           time,
         },
-        // Internal-only handoff card — visible to the agent, not the customer
+        // Combined internal handoff card — after the transfer message
         {
           id: baseId + 1,
           role: "agent" as const,
           author: botType,
-          content: `I have transferred the assignment. You are now live with customer ${customerName}.`,
+          content: combinedHandoffContent,
           time,
           isInternal: true,
           isHandoffCard: true,

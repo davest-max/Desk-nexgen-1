@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ChevronDown, ChevronRight, Eye, FileDown, FilePlus2, Sparkles, Ticket, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, Eye, FileDown, FilePlus2, Sparkles, Ticket, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import CustomerInfoPanel, { CustomerOverviewCard } from "@/components/CustomerInfoPanel";
@@ -240,24 +239,24 @@ function OverviewTabContent({ customerId, customerName, onCopilotSubmit, takeove
             </div>
           )}
 
-          {/* Case Overview */}
-          {actions.length > 0 && (
+          {/* Customer Snapshot */}
+          {rec?.customerSnapshot && rec.customerSnapshot.length > 0 && (
             <div className="rounded-xl border border-[#E4E7EC] bg-white overflow-hidden">
               <button
                 type="button"
                 onClick={() => setIsCaseOpen((v) => !v)}
                 className="flex w-full items-center justify-between px-4 py-3 text-left"
               >
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-[#1260B0]">Case Overview</p>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-[#1260B0]">Customer Snapshot</p>
                 <ChevronDown className={cn("h-3.5 w-3.5 text-[#1260B0] transition-transform duration-200", isCaseOpen && "rotate-180")} />
               </button>
               <div className={cn("grid transition-all duration-200 ease-out", isCaseOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
                 <div className="overflow-hidden">
                   <ul className="px-4 pb-4 space-y-2">
-                    {actions.map((action, i) => (
+                    {rec.customerSnapshot.map((bullet, i) => (
                       <li key={i} className="flex items-start gap-2 text-[12px] text-[#344054] leading-relaxed">
                         <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#1260B0]" />
-                        {action}
+                        {bullet}
                       </li>
                     ))}
                   </ul>

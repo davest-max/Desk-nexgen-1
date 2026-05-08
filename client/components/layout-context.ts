@@ -13,7 +13,7 @@ import type { RecentInteractionItem } from "@/components/RecentInteractionsPanel
 // ─── Primitive types ──────────────────────────────────────────────────────────
 
 export type RightPanelView = "info" | "desk" | "interactions" | null;
-export type DeskCanvasView = "desk" | "copilot" | "notes" | "add" | "customer" | "notifications";
+export type DeskCanvasView = "desk" | "copilot" | "add" | "customer" | "notifications";
 export type DeskPanelSelection = {
   initialTab?: string;
   ticketId?: string;

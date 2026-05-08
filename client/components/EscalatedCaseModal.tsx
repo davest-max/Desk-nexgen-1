@@ -39,7 +39,7 @@ export type EscalatedCaseModalData = {
   waitTime: string;
   preview: string;
   customerContext?: string;
-  aiOverview: { actions: string[] };
+  aiOverview: { actions: string[]; whyNeeded?: string; nextSteps?: string[] };
   status: string;
   /** AI confidence score (0–100) for the pending handoff — shown in the inline internal note card. */
   aiConfidence?: number;
@@ -58,13 +58,6 @@ const COPILOT_REASONING_STEPS = [
   "Analyzing attempted resolutions and their outcomes...",
   "Cross-referencing similar resolved cases in the knowledge base...",
   "Synthesizing recommended next steps and action items...",
-];
-
-const QUICK_ACTION_OPTIONS = [
-  "Notify data protection officer",
-  "Suspend account access temporarily",
-  "Escalate to security team",
-  "Send breach notification to customer",
 ];
 
 const POTENTIAL_NEXT_STEPS = [
@@ -649,29 +642,36 @@ export function EscalatedCaseModal({
                 );
               })()}
 
-              {/* Attempted Resolution accordion */}
-              <div className="rounded-xl border border-[#E4E7EC] bg-white overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => setIsAttemptedResolutionOpen((v) => !v)}
-                  className="flex w-full items-center justify-between px-4 py-3 text-left"
-                >
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-[#1260B0]">Case Overview</p>
-                  <ChevronDown className={cn("h-3.5 w-3.5 text-[#1260B0] transition-transform duration-200", isAttemptedResolutionOpen && "rotate-180")} />
-                </button>
-                <div className={cn("grid transition-all duration-200 ease-out", isAttemptedResolutionOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
-                  <div className="overflow-hidden">
-                    <ul className="px-4 pb-4 space-y-2">
-                      {caseData.aiOverview.actions.map((action, i) => (
-                        <li key={i} className="flex items-start gap-2 text-[12px] text-[#344054] leading-relaxed">
-                          <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#1260B0]" />
-                          {action}
-                        </li>
-                      ))}
-                    </ul>
+              {/* Customer Snapshot accordion */}
+              {(() => {
+                const snapshotRec = caseData.customerRecordId ? getCustomerRecord(caseData.customerRecordId) : null;
+                const snapshotBullets = snapshotRec?.customerSnapshot;
+                if (!snapshotBullets || snapshotBullets.length === 0) return null;
+                return (
+                  <div className="rounded-xl border border-[#E4E7EC] bg-white overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setIsAttemptedResolutionOpen((v) => !v)}
+                      className="flex w-full items-center justify-between px-4 py-3 text-left"
+                    >
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-[#1260B0]">Customer Snapshot</p>
+                      <ChevronDown className={cn("h-3.5 w-3.5 text-[#1260B0] transition-transform duration-200", isAttemptedResolutionOpen && "rotate-180")} />
+                    </button>
+                    <div className={cn("grid transition-all duration-200 ease-out", isAttemptedResolutionOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
+                      <div className="overflow-hidden">
+                        <ul className="px-4 pb-4 space-y-2">
+                          {snapshotBullets.map((bullet, i) => (
+                            <li key={i} className="flex items-start gap-2 text-[12px] text-[#344054] leading-relaxed">
+                              <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#1260B0]" />
+                              {bullet}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
+                );
+              })()}
 
               {/* Copilot response card */}
               {copilotPhase !== "idle" && (

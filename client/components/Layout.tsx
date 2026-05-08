@@ -236,6 +236,9 @@ import {
   getWhyAgentIsNeeded,
 } from "@/lib/conversation-state-helpers";
 
+// Default copilot analysis text used when no customer-specific response is configured.
+const COPILOT_FALLBACK_RESPONSE = "Based on the case analysis, the customer's issue appears to stem from an account configuration mismatch. The previous resolution attempts addressed symptoms but not the root cause. I recommend verifying the account settings directly, issuing a service credit for the disruption, and scheduling a follow-up within 48 hours to confirm resolution.";
+
 // When a case is transferred, this captures the recipient name so the resolved
 // assignment record shows the correct "Assigned to" instead of the current agent.
 let pendingTransferRecipient: string | null = null;
@@ -1660,15 +1663,10 @@ function DockedConversationPanel({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseOverviewOpenTrigger]);
 
-  // Sofia resolve-supervisor next step
-  const isSofia = customerRecordId === "sofia";
-  const isMarcus = customerRecordId === "marcus";
-  const RESOLVE_SUPERVISOR_STEPS = [
-    "Updating case status to resolved",
-    "Assigning to supervisor queue",
-    "Notifying supervisor — Rachel Kim",
-    "Removing from your active cases",
-  ];
+  // Resolve-flow data (driven from customer database)
+  const resolveFlow = customerRecord?.resolveFlow;
+  const isSupervisorResolve = resolveFlow?.type === "supervisor";
+  const isOptionsResolve = resolveFlow?.type === "options";
   const [resolveChecked, setResolveChecked] = useState(false);
   const [resolveStepIndex, setResolveStepIndex] = useState(0);
   const [resolveComplete, setResolveComplete] = useState(false);
@@ -2073,7 +2071,7 @@ function DockedConversationPanel({
     );
   };
 
-  const sofiaResolveBox = isSofia ? (
+  const supervisorResolveBox = isSupervisorResolve ? (
     <div className="rounded-xl border border-black/[0.06] bg-[#F8F8F9] overflow-hidden">
         <div className="px-4 pt-3 pb-2">
           <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#333333]">Suggested Next Step</span>
@@ -2086,20 +2084,19 @@ function DockedConversationPanel({
                 onClick={() => {
                   if (resolveChecked) return;
                   setResolveChecked(true);
-                  // Immediately update status badge to "resolved" and clear home tab escalation alert
                   onAssignmentStatusChange?.("resolved");
-                  pendingResolvedIds.add("static-sofia");
+                  const sa = staticAssignments.find((s) => s.customerRecordId === customerRecordId);
+                  if (sa) pendingResolvedIds.add(sa.id);
                   resolveTimersRef.current.forEach(clearTimeout);
                   resolveTimersRef.current = [];
-                  RESOLVE_SUPERVISOR_STEPS.forEach((_, i) => {
+                  resolveFlow!.steps.forEach((_, i) => {
                     const t = setTimeout(() => setResolveStepIndex(i + 1), 1000 + i * 1200);
                     resolveTimersRef.current.push(t);
                   });
                   const done = setTimeout(() => {
                     setResolveComplete(true);
-                    // Remove from rail after brief pause
-                    setTimeout(() => onRemoveAssignment?.("Rachel Kim"), 800);
-                  }, 1000 + RESOLVE_SUPERVISOR_STEPS.length * 1200);
+                    setTimeout(() => onRemoveAssignment?.(resolveFlow!.supervisorName ?? ""), 800);
+                  }, 1000 + resolveFlow!.steps.length * 1200);
                   resolveTimersRef.current.push(done);
                 }}
                 className={cn(
@@ -2120,7 +2117,7 @@ function DockedConversationPanel({
               <div className="border-t border-black/[0.05] px-3 pb-3 pt-2.5">
                 <p className="mb-2.5 text-[12px] font-semibold text-[#111827]">Resolving &amp; transferring...</p>
                 <div className="space-y-2.5">
-                  {RESOLVE_SUPERVISOR_STEPS.map((step, idx) => {
+                  {resolveFlow!.steps.map((step, idx) => {
                     const isComplete = idx < resolveStepIndex;
                     const isInProgress = idx === resolveStepIndex;
                     return (
@@ -2149,7 +2146,7 @@ function DockedConversationPanel({
                 {resolveComplete && (
                   <div className="mt-3 flex items-center gap-1.5 rounded-lg bg-[#EFFBF1] border border-[#24943E] px-3 py-2">
                     <Check className="h-3.5 w-3.5 text-[#208337]" />
-                    <span className="text-[11px] font-semibold text-[#208337]">Case resolved and assigned to Rachel Kim</span>
+                    <span className="text-[11px] font-semibold text-[#208337]">Case resolved and assigned to {resolveFlow!.supervisorName}</span>
                   </div>
                 )}
               </div>
@@ -2159,204 +2156,146 @@ function DockedConversationPanel({
       </div>
   ) : undefined;
 
-  // Marcus resolve-with-options next step
-  const MARCUS_RESOLVE_STEPS = [
-    "Confirming resolution with carrier",
-    "Applying goodwill discount code (20% off)",
-    "Updating default shipping address to Austin",
-    "Sending confirmation to Marcus",
-  ];
-  // selectedOption = what the radio shows; resolveOption = locked in when Perform Task is clicked
-  const [marcusSelectedOption, setMarcusSelectedOption] = useState<1 | 2 | 3 | null>(null);
-  const [marcusResolveOption, setMarcusResolveOption] = useState<1 | 2 | 3 | null>(null);
-  const [marcusGoodwillChecked, setMarcusGoodwillChecked] = useState(false);
-  const [marcusResolveStepIndex, setMarcusResolveStepIndex] = useState(0);
-  const [marcusResolveComplete, setMarcusResolveComplete] = useState(false);
-  const [marcusResolveDismissed, setMarcusResolveDismissed] = useState(false);
-  const [marcusForcedReply, setMarcusForcedReply] = useState<string | null>(null);
-  const [marcusForcedVariants, setMarcusForcedVariants] = useState<InlineSuggestion[] | null>(null);
-  const marcusResolveTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  // Options resolve-flow state (driven from customer database resolveFlow)
+  const optionsFlowLabels = resolveFlow?.optionLabels ?? {};
+  const optionKeys = Object.keys(optionsFlowLabels).map(Number) as (1 | 2 | 3)[];
+  const [optionsSelectedOption, setOptionsSelectedOption] = useState<number | null>(null);
+  const [optionsResolveOption, setOptionsResolveOption] = useState<number | null>(null);
+  const [optionsGoodwillChecked, setOptionsGoodwillChecked] = useState(false);
+  const [optionsResolveStepIndex, setOptionsResolveStepIndex] = useState(0);
+  const [optionsResolveComplete, setOptionsResolveComplete] = useState(false);
+  const [optionsResolveDismissed, setOptionsResolveDismissed] = useState(false);
+  const [optionsForcedReply, setOptionsForcedReply] = useState<string | null>(null);
+  const [optionsForcedVariants, setOptionsForcedVariants] = useState<InlineSuggestion[] | null>(null);
+  const optionsResolveTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  function handleMarcusPerformTask() {
-    if (marcusSelectedOption === null || marcusResolveOption !== null) return;
-    const chosenOption = marcusSelectedOption;
-    setMarcusResolveOption(chosenOption);
-    // Keep the case open — do NOT resolve status or remove from rail
-    marcusResolveTimersRef.current.forEach(clearTimeout);
-    marcusResolveTimersRef.current = [];
-    MARCUS_RESOLVE_STEPS.forEach((_, i) => {
-      const t = setTimeout(() => setMarcusResolveStepIndex(i + 1), 1000 + i * 1200);
-      marcusResolveTimersRef.current.push(t);
+  function handleOptionsPerformTask() {
+    if (optionsSelectedOption === null || optionsResolveOption !== null || !resolveFlow) return;
+    const chosenOption = optionsSelectedOption;
+    setOptionsResolveOption(chosenOption);
+    optionsResolveTimersRef.current.forEach(clearTimeout);
+    optionsResolveTimersRef.current = [];
+    resolveFlow.steps.forEach((_, i) => {
+      const t = setTimeout(() => setOptionsResolveStepIndex(i + 1), 1000 + i * 1200);
+      optionsResolveTimersRef.current.push(t);
     });
     const done = setTimeout(() => {
-      setMarcusResolveComplete(true);
-      // Inject an internal note into the conversation documenting the action taken
-      const optionLabels: Record<1 | 2 | 3, string> = {
-        1: "Overnight reship to 2847 Ridgewood Ave, Austin, TX arranged",
-        2: "Full refund issued — Marcus free to reorder at his convenience",
-        3: "Carrier intercept requested to redirect Denver package to Austin address",
-      };
-      const goodwillNote = marcusGoodwillChecked ? " Goodwill discount code CARE20 (20%) applied to account." : "";
-      const noteContent = `[Internal Note] Resolution actioned for order #WB-88214: ${optionLabels[chosenOption]}.${goodwillNote}`;
+      setOptionsResolveComplete(true);
+      // Inject an internal note into the conversation
+      const optLabel = resolveFlow.optionLabels?.[chosenOption] ?? "";
+      const goodwillText = optionsGoodwillChecked ? (resolveFlow.goodwillNote ?? "") : "";
+      const noteContent = resolveFlow.noteTemplate
+        ? resolveFlow.noteTemplate.replace("{option}", optLabel).replace("{goodwill}", goodwillText)
+        : `[Internal Note] Resolution: ${optLabel}.${goodwillText}`;
       const dateStr = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
       onConversationChange({
         ...conversation,
         messages: [
           ...conversation.messages,
-          {
-            id: Date.now(),
-            role: "agent" as const,
-            content: noteContent,
-            time: dateStr,
-            isInternal: true,
-          },
+          { id: Date.now(), role: "agent" as const, content: noteContent, time: dateStr, isInternal: true },
         ],
       });
-      // Update the Suggested Responses carousel with option-specific reply variants for the agent to send
-      const goodwillLine = marcusGoodwillChecked ? " I've also applied a 20% discount code (CARE20) to your account as a goodwill gesture." : "";
-      const variantsByOption: Record<1 | 2 | 3, { summary: string; suggestedReply: string }[]> = {
-        1: [
-          {
-            summary: "Confirm the overnight reship to the correct Austin address and set delivery expectation.",
-            suggestedReply: `Great news, Marcus — I've arranged an overnight reship of order #WB-88214 to your Austin address at 2847 Ridgewood Ave. You should receive it by tomorrow.${goodwillLine}`,
-          },
-          {
-            summary: "Acknowledge the shipping error, confirm the reship, and reassure the customer.",
-            suggestedReply: `I'm sorry for the mix-up on the address, Marcus. I've gone ahead and set up an overnight reship to 2847 Ridgewood Ave, Austin — you'll have it by tomorrow.${goodwillLine}`,
-          },
-          {
-            summary: "Lead with the resolution and confirm the corrected delivery timeline.",
-            suggestedReply: `Your replacement shipment is on its way to the right address, Marcus. I've arranged overnight delivery to 2847 Ridgewood Ave, Austin, so you should have it by tomorrow.${goodwillLine}`,
-          },
-        ],
-        2: [
-          {
-            summary: "Confirm the full refund has been processed and give the expected timeline.",
-            suggestedReply: `Marcus, I've processed a full refund for order #WB-88214. You should see it back in your account within 3–5 business days.${goodwillLine}`,
-          },
-          {
-            summary: "Apologise for the inconvenience, confirm the refund, and offer to help reorder.",
-            suggestedReply: `I'm sorry for the trouble with this order, Marcus. I've issued a full refund for #WB-88214 — it will appear within 3–5 business days. Feel free to reorder whenever you're ready.${goodwillLine}`,
-          },
-          {
-            summary: "Lead with the refund confirmation and set clear expectations on timing.",
-            suggestedReply: `Your full refund for order #WB-88214 has been issued, Marcus. Expect it to hit your account within 3–5 business days.${goodwillLine}`,
-          },
-        ],
-        3: [
-          {
-            summary: "Confirm the carrier intercept request has been submitted and set timeline expectations.",
-            suggestedReply: `I've submitted a carrier intercept request to redirect your package to 2847 Ridgewood Ave, Austin. These typically take 24–48 hours to confirm — I'll keep you updated as soon as I hear back.`,
-          },
-          {
-            summary: "Reassure the customer the intercept is in motion and commit to a follow-up.",
-            suggestedReply: `Good news — I've initiated a carrier intercept to redirect your order to the correct Austin address. It usually takes 24–48 hours to confirm, and I'll follow up the moment I have an update.`,
-          },
-          {
-            summary: "Acknowledge the error, confirm the intercept action, and set realistic expectations.",
-            suggestedReply: `I'm on it, Marcus. I've contacted the carrier to intercept the package and redirect it to 2847 Ridgewood Ave, Austin. I'll reach out within 24–48 hours to confirm the outcome.`,
-          },
-        ],
-      };
-      const chosenVariants = variantsByOption[chosenOption];
-      setMarcusForcedReply(chosenVariants[0].suggestedReply);
-      setMarcusForcedVariants(chosenVariants);
-      // Close the suggested next step box after a brief pause so the agent sees the success state
-      setTimeout(() => setMarcusResolveDismissed(true), 1200);
-    }, 1000 + MARCUS_RESOLVE_STEPS.length * 1200);
-    marcusResolveTimersRef.current.push(done);
+      // Populate suggested reply variants from database, interpolating goodwill line
+      const goodwillLine = optionsGoodwillChecked ? (resolveFlow.goodwillReplyLine ?? "") : "";
+      const variants = (resolveFlow.replyVariants?.[chosenOption] ?? []).map((v) => ({
+        ...v,
+        suggestedReply: v.suggestedReply.replace("{goodwill}", goodwillLine),
+      }));
+      if (variants.length > 0) {
+        setOptionsForcedReply(variants[0].suggestedReply);
+        setOptionsForcedVariants(variants);
+      }
+      setTimeout(() => setOptionsResolveDismissed(true), 1200);
+    }, 1000 + resolveFlow.steps.length * 1200);
+    optionsResolveTimersRef.current.push(done);
   }
 
-  const marcusOptionLabels: Record<1 | 2 | 3, string> = {
-    1: "Reship overnight to Austin address (2847 Ridgewood Ave)",
-    2: "Issue full refund — let Marcus reorder at his convenience",
-    3: "Attempt carrier intercept to redirect Denver package",
-  };
-
-  const marcusResolveBox = isMarcus && !marcusResolveDismissed ? (
+  const optionsResolveBox = isOptionsResolve && !optionsResolveDismissed ? (
     <div className="rounded-xl border border-black/[0.06] bg-[#F8F8F9] overflow-hidden">
         <div className="px-4 pt-3 pb-2">
           <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#333333]">Suggested Next Step</span>
         </div>
         <div className="px-3 pb-3 flex flex-col gap-2">
-          {([1, 2, 3] as const).map((option) => (
+          {optionKeys.map((option) => (
             <div key={option} className="rounded-xl border border-black/[0.06] bg-white overflow-hidden">
               <div className="flex items-center gap-3 px-3 py-2.5">
                 <button
                   type="button"
                   onClick={() => {
-                    if (marcusResolveOption !== null) return;
-                    setMarcusSelectedOption(option);
+                    if (optionsResolveOption !== null) return;
+                    setOptionsSelectedOption(option);
                   }}
                   className={cn(
                     "shrink-0 h-[18px] w-[18px] rounded-full border-2 flex items-center justify-center transition-colors",
-                    marcusSelectedOption === option
+                    optionsSelectedOption === option
                       ? "border-[#166CCA] bg-[#166CCA]"
-                      : marcusResolveOption !== null
+                      : optionsResolveOption !== null
                         ? "border-[#E5E7EB] bg-white opacity-40 cursor-not-allowed"
                         : "border-[#D0D5DD] bg-white hover:border-[#166CCA]",
                   )}
                 >
-                  {marcusSelectedOption === option && <div className="h-2 w-2 rounded-full bg-white" />}
+                  {optionsSelectedOption === option && <div className="h-2 w-2 rounded-full bg-white" />}
                 </button>
                 <div className="flex-1 min-w-0">
                   <span className={cn(
                     "block text-[12px] font-semibold text-[#344054]",
-                    marcusResolveOption !== null && marcusResolveOption !== option && "opacity-40",
+                    optionsResolveOption !== null && optionsResolveOption !== option && "opacity-40",
                   )}>
                     Option {option}
                   </span>
                   <span className={cn(
                     "block text-[13px] leading-5 text-[#111827] transition-colors",
-                    marcusResolveComplete && marcusResolveOption === option && "line-through text-[#9CA3AF]",
-                    marcusResolveOption !== null && marcusResolveOption !== option && "opacity-40",
+                    optionsResolveComplete && optionsResolveOption === option && "line-through text-[#9CA3AF]",
+                    optionsResolveOption !== null && optionsResolveOption !== option && "opacity-40",
                   )}>
-                    {marcusOptionLabels[option]}
+                    {optionsFlowLabels[option]}
                   </span>
                 </div>
               </div>
             </div>
           ))}
 
-          {/* Goodwill gesture — independently checkable */}
-          <button
-            type="button"
-            onClick={() => { if (marcusResolveOption === null) setMarcusGoodwillChecked((v) => !v); }}
-            className="rounded-xl border border-[#BFDBFE] bg-[#EBF4FD] px-3 py-2.5 flex items-start gap-2 text-left w-full"
-          >
-            <div className="shrink-0 mt-0.5">
-              <div className={cn(
-                "h-[18px] w-[18px] rounded-[5px] border-2 flex items-center justify-center transition-colors",
-                marcusGoodwillChecked ? "border-[#166CCA] bg-[#166CCA]" : "border-[#D0D5DD] bg-white",
-              )}>
-                {marcusGoodwillChecked && <Check className="h-2.5 w-2.5 text-white" />}
-              </div>
-            </div>
-            <div>
-              <span className="block text-[11px] font-semibold uppercase tracking-widest text-[#1260B0] mb-0.5">Goodwill Gesture</span>
-              <span className="text-[13px] leading-5 text-[#344054]">Apply 20% discount code on next order (CARE20) — apologize for the address caching error</span>
-            </div>
-          </button>
-
-          {/* Perform Task button — visible once an option is selected, hidden once task is running */}
-          {marcusSelectedOption !== null && marcusResolveOption === null && (
+          {/* Goodwill gesture — independently checkable (visible only when flow has goodwill config) */}
+          {resolveFlow?.goodwillNote && (
             <button
               type="button"
-              onClick={handleMarcusPerformTask}
+              onClick={() => { if (optionsResolveOption === null) setOptionsGoodwillChecked((v) => !v); }}
+              className="rounded-xl border border-[#BFDBFE] bg-[#EBF4FD] px-3 py-2.5 flex items-start gap-2 text-left w-full"
+            >
+              <div className="shrink-0 mt-0.5">
+                <div className={cn(
+                  "h-[18px] w-[18px] rounded-[5px] border-2 flex items-center justify-center transition-colors",
+                  optionsGoodwillChecked ? "border-[#166CCA] bg-[#166CCA]" : "border-[#D0D5DD] bg-white",
+                )}>
+                  {optionsGoodwillChecked && <Check className="h-2.5 w-2.5 text-white" />}
+                </div>
+              </div>
+              <div>
+                <span className="block text-[11px] font-semibold uppercase tracking-widest text-[#1260B0] mb-0.5">Goodwill Gesture</span>
+                <span className="text-[13px] leading-5 text-[#344054]">{resolveFlow.goodwillNote}</span>
+              </div>
+            </button>
+          )}
+
+          {/* Perform Task button */}
+          {optionsSelectedOption !== null && optionsResolveOption === null && (
+            <button
+              type="button"
+              onClick={handleOptionsPerformTask}
               className="w-full rounded-xl bg-[#166CCA] hover:bg-[#1260B0] active:bg-[#0D4F9A] text-white text-[13px] font-semibold py-2.5 px-4 transition-colors"
             >
               Perform Task
             </button>
           )}
 
-          {/* Progress steps — only visible after Perform Task is clicked */}
-          {marcusResolveOption !== null && (
+          {/* Progress steps */}
+          {optionsResolveOption !== null && (
             <div className="rounded-xl border border-black/[0.05] bg-white px-3 pb-3 pt-2.5">
               <p className="mb-2.5 text-[12px] font-semibold text-[#111827]">Resolving...</p>
               <div className="space-y-2.5">
-                {MARCUS_RESOLVE_STEPS.map((step, idx) => {
-                  const isComplete = idx < marcusResolveStepIndex;
-                  const isInProgress = idx === marcusResolveStepIndex;
+                {resolveFlow!.steps.map((step, idx) => {
+                  const isComplete = idx < optionsResolveStepIndex;
+                  const isInProgress = idx === optionsResolveStepIndex;
                   return (
                     <div key={idx} className="flex items-center gap-2.5">
                       <div className="shrink-0 h-6 w-6 flex items-center justify-center">
@@ -2380,7 +2319,7 @@ function DockedConversationPanel({
                   );
                 })}
               </div>
-              {marcusResolveComplete && (
+              {optionsResolveComplete && (
                 <div className="mt-3 flex items-center gap-1.5 rounded-lg bg-[#EFFBF1] border border-[#24943E] px-3 py-2">
                   <Check className="h-3.5 w-3.5 text-[#208337]" />
                   <span className="text-[11px] font-semibold text-[#208337]">Action complete — internal note added to case</span>
@@ -2715,10 +2654,10 @@ function DockedConversationPanel({
                     onAcceptAssignment={onAcceptAssignment}
                     isWidePanel={isWidePanel}
                     onAgentTasksChange={setHasAgentTasks}
-                    suppressAgentTasks={isMarcus}
-                    appendContent={sofiaResolveBox ?? marcusResolveBox}
-                    forcedSuggestedReply={isMarcus ? marcusForcedReply : null}
-                    forcedSuggestionVariants={isMarcus ? marcusForcedVariants : null}
+                    suppressAgentTasks={isOptionsResolve}
+                    appendContent={supervisorResolveBox ?? optionsResolveBox}
+                    forcedSuggestedReply={isOptionsResolve ? optionsForcedReply : null}
+                    forcedSuggestionVariants={isOptionsResolve ? optionsForcedVariants : null}
                     aiConfidence={aiConfidence}
                     aiConfidenceReason={aiConfidenceReason}
                     botLabel={botLabel}
@@ -2835,47 +2774,40 @@ function DockedConversationPanel({
                           </div>
                         );
                       })()}
-                      {/* Section 2: Collapsible Attempted Resolution */}
-                      <div className="rounded-xl border border-[#E4E7EC] bg-white dark:border-[#1B3A52] dark:bg-[#0F2233] overflow-hidden">
-                        <button
-                          type="button"
-                          onClick={() => setIsAttemptedResolutionOpen((v) => !v)}
-                          className="flex w-full items-center justify-between px-4 py-3 text-left"
-                        >
-                          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#1260B0] dark:text-[#4B96DA]">
-                            Case Overview
-                          </p>
-                          <ChevronDown className={cn("h-3.5 w-3.5 text-[#1260B0] transition-transform duration-200 dark:text-[#4B96DA]", isAttemptedResolutionOpen && "rotate-180")} />
-                        </button>
-                        <div className={cn("grid transition-all duration-200 ease-out", isAttemptedResolutionOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
-                          <div className="overflow-hidden">
-                            <div className="px-4 pb-4 space-y-3">
-                              {(() => {
-                                const sa = staticAssignments.find((s) => s.customerRecordId === customerRecordId || s.name.toLowerCase() === conversation.customerName.toLowerCase());
-                                const actions = sa?.aiOverview?.actions ?? getOverviewActions(conversation);
-                                return (
-                                  <>
-                                    {actions && actions.length > 0 ? (
-                                      <ul className="space-y-2">
-                                        {actions.map((action, i) => (
-                                          <li key={i} className="flex items-start gap-2 text-[12px] text-[#344054] dark:text-[#CBD5E1] leading-relaxed">
-                                            <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#1260B0] dark:bg-[#244D68]" />
-                                            {action}
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    ) : (
-                                      <p className="text-[12px] leading-5 text-[#344054] dark:text-[#CBD5E1]">
-                                        {getInteractionOverview(conversation)}
-                                      </p>
-                                    )}
-                                  </>
-                                );
-                              })()}
+                      {/* Section 2: Customer Snapshot */}
+                      {(() => {
+                        const customerRecord = customerRecordId ? getCustomerRecord(customerRecordId) : null;
+                        const snapshotBullets = customerRecord?.customerSnapshot;
+                        if (!snapshotBullets || snapshotBullets.length === 0) return null;
+                        return (
+                          <div className="rounded-xl border border-[#E4E7EC] bg-white dark:border-[#1B3A52] dark:bg-[#0F2233] overflow-hidden">
+                            <button
+                              type="button"
+                              onClick={() => setIsAttemptedResolutionOpen((v) => !v)}
+                              className="flex w-full items-center justify-between px-4 py-3 text-left"
+                            >
+                              <p className="text-[10px] font-semibold uppercase tracking-widest text-[#1260B0] dark:text-[#4B96DA]">
+                                Customer Snapshot
+                              </p>
+                              <ChevronDown className={cn("h-3.5 w-3.5 text-[#1260B0] transition-transform duration-200 dark:text-[#4B96DA]", isAttemptedResolutionOpen && "rotate-180")} />
+                            </button>
+                            <div className={cn("grid transition-all duration-200 ease-out", isAttemptedResolutionOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
+                              <div className="overflow-hidden">
+                                <div className="px-4 pb-4">
+                                  <ul className="space-y-2">
+                                    {snapshotBullets.map((bullet, i) => (
+                                      <li key={i} className="flex items-start gap-2 text-[12px] text-[#344054] dark:text-[#CBD5E1] leading-relaxed">
+                                        <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#1260B0] dark:bg-[#244D68]" />
+                                        {bullet}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </div>
+                        );
+                      })()}
 
                       {/* Copilot response card */}
                       {summaryCopilotPhase !== "idle" && (
@@ -2901,7 +2833,7 @@ function DockedConversationPanel({
                                 {summaryCopilotPhase === "done" && (
                                   <div className="rounded-lg bg-[#EBF4FD] border border-[#BFDBFE] px-3 py-2.5">
                                     <p className="text-[12px] text-[#344054] dark:text-[#CBD5E1] leading-relaxed">
-                                      Based on the case analysis, the customer's issue appears to stem from an account configuration mismatch. The previous resolution attempts addressed symptoms but not the root cause. I recommend verifying the account settings directly, issuing a service credit for the disruption, and scheduling a follow-up within 48 hours to confirm resolution.
+                                      {COPILOT_FALLBACK_RESPONSE}
                                     </p>
                                   </div>
                                 )}
@@ -3167,47 +3099,40 @@ function DockedConversationPanel({
                       );
                     })()}
 
-                    {/* Section 2: Collapsible Attempted Resolution */}
-                    <div className="rounded-xl border border-[#E4E7EC] bg-white dark:border-[#1B3A52] dark:bg-[#0F2233] overflow-hidden">
-                      <button
-                        type="button"
-                        onClick={() => setIsAttemptedResolutionOpen((v) => !v)}
-                        className="flex w-full items-center justify-between px-4 py-3 text-left"
-                      >
-                        <p className="text-[10px] font-semibold uppercase tracking-widest text-[#1260B0] dark:text-[#4B96DA]">
-                          Case Overview
-                        </p>
-                        <ChevronDown className={cn("h-3.5 w-3.5 text-[#1260B0] transition-transform duration-200 dark:text-[#4B96DA]", isAttemptedResolutionOpen && "rotate-180")} />
-                      </button>
-                      <div className={cn("grid transition-all duration-200 ease-out", isAttemptedResolutionOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
-                        <div className="overflow-hidden">
-                          <div className="px-4 pb-4 space-y-3">
-                            {(() => {
-                              const sa = staticAssignments.find((s) => s.customerRecordId === customerRecordId || s.name.toLowerCase() === conversation.customerName.toLowerCase());
-                              const actions = sa?.aiOverview?.actions ?? getOverviewActions(conversation);
-                              return (
-                                <>
-                                  {actions && actions.length > 0 ? (
-                                    <ul className="space-y-2">
-                                      {actions.map((action, i) => (
-                                        <li key={i} className="flex items-start gap-2 text-[12px] text-[#344054] dark:text-[#CBD5E1] leading-relaxed">
-                                          <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#1260B0] dark:bg-[#244D68]" />
-                                          {action}
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  ) : (
-                                    <p className="text-[12px] leading-5 text-[#344054] dark:text-[#CBD5E1]">
-                                      {getInteractionOverview(conversation)}
-                                    </p>
-                                  )}
-                                </>
-                              );
-                            })()}
+                    {/* Section 2: Customer Snapshot */}
+                    {(() => {
+                      const customerRecord = customerRecordId ? getCustomerRecord(customerRecordId) : null;
+                      const snapshotBullets = customerRecord?.customerSnapshot;
+                      if (!snapshotBullets || snapshotBullets.length === 0) return null;
+                      return (
+                        <div className="rounded-xl border border-[#E4E7EC] bg-white dark:border-[#1B3A52] dark:bg-[#0F2233] overflow-hidden">
+                          <button
+                            type="button"
+                            onClick={() => setIsAttemptedResolutionOpen((v) => !v)}
+                            className="flex w-full items-center justify-between px-4 py-3 text-left"
+                          >
+                            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#1260B0] dark:text-[#4B96DA]">
+                              Customer Snapshot
+                            </p>
+                            <ChevronDown className={cn("h-3.5 w-3.5 text-[#1260B0] transition-transform duration-200 dark:text-[#4B96DA]", isAttemptedResolutionOpen && "rotate-180")} />
+                          </button>
+                          <div className={cn("grid transition-all duration-200 ease-out", isAttemptedResolutionOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
+                            <div className="overflow-hidden">
+                              <div className="px-4 pb-4">
+                                <ul className="space-y-2">
+                                  {snapshotBullets.map((bullet, i) => (
+                                    <li key={i} className="flex items-start gap-2 text-[12px] text-[#344054] dark:text-[#CBD5E1] leading-relaxed">
+                                      <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#1260B0] dark:bg-[#244D68]" />
+                                      {bullet}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </div>
+                      );
+                    })()}
 
                     {/* Copilot response card */}
                     {summaryCopilotPhase !== "idle" && (
@@ -3233,7 +3158,7 @@ function DockedConversationPanel({
                               {summaryCopilotPhase === "done" && (
                                 <div className="rounded-lg bg-[#EBF4FD] border border-[#BFDBFE] px-3 py-2.5">
                                   <p className="text-[12px] text-[#344054] dark:text-[#CBD5E1] leading-relaxed">
-                                    Based on the case analysis, the customer's issue appears to stem from an account configuration mismatch. The previous resolution attempts addressed symptoms but not the root cause. I recommend verifying the account settings directly, issuing a service credit for the disruption, and scheduling a follow-up within 48 hours to confirm resolution.
+                                    {COPILOT_FALLBACK_RESPONSE}
                                   </p>
                                 </div>
                               )}
@@ -5198,23 +5123,21 @@ function DeskCanvasPopunder({
   const minWidth = getDeskCanvasPopunderMinWidth(view);
 
   // Derived: are we showing an inline overlay within the desk view?
-  const isDeskView = view !== "copilot" && view !== "notes" && view !== "add" && view !== "customer" && view !== "notifications";
+  const isDeskView = view !== "copilot" && view !== "add" && view !== "customer" && view !== "notifications";
   const showingInlineAdd = isDeskView && inlineAddOpen && !inlineCustomerId;
   const showingInlineCustomer = isDeskView && !!inlineCustomerId && !inlineAddOpen;
 
   const panelLabel = view === "copilot"
     ? "AI Assistant"
-    : view === "notes"
-      ? "Notes"
-      : view === "add"
-        ? "Add"
-        : view === "customer"
-          ? "Customer Information"
-          : showingInlineAdd
-            ? "Add"
-            : showingInlineCustomer
-              ? "Customer Information"
-              : "Directory";
+    : view === "add"
+      ? "Add"
+      : view === "customer"
+        ? "Customer Information"
+        : showingInlineAdd
+          ? "Add"
+          : showingInlineCustomer
+            ? "Customer Information"
+            : "Directory";
 
   useEffect(() => {
     if (!dragActivation) return;
@@ -5351,17 +5274,15 @@ function DeskCanvasPopunder({
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {view === "copilot"
           ? <CopilotContent />
-          : view === "notes"
-            ? <NotesPanel notesOnly />
-            : view === "add"
-              ? <AddPanelContent />
-              : view === "customer"
-                ? <NotesPanel key={customerId} customerId={customerId} />
-                : showingInlineAdd
-                  ? <AddPanelContent />
-                  : showingInlineCustomer
-                    ? <NotesPanel key={inlineCustomerId!} customerId={inlineCustomerId!} />
-                    : <DirectoryPanel onSelectCustomer={(id) => { setInlineCustomerId(id); setInlineAddOpen(false); }} />}
+          : view === "add"
+            ? <AddPanelContent />
+            : view === "customer"
+              ? <NotesPanel key={customerId} customerId={customerId} />
+              : showingInlineAdd
+                ? <AddPanelContent />
+                : showingInlineCustomer
+                  ? <NotesPanel key={inlineCustomerId!} customerId={inlineCustomerId!} />
+                  : <DirectoryPanel onSelectCustomer={(id) => { setInlineCustomerId(id); setInlineAddOpen(false); }} />}
       </div>
 
       <button
@@ -7891,33 +7812,40 @@ function IncomingAssignmentCard({
               );
             })()}
 
-            {/* Attempted Resolution — collapsible, white bg matching activity accordion */}
-            <div className="rounded-xl border border-[#E4E7EC] bg-white overflow-hidden">
-              <button
-                type="button"
-                onClick={() => { cancelIdleTimer(); setIsAttemptedResolutionOpen((v) => !v); }}
-                className="flex w-full items-center justify-between px-3 py-2.5 text-left"
-              >
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-[#1260B0]">
-                  Case Overview
-                </p>
-                <ChevronDown className={cn("h-3.5 w-3.5 text-[#1260B0] transition-transform duration-200", isAttemptedResolutionOpen && "rotate-180")} />
-              </button>
-              <div className={cn("grid transition-all duration-200 ease-out", isAttemptedResolutionOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
-                <div className="overflow-hidden">
-                  <div className="px-3 pb-3">
-                    <ul className="space-y-1.5">
-                      {aiOverview.actions.map((action, i) => (
-                        <li key={i} className="flex items-start gap-2 text-[12px] leading-snug text-[#344054]">
-                          <span className="mt-[3px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#1260B0]" />
-                          {action}
-                        </li>
-                      ))}
-                    </ul>
+            {/* Customer Snapshot — collapsible, white bg matching activity accordion */}
+            {(() => {
+              const snapshotRecord = item.customerRecordId ? getCustomerRecord(item.customerRecordId) : null;
+              const snapshotBullets = snapshotRecord?.customerSnapshot;
+              if (!snapshotBullets || snapshotBullets.length === 0) return null;
+              return (
+                <div className="rounded-xl border border-[#E4E7EC] bg-white overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => { cancelIdleTimer(); setIsAttemptedResolutionOpen((v) => !v); }}
+                    className="flex w-full items-center justify-between px-3 py-2.5 text-left"
+                  >
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-[#1260B0]">
+                      Customer Snapshot
+                    </p>
+                    <ChevronDown className={cn("h-3.5 w-3.5 text-[#1260B0] transition-transform duration-200", isAttemptedResolutionOpen && "rotate-180")} />
+                  </button>
+                  <div className={cn("grid transition-all duration-200 ease-out", isAttemptedResolutionOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
+                    <div className="overflow-hidden">
+                      <div className="px-3 pb-3">
+                        <ul className="space-y-1.5">
+                          {snapshotBullets.map((bullet, i) => (
+                            <li key={i} className="flex items-start gap-2 text-[12px] leading-snug text-[#344054]">
+                              <span className="mt-[3px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#1260B0]" />
+                              {bullet}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
+              );
+            })()}
 
             {/* Copilot response card — appears after submission */}
             {copilotPhase !== "idle" && (
@@ -7968,7 +7896,7 @@ function IncomingAssignmentCard({
                       {copilotPhase === "done" && (
                         <div className="rounded-lg bg-[#EBF4FD] border border-[#BFDBFE] px-3 py-2">
                           <p className="text-[12px] text-[#344054] leading-relaxed">
-                            Based on the case analysis, the customer's issue appears to stem from an account configuration mismatch. The previous resolution attempts addressed symptoms but not the root cause. I recommend verifying the account settings directly, issuing a service credit for the disruption, and scheduling a follow-up within 48 hours to confirm resolution.
+                            {COPILOT_FALLBACK_RESPONSE}
                           </p>
                         </div>
                       )}
@@ -9916,15 +9844,13 @@ export default function Layout({ children }: LayoutProps) {
 
   const deskCanvasTabLabel = isCopilotDeskView
     ? "AI"
-    : new URLSearchParams(location.search).get("view") === "notes"
-      ? "Notes"
-      : new URLSearchParams(location.search).get("view") === "add"
-        ? "Add"
-        : new URLSearchParams(location.search).get("view") === "customer"
-          ? "Customer Information"
-          : new URLSearchParams(location.search).get("view") === "notifications"
-            ? "Notifications"
-            : "Desk";
+    : new URLSearchParams(location.search).get("view") === "add"
+      ? "Add"
+      : new URLSearchParams(location.search).get("view") === "customer"
+        ? "Customer Information"
+        : new URLSearchParams(location.search).get("view") === "notifications"
+          ? "Notifications"
+          : "Desk";
 
   const setActiveConversationChannel = (_channel: CustomerChannel) => {};
 
@@ -10140,10 +10066,9 @@ export default function Layout({ children }: LayoutProps) {
     const siblingIds = visibleAssignmentIds.filter(
       (id) => assignmentItemsById[id]?.customerRecordId === customerRecordId,
     );
-    // Remove escalation alert from home tab for known escalated cases
-    if (customerRecordId === "sofia") pendingResolvedIds.add("static-sofia");
-    if (customerRecordId === "jordan") pendingResolvedIds.add("static-11");
-    if (customerRecordId === "marcus") pendingResolvedIds.add("static-marcus");
+    // Remove escalation alert from home tab by resolving the matching static assignment
+    const dismissSa = staticAssignments.find((s) => s.customerRecordId === customerRecordId);
+    if (dismissSa) pendingResolvedIds.add(dismissSa.id);
     handleRemoveGroupedAssignments(siblingIds, transferRecipient);
 
     // Fire the dismissal confirmation toast
@@ -11345,26 +11270,38 @@ export default function Layout({ children }: LayoutProps) {
       : undefined;
     // Append a warm handoff message from the bot at the moment of takeover,
     // followed by the internal handoff card (agent-only green transfer notice).
-    const isMarcusTakeover = customerRecordId === "marcus";
+    const takeoverRecord = customerRecordId ? getCustomerRecord(customerRecordId) : null;
+    const skipTransferMessage = takeoverRecord?.seedHasTransferMessage === true;
+    const existingHandoff = baseConversation?.messages.find((msg) => msg.isHandoffCard);
+    // Build context summary from the static assignment when no seed handoff card exists
+    const contextSummary = existingHandoff?.content
+      ?? (sa?.aiOverview?.whyNeeded
+        ? `Flagging for human agent now. Context: ${sa.aiOverview.whyNeeded}`
+        : null);
+    const combinedHandoff = contextSummary
+      ? `${contextSummary}\n\nI have transferred the assignment. You are now live with customer ${item.name}.`
+      : `I have transferred the assignment. You are now live with customer ${item.name}.`;
     const conversationWithHandoff = baseConversation
       ? {
           ...baseConversation,
           messages: [
-            ...baseConversation.messages,
-            // Marcus already has a generic handoff message in the static conversation data,
-            // so skip injecting the transfer bubble for him to avoid duplication.
-            ...(!isMarcusTakeover ? [{
+            // Remove the original handoff card — it will be re-added after the transfer message
+            ...baseConversation.messages.filter((msg) => !msg.isHandoffCard),
+            // Some customers already have a transfer message in their seed conversation data,
+            // so skip injecting a duplicate transfer bubble for them.
+            ...(!skipTransferMessage ? [{
               id: (baseConversation.messages[baseConversation.messages.length - 1]?.id ?? 0) + 1,
               role: "agent" as const,
               author: botAuthor,
               content: "I'm going to transfer you to a live customer service agent, please hold.",
               time: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
             }] : []),
+            // Combined handoff card — placed after the transfer message
             {
-              id: (baseConversation.messages[baseConversation.messages.length - 1]?.id ?? 0) + (isMarcusTakeover ? 1 : 2),
+              id: (baseConversation.messages[baseConversation.messages.length - 1]?.id ?? 0) + (skipTransferMessage ? 1 : 2),
               role: "agent" as const,
               author: botAuthor,
-              content: `I have transferred the assignment. You are now live with customer ${item.name}.`,
+              content: combinedHandoff,
               time: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
               isInternal: true,
               isHandoffCard: true,
@@ -11372,9 +11309,9 @@ export default function Layout({ children }: LayoutProps) {
           ],
         }
       : undefined;
-    // For Marcus's case, pre-populate the reply draft when the agent takes over
-    const initialConversation = customerRecordId === "marcus" && conversationWithHandoff
-      ? { ...conversationWithHandoff, draft: "Hi Marcus, this is Jeff. I've reviewed everything and I want to help you fix this. I can see the party is Saturday — let's make sure your dad gets his gift in time." }
+    // Pre-populate the reply draft from database if configured for this customer
+    const initialConversation = takeoverRecord?.takeoverDraft && conversationWithHandoff
+      ? { ...conversationWithHandoff, draft: takeoverRecord.takeoverDraft }
       : conversationWithHandoff;
 
     acceptIssue({
@@ -11843,15 +11780,13 @@ export default function Layout({ children }: LayoutProps) {
 
     const nextRoute = deskCanvasPopunderView === "copilot"
       ? "/desk?view=copilot"
-      : deskCanvasPopunderView === "notes"
-        ? "/desk?view=notes"
-        : deskCanvasPopunderView === "add"
-          ? "/desk?view=add"
-          : deskCanvasPopunderView === "customer"
-            ? "/desk?view=customer"
-            : deskCanvasPopunderView === "notifications"
-              ? "/desk?view=notifications"
-              : "/desk";
+      : deskCanvasPopunderView === "add"
+        ? "/desk?view=add"
+        : deskCanvasPopunderView === "customer"
+          ? "/desk?view=customer"
+          : deskCanvasPopunderView === "notifications"
+            ? "/desk?view=notifications"
+            : "/desk";
 
     // One-panel-docked rule: docking the canvas means the conversation panel must float
     if (isDockedConversationVisible) {
@@ -12038,15 +11973,13 @@ export default function Layout({ children }: LayoutProps) {
         }
         return;
       }
-      const nextRoute = view === "notes"
-        ? "/desk?view=notes"
-        : view === "add"
-          ? "/desk?view=add"
-          : view === "customer"
-            ? "/desk?view=customer"
-            : view === "notifications"
-              ? "/desk?view=notifications"
-              : "/desk";
+      const nextRoute = view === "add"
+        ? "/desk?view=add"
+        : view === "customer"
+          ? "/desk?view=customer"
+          : view === "notifications"
+            ? "/desk?view=notifications"
+            : "/desk";
       navigate(nextRoute);
       return;
     }
@@ -13650,11 +13583,22 @@ export default function Layout({ children }: LayoutProps) {
             // followed by the internal handoff card (agent-only green transfer notice).
             const modalBotAuthor = escalatedToastModal.botType ?? "Aria";
             const isModalMarcus = escalatedToastModal.customerRecordId === "marcus";
+            const modalExistingHandoff = conversation?.messages.find((msg) => msg.isHandoffCard);
+            const modalContextSummary = modalExistingHandoff?.content
+              ?? (escalatedToastModal.aiOverview?.whyNeeded
+                ? `Flagging for human agent now. Context: ${escalatedToastModal.aiOverview.whyNeeded}`
+                : sa?.aiOverview?.whyNeeded
+                  ? `Flagging for human agent now. Context: ${sa.aiOverview.whyNeeded}`
+                  : null);
+            const modalCombinedHandoff = modalContextSummary
+              ? `${modalContextSummary}\n\nI have transferred the assignment. You are now live with customer ${escalatedToastModal.name}.`
+              : `I have transferred the assignment. You are now live with customer ${escalatedToastModal.name}.`;
             const conversationWithHandoff = conversation
               ? {
                   ...conversation,
                   messages: [
-                    ...conversation.messages,
+                    // Remove the original handoff card — it will be re-added after the transfer message
+                    ...conversation.messages.filter((msg) => !msg.isHandoffCard),
                     // Marcus already has a generic handoff message in the static conversation data,
                     // so skip injecting the transfer bubble for him to avoid duplication.
                     ...(!isModalMarcus ? [{
@@ -13664,11 +13608,12 @@ export default function Layout({ children }: LayoutProps) {
                       content: "I'm going to transfer you to a live customer service agent, please hold.",
                       time: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
                     }] : []),
+                    // Combined handoff card — placed after the transfer message
                     {
                       id: (conversation.messages[conversation.messages.length - 1]?.id ?? 0) + (isModalMarcus ? 1 : 2),
                       role: "agent" as const,
                       author: modalBotAuthor,
-                      content: `I have transferred the assignment. You are now live with customer ${escalatedToastModal.name}.`,
+                      content: modalCombinedHandoff,
                       time: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
                       isInternal: true,
                       isHandoffCard: true,
@@ -13712,11 +13657,22 @@ export default function Layout({ children }: LayoutProps) {
             const superviseBase = escalatedToastModal.customerRecordId
               ? createConversationState(escalatedToastModal.customerRecordId, (escalatedToastModal.channel === "sms" ? "sms" : "chat") as "chat" | "sms", superviseBotAuthor)
               : undefined;
+            const superviseExistingHandoff = superviseBase?.messages.find((msg) => msg.isHandoffCard);
+            const superviseContextSummary = superviseExistingHandoff?.content
+              ?? (escalatedToastModal.aiOverview?.whyNeeded
+                ? `Flagging for human agent now. Context: ${escalatedToastModal.aiOverview.whyNeeded}`
+                : sa?.aiOverview?.whyNeeded
+                  ? `Flagging for human agent now. Context: ${sa.aiOverview.whyNeeded}`
+                  : null);
+            const superviseCombinedHandoff = superviseContextSummary
+              ? `${superviseContextSummary}\n\nI have transferred the assignment. You are now live with customer ${escalatedToastModal.name}.`
+              : `I have transferred the assignment. You are now live with customer ${escalatedToastModal.name}.`;
             const superviseConversation = superviseBase
               ? {
                   ...superviseBase,
                   messages: [
-                    ...superviseBase.messages,
+                    // Remove original handoff card — re-added after transfer message
+                    ...superviseBase.messages.filter((msg) => !msg.isHandoffCard),
                     {
                       id: (superviseBase.messages[superviseBase.messages.length - 1]?.id ?? 0) + 1,
                       role: "agent" as const,
@@ -13724,11 +13680,12 @@ export default function Layout({ children }: LayoutProps) {
                       content: "I'm going to transfer you to a live customer service agent, please hold.",
                       time: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
                     },
+                    // Combined handoff card — placed after the transfer message
                     {
                       id: (superviseBase.messages[superviseBase.messages.length - 1]?.id ?? 0) + 2,
                       role: "agent" as const,
                       author: superviseBotAuthor,
-                      content: `I have transferred the assignment. You are now live with customer ${escalatedToastModal.name}.`,
+                      content: superviseCombinedHandoff,
                       time: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
                       isInternal: true,
                       isHandoffCard: true,

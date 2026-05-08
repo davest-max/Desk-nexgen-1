@@ -29,32 +29,27 @@ export default function Desk() {
   } = useLayoutContext();
   const view = new URLSearchParams(location.search).get("view");
   const isCopilotView = view === "copilot";
-  const isNotesView = view === "notes";
   const isAddView = view === "add";
   const isCustomerView = view === "customer";
   const isNotificationsView = view === "notifications";
   const panelLabel = isCopilotView
     ? "AI Assistant"
-    : isNotesView
-      ? "Notes"
-      : isAddView
-        ? "Add"
-        : isCustomerView
-          ? "Customer Information"
-          : isNotificationsView
-            ? "Notifications"
-            : "Directory";
+    : isAddView
+      ? "Add"
+      : isCustomerView
+        ? "Customer Information"
+        : isNotificationsView
+          ? "Notifications"
+          : "Directory";
   const panelView = isCopilotView
     ? "copilot"
-    : isNotesView
-      ? "notes"
-      : isAddView
-        ? "add"
-        : isCustomerView
-          ? "customer"
-          : isNotificationsView
-            ? "notifications"
-            : "desk";
+    : isAddView
+      ? "add"
+      : isCustomerView
+        ? "customer"
+        : isNotificationsView
+          ? "notifications"
+          : "desk";
 
   const handleOpenChannel = (channel: "sms" | "email") => {
     openCustomerConversation(selectedAssignment.customerRecordId, channel);
@@ -137,21 +132,19 @@ export default function Desk() {
 
       {isCopilotView
         ? <CopilotContent />
-        : isNotesView
-          ? <NotesPanel notesOnly />
-          : isAddView
-            ? <AddPanelContent />
-            : isCustomerView
-              ? <NotesPanel key={selectedAssignment.customerRecordId} customerId={selectedAssignment.customerRecordId} />
-              : isNotificationsView
-                ? (
-                  <Placeholder
-                    title="Notifications"
-                    description="Review alerts, workflow updates, and queue notices alongside the current conversation."
-                    icon={Bell}
-                  />
-                )
-                : <DeskDataTable />}
+        : isAddView
+          ? <AddPanelContent />
+          : isCustomerView
+            ? <NotesPanel key={selectedAssignment.customerRecordId} customerId={selectedAssignment.customerRecordId} />
+            : isNotificationsView
+              ? (
+                <Placeholder
+                  title="Notifications"
+                  description="Review alerts, workflow updates, and queue notices alongside the current conversation."
+                  icon={Bell}
+                />
+              )
+              : <DeskDataTable />}
     </div>
   );
 }

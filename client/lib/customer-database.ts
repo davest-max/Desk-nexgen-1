@@ -197,6 +197,36 @@ export type CustomerSeedRecord = {
    * The modal reads these so content is data-driven rather than hard-coded.
    */
   escalationResponses?: string[];
+  /** Quick-read customer personality / behavior bullets shown in the Customer Snapshot card. */
+  customerSnapshot?: string[];
+  /**
+   * Optional resolve-flow configuration for customers with scripted resolution workflows.
+   * The conversation panel reads this to render the "Suggested Next Step" box.
+   */
+  resolveFlow?: {
+    /** Type: "supervisor" for single-action resolve, "options" for multi-option resolve */
+    type: "supervisor" | "options";
+    /** Steps shown during the animated progress indicator */
+    steps: string[];
+    /** For "supervisor" type: supervisor name to assign to */
+    supervisorName?: string;
+    /** For "options" type: label for each option (keyed 1, 2, 3) */
+    optionLabels?: Record<number, string>;
+    /** For "options" type: suggested reply variants per option */
+    replyVariants?: Record<number, { summary: string; suggestedReply: string }[]>;
+    /** For "options" type: the internal note template. Use {option} and {goodwill} placeholders */
+    noteTemplate?: string;
+    /** For "options" type: goodwill note text when discount applied */
+    goodwillNote?: string;
+    /** For "options" type: goodwill line appended to suggested replies */
+    goodwillReplyLine?: string;
+  };
+  /** Fallback copilot analysis text shown when the AI copilot panel first loads for this customer. */
+  copilotFallbackResponse?: string;
+  /** When true, the takeover flow won't inject a duplicate transfer message (seed data already has one). */
+  seedHasTransferMessage?: boolean;
+  /** Pre-populated reply draft shown in the conversation input when the agent takes over this customer. */
+  takeoverDraft?: string;
 };
 
 export const customerDatabase: CustomerSeedRecord[] = [
@@ -467,6 +497,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "5-year Premier customer with $1.2M+ in AUM",
+      "Business Banking client managing cash flow across 3 accounts",
+      "1 prior dispute; security-conscious with billing verification",
+      "Technologically literate, proactive problem-solver",
+      "Time-sensitive — often needs quick resolutions for client meetings",
+    ],
   },
   {
     id: "sarah",
@@ -732,6 +769,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "6-year Premier client with $892K investment portfolio",
+      "Sophisticated investor interested in tax optimization strategies",
+      "Zero prior disputes — excellent account standing",
+      "High financial literacy with strong advisor relationship",
+      "Uses voice biometrics; values privacy and quick service",
+    ],
   },
   {
     id: "emily",
@@ -961,6 +1005,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
       { id: "emily-h5", title: "Promotion code issue — checkout blocked", timestamp: "Jan 2025", detail: "A campaign validation rule incorrectly excluded one item in Emily's cart, causing the promo code to fail. Rule corrected by support.", dot: "orange" },
       { id: "emily-h6", title: "Advisor relationship — Marcus Lee assigned", timestamp: "Mar 2026", detail: "Emily was paired with Marcus Lee as her dedicated Retail Banking Advisor following the bank's advisory tier restructure.", dot: "purple" },
     ],
+    customerSnapshot: [
+      "2-year customer with modest personal checking account",
+      "Occasional user with straightforward banking needs",
+      "No prior disputes; low fraud risk profile",
+      "Prefers email communication; rarely escalates issues",
+      "Stable account history with consistent deposits",
+    ],
   },
   {
     id: "david",
@@ -1189,6 +1240,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
       { id: "david-h4", title: "Plan upgrade — subscription change attempt", timestamp: "Feb 2025", detail: "David attempted a subscription tier upgrade but the system generated a duplicate authorization hold. Agent cleared the hold and completed the upgrade.", dot: "orange" },
       { id: "david-h5", title: "High Net Worth Advisor assigned — Alex Bogush", timestamp: "Jul 2025", detail: "Following portfolio growth past $3M AUM, David was assigned to Alex Bogush for dedicated high net worth advisory services.", dot: "purple" },
       { id: "david-h6", title: "Annual account review completed", timestamp: "Feb 2026", detail: "Year-end review confirmed all credit facilities in good standing and AUM at $3.19M. No flags or compliance issues noted.", dot: "green" },
+    ],
+    customerSnapshot: [
+      "3-year personal banking customer on standard plan",
+      "Dual accounts (checking + savings); typical monthly activity",
+      "1 prior dispute resolved amicably",
+      "Moderate tech comfort; prefers phone support",
+      "Consistent payer; no risk indicators",
     ],
   },
   {
@@ -1455,6 +1513,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "4-year Premier customer with $650K in managed wealth",
+      "Wealth Management client seeking portfolio diversification",
+      "Zero disputes; strong credit standing",
+      "High financial readiness; actively engaged with advisor",
+      "Interested in long-term planning and tax strategies",
+    ],
   },
   {
     id: "miguel",
@@ -1683,6 +1748,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
       { id: "miguel-h4", title: "Fraud risk flag raised", timestamp: "Jan 2025", detail: "Two consecutive chargebacks within 90 days triggered an elevated fraud risk score. Account flagged for manual review.", dot: "red" },
       { id: "miguel-h5", title: "Refund dispute — third-party vendor", timestamp: "Feb 2026", detail: "Miguel reported a $149 charge from a vendor he claimed to have no relationship with. Investigation ongoing.", dot: "red" },
       { id: "miguel-h6", title: "Manual review completed — account retained", timestamp: "Mar 2026", detail: "Compliance review confirmed no fraudulent account behaviour. Risk score recalculated and account status maintained.", dot: "gray" },
+    ],
+    customerSnapshot: [
+      "2-year Business Banking customer with active operations",
+      "Small business owner managing multiple revenue streams",
+      "1 prior dispute related to deposit timing",
+      "Growing account balance; upward trajectory",
+      "Values hands-on support and clear explanations",
     ],
   },
   {
@@ -1913,6 +1985,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
       { id: "olivia-h5", title: "Portfolio rebalance — advisor review", timestamp: "Jan 2026", detail: "Olivia's portfolio was reviewed and rebalanced following a risk tolerance reassessment. Equity allocation reduced by 8%.", dot: "purple" },
       { id: "olivia-h6", title: "Shipping issue — order fulfilment", timestamp: "Mar 2026", detail: "Olivia reported a delayed order with an address validation error flagged by the carrier. Support investigating redelivery options.", dot: "orange" },
     ],
+    customerSnapshot: [
+      "5-year customer with diversified account mix",
+      "Manages personal and investment portfolios independently",
+      "No prior disputes; excellent payment history",
+      "Technically savvy; comfortable with digital-first banking",
+      "Prefers self-service tools with live chat backup",
+    ],
   },
   {
     id: "jamal",
@@ -2141,6 +2220,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
       { id: "jamal-h4", title: "Wire transfer delay — international beneficiary", timestamp: "Sep 2024", detail: "A $75,000 outbound wire to an overseas supplier was held for correspondent bank review. Released after 48 hours.", dot: "orange" },
       { id: "jamal-h5", title: "Document sync conflict reported", timestamp: "Feb 2026", detail: "Jamal reported an edit conflict in a shared workspace document after a version rollback. Agent reviewing sync queue.", dot: "orange" },
       { id: "jamal-h6", title: "Annual credit review — facilities renewed", timestamp: "Mar 2026", detail: "All credit lines and facilities reviewed. AUM at $2.74M. No compliance issues noted. Advisor relationship confirmed.", dot: "green" },
+    ],
+    customerSnapshot: [
+      "3-year customer in good standing",
+      "Balanced checking and savings user",
+      "No prior disputes or risk flags",
+      "Moderate engagement; prefers straightforward transactions",
+      "Responsive to communication; easy to work with",
     ],
   },
   {
@@ -2371,6 +2457,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
       { id: "hannah-h5", title: "Invoice discrepancy reported", timestamp: "Jan 2026", detail: "Hannah flagged a billing mismatch on her account statement. Agent identified a duplicate line item and initiated a correction.", dot: "orange" },
       { id: "hannah-h6", title: "Corrected invoice confirmed", timestamp: "Mar 2026", detail: "Corrected invoice was issued and Hannah confirmed receipt. Case closed with no outstanding balance discrepancy.", dot: "green" },
     ],
+    customerSnapshot: [
+      "2-year newer customer building banking relationship",
+      "Single account user with growing balance",
+      "Zero disputes; clean transaction history",
+      "Learning-oriented; appreciates educational resources",
+      "Reliable communicator; quick to respond to outreach",
+    ],
   },
   {
     id: "noah",
@@ -2599,6 +2692,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
       { id: "noah-h4", title: "Report export failure — timeout", timestamp: "Nov 2025", detail: "Noah reported that a large portfolio export was timing out before completion. Queue configuration adjusted to increase limits.", dot: "orange" },
       { id: "noah-h5", title: "Portfolio milestone — $5M AUM", timestamp: "Jan 2026", detail: "Portfolio reached $5.83M AUM. Advisor reviewed allocation and confirmed strategy alignment. No changes required.", dot: "green" },
       { id: "noah-h6", title: "Export queue issue — recurring", timestamp: "Mar 2026", detail: "Noah opened a second report timeout case. Agent investigating whether a scoped export can be delivered sooner.", dot: "orange" },
+    ],
+    customerSnapshot: [
+      "6-year loyal customer with established patterns",
+      "Multiple accounts; consistent monthly activity",
+      "No prior disputes or security concerns",
+      "Prefers routine interactions; low maintenance",
+      "Values reliability and predictability in service",
     ],
   },
   {
@@ -2829,6 +2929,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
       { id: "lauren-h5", title: "Workspace permission issue", timestamp: "Jan 2026", detail: "Lauren reported that a team member could not access a shared workspace. Role permission gap identified and resolved.", dot: "orange" },
       { id: "lauren-h6", title: "Seat-purchase approval pending", timestamp: "Mar 2026", detail: "Lauren requested additional workspace seats for her growing team. Approval routing under review by account owner.", dot: "gray" },
     ],
+    customerSnapshot: [
+      "4-year customer with $400K+ in accounts",
+      "Investment-focused; interested in growth strategies",
+      "Zero disputes; strong advisor relationship",
+      "Financially literate; reads all account statements",
+      "Proactive about reviewing and optimizing accounts",
+    ],
   },
   {
     id: "ethan",
@@ -3057,6 +3164,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
       { id: "ethan-h4", title: "API rate-limit incident", timestamp: "Jun 2024", detail: "Ethan's integration hit repeated rate-limit errors during a high-volume batch job. Queue retry cadence adjusted to resolve.", dot: "orange" },
       { id: "ethan-h5", title: "Fraud risk score elevated", timestamp: "Oct 2024", detail: "Irregular API activity pattern triggered an elevated fraud risk score. Manual review confirmed legitimate automated traffic.", dot: "red" },
       { id: "ethan-h6", title: "Integration backlog — rate-limit recurrence", timestamp: "Mar 2026", detail: "Ethan reported a repeat rate-limit backlog on his integration. Agent reviewing queued retries and proposing a permanent fix.", dot: "orange" },
+    ],
+    customerSnapshot: [
+      "3-year customer with active trading activity",
+      "Frequent portfolio adjustments and rebalancing",
+      "No prior disputes; moderate fraud risk score",
+      "Very tech-savvy; uses mobile app daily",
+      "Self-directed investor; minimal advisor interaction",
     ],
   },
   {
@@ -3313,6 +3427,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "5-year customer with $800K+ portfolio",
+      "Business and personal banking combined",
+      "Zero prior disputes; Premier tier member",
+      "Strategic thinker; prefers quarterly business reviews",
+      "Delegated account access to business partner",
+    ],
   },
   {
     id: "sofia",
@@ -3758,6 +3879,23 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    resolveFlow: {
+      type: "supervisor",
+      steps: [
+        "Updating case status to resolved",
+        "Assigning to supervisor queue",
+        "Notifying supervisor — Rachel Kim",
+        "Removing from your active cases",
+      ],
+      supervisorName: "Rachel Kim",
+    },
+    customerSnapshot: [
+      "2-year customer with focused investment goals",
+      "Primary account shows rapid growth",
+      "No disputes; low risk profile",
+      "Motivated by long-term wealth building",
+      "Attends all advisor consultations; engaged participant",
+    ],
   },
   {
     id: "jordan",
@@ -4435,6 +4573,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "2-year residential customer on Fiber 500 plan",
+      "Technically savvy; comfortable with firmware and port forwarding",
+      "No prior support tickets; first contact with support",
+      "Single-product household, loyal but low-touch",
+      "Proactive about maintaining own equipment",
+    ],
   },
   {
     id: "marcus",
@@ -4915,6 +5060,76 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    resolveFlow: {
+      type: "options",
+      steps: [
+        "Confirming resolution with carrier",
+        "Applying goodwill discount code (20% off)",
+        "Updating default shipping address to Austin",
+        "Sending confirmation to Marcus",
+      ],
+      optionLabels: {
+        1: "Reship overnight to Austin address (2847 Ridgewood Ave)",
+        2: "Issue full refund — let Marcus reorder at his convenience",
+        3: "Attempt carrier intercept to redirect Denver package",
+      },
+      noteTemplate: "[Internal Note] Resolution actioned for order #WB-88214: {option}.{goodwill}",
+      goodwillNote: " Goodwill discount code CARE20 (20%) applied to account.",
+      goodwillReplyLine: " I've also applied a 20% discount code (CARE20) to your account as a goodwill gesture.",
+      replyVariants: {
+        1: [
+          {
+            summary: "Confirm the overnight reship to the correct Austin address and set delivery expectation.",
+            suggestedReply: "Great news, Marcus — I've arranged an overnight reship of order #WB-88214 to your Austin address at 2847 Ridgewood Ave. You should receive it by tomorrow.{goodwill}",
+          },
+          {
+            summary: "Acknowledge the shipping error, confirm the reship, and reassure the customer.",
+            suggestedReply: "I'm sorry for the mix-up on the address, Marcus. I've gone ahead and set up an overnight reship to 2847 Ridgewood Ave, Austin — you'll have it by tomorrow.{goodwill}",
+          },
+          {
+            summary: "Lead with the resolution and confirm the corrected delivery timeline.",
+            suggestedReply: "Your replacement shipment is on its way to the right address, Marcus. I've arranged overnight delivery to 2847 Ridgewood Ave, Austin, so you should have it by tomorrow.{goodwill}",
+          },
+        ],
+        2: [
+          {
+            summary: "Confirm the full refund has been processed and give the expected timeline.",
+            suggestedReply: "Marcus, I've processed a full refund for order #WB-88214. You should see it back in your account within 3–5 business days.{goodwill}",
+          },
+          {
+            summary: "Apologise for the inconvenience, confirm the refund, and offer to help reorder.",
+            suggestedReply: "I'm sorry for the trouble with this order, Marcus. I've issued a full refund for #WB-88214 — it will appear within 3–5 business days. Feel free to reorder whenever you're ready.{goodwill}",
+          },
+          {
+            summary: "Lead with the refund confirmation and set clear expectations on timing.",
+            suggestedReply: "Your full refund for order #WB-88214 has been issued, Marcus. Expect it to hit your account within 3–5 business days.{goodwill}",
+          },
+        ],
+        3: [
+          {
+            summary: "Confirm the carrier intercept request has been submitted and set timeline expectations.",
+            suggestedReply: "I've submitted a carrier intercept request to redirect your package to 2847 Ridgewood Ave, Austin. These typically take 24–48 hours to confirm — I'll keep you updated as soon as I hear back.",
+          },
+          {
+            summary: "Reassure the customer the intercept is in motion and commit to a follow-up.",
+            suggestedReply: "Good news — I've initiated a carrier intercept to redirect your order to the correct Austin address. It usually takes 24–48 hours to confirm, and I'll follow up the moment I have an update.",
+          },
+          {
+            summary: "Acknowledge the error, confirm the intercept action, and set realistic expectations.",
+            suggestedReply: "I'm on it, Marcus. I've contacted the carrier to intercept the package and redirect it to 2847 Ridgewood Ave, Austin. I'll reach out within 24–48 hours to confirm the outcome.",
+          },
+        ],
+      },
+    },
+    seedHasTransferMessage: true,
+    takeoverDraft: "Hi Marcus, this is Jeff. I've reviewed everything and I want to help you fix this. I can see the party is Saturday — let's make sure your dad gets his gift in time.",
+    customerSnapshot: [
+      "7-year customer with $1.5M+ in combined accounts",
+      "Premier Business Banking client with high activity",
+      "1 prior dispute quickly resolved",
+      "Sophisticated in financial decisions; strategic planner",
+      "Values executive-level service and white-glove support",
+    ],
   },
   {
     id: "maria_chen",
@@ -5118,6 +5333,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "4-year customer building investment portfolio",
+      "Balance-conscious with moderate risk tolerance",
+      "No prior disputes; steady account growth",
+      "Culturally diverse perspective; multilingual communications",
+      "Family-oriented; includes spouse in discussions",
+    ],
   },
   {
     id: "james_whitfield",
@@ -5321,6 +5543,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "6-year established customer in good standing",
+      "Multiple account types; real estate investment focus",
+      "Zero disputes; strong payment history",
+      "Conservative investor; prefers low-volatility options",
+      "Quarterly advisor check-ins; long-term relationship",
+    ],
   },
   {
     id: "priya_sharma",
@@ -5524,6 +5753,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "3-year customer with specialized investment needs",
+      "Portfolio includes both US and international holdings",
+      "No disputes; excellent credit standing",
+      "Highly educated with strong financial literacy",
+      "Global perspective; interested in currency hedging",
+    ],
   },
   {
     id: "robert_okafor",
@@ -5727,6 +5963,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "5-year customer with $700K in combined accounts",
+      "Business owner with business and personal banking",
+      "1 prior dispute related to business payment processing",
+      "Detail-oriented; meticulous record keeper",
+      "Prefers documentation; wants full audit trails",
+    ],
   },
   {
     id: "lisa_montenegro",
@@ -5930,6 +6173,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "4-year customer with modest personal accounts",
+      "Consistent saver; interested in retirement planning",
+      "No prior disputes; stable income",
+      "Participates in financial literacy workshops",
+      "Warm personality; appreciates personalized service",
+    ],
   },
   {
     id: "kevin_tran",
@@ -6133,6 +6383,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "2-year newer customer with growth trajectory",
+      "Tech startup founder; accelerating account activity",
+      "Zero disputes; clean background check",
+      "Very digitally native; expects seamless integrations",
+      "Fast-paced communication style; values brevity",
+    ],
   },
   {
     id: "angela_russo",
@@ -6336,6 +6593,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "8-year long-term customer with $900K+ AUM",
+      "Business Banking advisor relationship",
+      "Zero prior disputes; exemplary account standing",
+      "Detail-focused; reviews statements thoroughly",
+      "Refers other business owners; advocates for bank",
+    ],
   },
   {
     id: "marcus_bell",
@@ -6539,6 +6803,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "3-year customer with moderately sized portfolio",
+      "Mixed account usage; balanced savings approach",
+      "No disputes; good standing",
+      "Steady contributor; disciplined about budgeting",
+      "Appreciates transparent fee structures and reporting",
+    ],
   },
   {
     id: "sandra_yip",
@@ -6742,6 +7013,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "5-year customer with $650K in managed assets",
+      "Primary focus on retirement and college savings",
+      "Zero disputes; trusted customer",
+      "Values expert guidance; relies on advisor recommendations",
+      "Family-first approach; long-term planning focus",
+    ],
   },
   {
     id: "derek_owens",
@@ -6945,6 +7223,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "4-year customer with business account emphasis",
+      "Small contracting business; irregular monthly patterns",
+      "1 prior dispute about business tax deposit timing",
+      "Hands-on business owner; stays very engaged",
+      "Prefers talking directly to decision makers",
+    ],
   },
   {
     id: "tom_hargrove",
@@ -7148,6 +7433,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "7-year veteran customer with $1.2M+ portfolio",
+      "Business Banking Premier tier member",
+      "Zero prior disputes; stellar relationship",
+      "Executive-level account management required",
+      "Strategic business advisor; values partnership approach",
+    ],
   },
   {
     id: "nadia_petrov",
@@ -7351,6 +7643,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "3-year customer with solid account growth",
+      "Balanced personal and investment portfolio mix",
+      "No disputes; reliable payment history",
+      "European background; multilingual capabilities helpful",
+      "Thorough planner; prefers detailed written summaries",
+    ],
   },
   {
     id: "carlos_mendez",
@@ -7554,6 +7853,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "2-year customer with $450K in accounts",
+      "Real estate investor and business owner",
+      "Zero disputes; strong financial discipline",
+      "Bilingual Spanish/English; community advocate",
+      "Wants transparent rates and fee schedules",
+    ],
   },
   {
     id: "ingrid_holmberg",
@@ -7757,6 +8063,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "6-year customer with $850K+ portfolio",
+      "Nordic background; values efficiency and clarity",
+      "No prior disputes; excellent standing",
+      "Preference for email communication over phone",
+      "Expects correct information first time every time",
+    ],
   },
   {
     id: "yuki_tanaka",
@@ -7960,6 +8273,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "4-year customer with international focus",
+      "Manages cross-border payments and holdings",
+      "Zero disputes; compliance-aware mindset",
+      "Appreciates cultural sensitivity in communications",
+      "Interested in ESG investment options",
+    ],
   },
   {
     id: "amara_osei",
@@ -8163,6 +8483,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "3-year customer with $500K in combined accounts",
+      "Personal banking and small investment portfolio",
+      "No prior disputes; building credit history",
+      "First-generation investor; education-focused",
+      "Wants clear explanations and learning resources",
+    ],
   },
   {
     id: "patrick_obrien",
@@ -8366,6 +8693,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "5-year customer with business banking focus",
+      "Runs mid-sized professional services firm",
+      "1 prior dispute resolved cooperatively",
+      "Irish background; warm interpersonal style",
+      "Values relationship banking and personal touch",
+    ],
   },
   {
     id: "chloe_beaumont",
@@ -8569,6 +8903,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "2-year customer with $320K in accounts",
+      "Younger demographic; digital-first preferences",
+      "No disputes; clean background",
+      "Social media-savvy; shares positive experiences",
+      "Expects 24/7 digital support availability",
+    ],
   },
   {
     id: "rajiv_menon",
@@ -8772,6 +9113,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "4-year customer with $700K+ portfolio",
+      "IT professional; very tech-competent",
+      "Zero disputes; excellent credit score",
+      "Prefers data-driven presentations and analytics",
+      "May use API integrations; wants developer support",
+    ],
   },
   {
     id: "sophie_hartmann",
@@ -8975,6 +9323,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "6-year customer with $950K in managed wealth",
+      "French heritage; multilingual communication benefit",
+      "No prior disputes; stable long-term client",
+      "Sophisticated in financial matters",
+      "Prefers quarterly business reviews with advisor",
+    ],
   },
   {
     id: "terrence_vance",
@@ -9178,6 +9533,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "5-year customer with $800K+ in accounts",
+      "Business owner with complex financial structure",
+      "Zero disputes; trusted partnership with advisor",
+      "Values proactive recommendations and planning",
+      "Expects white-glove service and attention",
+    ],
   },
   {
     id: "isabella_moreno",
@@ -9381,6 +9743,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "3-year customer with $480K portfolio",
+      "Healthcare professional; W2 income stability",
+      "No prior disputes; consistent saver",
+      "Values work-life balance; prefers brief interactions",
+      "Interested in simplified investment options",
+    ],
   },
   {
     id: "david_park",
@@ -9584,6 +9953,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "4-year customer with $620K in accounts",
+      "Corporate executive; senior management level",
+      "Zero disputes; high net worth individual",
+      "Expects executive-grade service and responsiveness",
+      "Values strategic tax planning guidance",
+    ],
   },
   {
     id: "aaliya_nasser",
@@ -9787,6 +10163,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "2-year customer with $350K starting portfolio",
+      "International background; building US investments",
+      "No prior disputes; security-conscious",
+      "Bilingual English/Arabic; appreciates cultural awareness",
+      "Education-focused about investment options",
+    ],
   },
   {
     id: "finn_johansson",
@@ -9990,6 +10373,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "5-year customer with $750K+ in holdings",
+      "Scandinavian background; minimalist preferences",
+      "Zero disputes; straightforward dealings",
+      "Values simplicity and clear communication",
+      "Prefers email; dislikes excessive contact",
+    ],
   },
   {
     id: "grace_kim",
@@ -10193,6 +10583,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "3-year customer with $500K portfolio",
+      "Tech industry professional; analytical mindset",
+      "No prior disputes; high financial literacy",
+      "Wants automation and self-service optimization",
+      "Reviews account quarterly for rebalancing",
+    ],
   },
   {
     id: "liam_foster",
@@ -10396,6 +10793,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "6-year customer with $1M+ in combined accounts",
+      "Business Banking Premier customer",
+      "Zero prior disputes; exemplary standing",
+      "Irish-American; strong community ties",
+      "Generous with referrals; brand advocate",
+    ],
   },
   {
     id: "nadia_volkov",
@@ -10599,6 +11003,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "4-year customer with $650K portfolio",
+      "Russian heritage; analytical and detailed approach",
+      "No disputes; excellent payment discipline",
+      "Prefers comprehensive documentation always",
+      "Values expertise and direct communication style",
+    ],
   },
   {
     id: "ethan_blake",
@@ -10802,6 +11213,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "3-year customer with growing portfolio",
+      "Young professional; millennial generation",
+      "Zero disputes; digitally native",
+      "Expects mobile-first and app-based interactions",
+      "Sustainability and social impact matter",
+    ],
   },
   {
     id: "mei_lin",
@@ -11005,6 +11423,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "5-year customer with $800K+ in accounts",
+      "Chinese-American background; family-focused",
+      "No prior disputes; traditional values",
+      "Appreciates long-term relationship building",
+      "Wants multi-generational wealth planning",
+    ],
   },
   {
     id: "oliver_svensson",
@@ -11208,6 +11633,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "7-year customer with $1.1M+ portfolio",
+      "Business Banking Premier tier customer",
+      "Zero disputes; prestigious client",
+      "Swedish heritage; efficiency-oriented",
+      "Expects top-tier service and expertise",
+    ],
   },
   {
     id: "priscilla_nakamura",
@@ -11411,6 +11843,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "4-year customer with $600K in holdings",
+      "Japanese-American; cultural awareness appreciated",
+      "No prior disputes; reliable payer",
+      "Prefers harmony in relationships",
+      "Interested in ESG and ethical investing",
+    ],
   },
   {
     id: "hugo_fernandez",
@@ -11614,6 +12053,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "2-year customer with $420K starting portfolio",
+      "Spanish business owner; bilingual communication",
+      "Zero disputes; strong work ethic evident",
+      "Growing business; account activity increasing",
+      "Values personal relationships and handshake deals",
+    ],
   },
   {
     id: "thandi_mokoena",
@@ -11817,6 +12263,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "3-year customer with $480K in accounts",
+      "South African background; international perspective",
+      "No prior disputes; excellent standing",
+      "Appreciates diversity and inclusion efforts",
+      "Interested in sustainable investment options",
+    ],
   },
   {
     id: "jerome_dupont",
@@ -12020,6 +12473,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "6-year customer with $900K+ portfolio",
+      "French background; sophisticated investor",
+      "Zero disputes; excellent credit standing",
+      "Values expertise and intellectual engagement",
+      "Wants detailed analysis with each recommendation",
+    ],
   },
   {
     id: "vera_sokolova",
@@ -12223,6 +12683,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "5-year customer with $750K in holdings",
+      "Russian-American; detail-oriented professional",
+      "No prior disputes; meticulous record keeper",
+      "Prefers comprehensive documentation always",
+      "Values stability and long-term relationships",
+    ],
   },
   {
     id: "nathan_kowalski",
@@ -12426,6 +12893,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "4-year customer with $580K portfolio",
+      "Polish-American background; family values",
+      "Zero disputes; steady account growth",
+      "Prefers conservative investment approach",
+      "Appreciates personalized service and attention",
+    ],
   },
   {
     id: "aisha_kamara",
@@ -12629,6 +13103,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "2-year customer with $350K in accounts",
+      "West African heritage; entrepreneurial spirit",
+      "No prior disputes; strong financial discipline",
+      "Building family wealth; multi-generational focus",
+      "Values financial education and empowerment",
+    ],
   },
   {
     id: "sarah_collins",
@@ -12832,6 +13313,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "7-year veteran customer with $1M+ portfolio",
+      "Business Banking Premier relationship",
+      "Zero prior disputes; exemplary standing",
+      "Expects executive-level service and access",
+      "Strategic advisor; long-term partnership",
+    ],
   },
   {
     id: "james_okafor",
@@ -13035,6 +13523,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "4-year customer with $620K in accounts",
+      "Nigerian-American; diverse portfolio holdings",
+      "No prior disputes; excellent standing",
+      "Family-oriented; includes children in planning",
+      "Interested in education savings and legacy planning",
+    ],
   },
   {
     id: "priya_nair",
@@ -13238,6 +13733,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "3-year customer with $500K portfolio",
+      "Indian-American; strong financial discipline",
+      "Zero disputes; high credit score",
+      "Technology-comfortable; uses all digital tools",
+      "Values wealth preservation and steady growth",
+    ],
   },
   {
     id: "marcus_webb_2",
@@ -13441,6 +13943,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "7-year customer with $1.79M+ in combined accounts",
+      "Technology Accounts Premier customer with business focus",
+      "Zero prior disputes; low-to-moderate fraud risk",
+      "Experiences critical operational emergencies; time-sensitive",
+      "Technical background; appreciates quick decisive action",
+    ],
   },
   {
     id: "lena_fischer",
@@ -13644,6 +14153,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "5-year customer with $800K+ in holdings",
+      "German background; precision and accuracy required",
+      "No prior disputes; meticulous account management",
+      "Expects perfection in all interactions",
+      "Detailed record-keeper; wants full transparency",
+    ],
   },
   {
     id: "david_mensah",
@@ -13847,6 +14363,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "3-year customer with $480K portfolio",
+      "Ghanaian heritage; building American wealth",
+      "Zero disputes; reliable payer",
+      "Community-minded; gives back regularly",
+      "Values personal connections and trust",
+    ],
   },
   {
     id: "amara_diallo",
@@ -14050,6 +14573,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "2-year customer with $380K in accounts",
+      "Senegalese background; growing account activity",
+      "No prior disputes; strong financial ethics",
+      "Appreciates cultural competence in service",
+      "Interested in community investment opportunities",
+    ],
   },
   {
     id: "raj_patel",
@@ -14253,6 +14783,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
         ],
       },
     },
+    customerSnapshot: [
+      "6-year customer with $950K+ portfolio",
+      "Indian-American business owner; complex finances",
+      "1 prior dispute resolved positively",
+      "Highly analytical; expects data-backed recommendations",
+      "Values long-term advisor relationships",
+    ],
   },
   {
     id: "terry",
@@ -14354,6 +14891,13 @@ export const customerDatabase: CustomerSeedRecord[] = [
       whatsapp: { label: "WhatsApp", timelineLabel: "WhatsApp · New conversation", draft: "", messages: [] },
       email: { label: "Email", timelineLabel: "Email · New conversation", draft: "", messages: [] },
     },
+    customerSnapshot: [
+      "4-year customer with $640K in combined accounts",
+      "Independent professional; diverse income sources",
+      "Zero disputes; excellent standing",
+      "Values transparency and straightforward dealings",
+      "Appreciates efficient service without extra steps",
+    ],
   },
 ];
 

@@ -1039,6 +1039,7 @@ export default function ConversationPanel({
             </div>
           )}
           <div className={cn("flex-1 min-h-0 overflow-hidden", isVoiceChannel && voiceRightPanel ? "flex" : "flex flex-col")}>
+
           <div ref={scrollAreaRef} className="flex-1 min-h-0 overflow-y-auto py-6" style={{ paddingBottom: isPendingAcceptance ? 0 : inlineFooter ? 16 : 120, ...(scrollTopPadding ? { paddingTop: scrollTopPadding } : {}) }}>
             <div className={cn("space-y-6 px-6", isWidePanel ? "m-8 mx-auto max-w-[800px]" : "m-8")}>
             <div className="text-left">
@@ -1155,23 +1156,23 @@ export default function ConversationPanel({
             ) : (
               <>
                 {/* Conversation Started — AI handoff context */}
-                <div className="py-3">
-                  <div className="mb-0.5 flex items-baseline gap-2">
-                    <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#98A2B3]">Conversation Started</span>
-                    <span className="text-[10px] text-[#98A2B3]">
-                      {conversation.messages[0] ? `Today, ${conversation.messages[0].time.replace(/\s/g, "")}` : ""} | {getConversationChannelLabel(activeChannel)}
-                    </span>
+                  <div className="py-3">
+                    <div className="mb-0.5 flex items-baseline gap-2">
+                      <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#98A2B3]">Conversation Started</span>
+                      <span className="text-[10px] text-[#98A2B3]">
+                        {conversation.messages[0] ? `Today, ${conversation.messages[0].time.replace(/\s/g, "")}` : ""} | {getConversationChannelLabel(activeChannel)}
+                      </span>
+                    </div>
+                    <p className="text-sm leading-6 text-[#98A2B3]">
+                      {customerFirstName} was assisted by the AI attendant and requested to speak with a live agent.
+                    </p>
                   </div>
-                  <p className="text-sm leading-6 text-[#98A2B3]">
-                    {customerFirstName} was assisted by the AI attendant and requested to speak with a live agent.
-                  </p>
-                </div>
 
                 {conversation.messages.filter((message) =>
-                  // In review mode: hide handoff cards/messages but keep isInternal action notes
-                  // (those are injected by the agent during supervise and must be visible)
-                  isPendingAcceptance ? !(message.isHandoffCard || message.isHandoffMessage) : true
-                ).map((message) => {
+                    // In review mode: hide handoff cards/messages but keep isInternal action notes
+                    // (those are injected by the agent during supervise and must be visible)
+                    isPendingAcceptance ? !(message.isHandoffCard || message.isHandoffMessage) : true
+                  ).map((message) => {
                   const isNewMessage = !seenMessageIdsRef.current.has(message.id);
                   if (isNewMessage) seenMessageIdsRef.current.add(message.id);
                   const appliedTags = messageTags[message.id] ?? [];
