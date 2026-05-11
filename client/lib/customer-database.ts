@@ -4475,7 +4475,7 @@ export const customerDatabase: CustomerSeedRecord[] = [
             id: 6,
             role: "agent",
             author: "Aria",
-            content: "Flagging for human agent now. Context: Jordan is mid-reset on CloudMesh Pro v3 (firmware 4.0.8) and needs confirmation that port forwarding rules survive a factory reset before proceeding. Customer is anxious about losing home office configuration. Confirm: port forwarding configs are backed up automatically on this firmware and will be fully restored after reset.",
+            content: "Jordan is mid-reset on CloudMesh Pro v3 (firmware 4.0.8) and needs confirmation that port forwarding rules survive a factory reset before proceeding. Customer is anxious about losing home office configuration. Confirm: port forwarding configs are backed up automatically on this firmware and will be fully restored after reset.\n\nCustomer Snapshot:\n• 2-year residential customer on Fiber 500 plan\n• Technically savvy; comfortable with firmware and port forwarding\n• No prior support tickets; first contact with support\n• Single-product household, loyal but low-touch\n• Proactive about maintaining own equipment",
             time: "9:44 AM",
             isInternal: true,
             isHandoffCard: true,

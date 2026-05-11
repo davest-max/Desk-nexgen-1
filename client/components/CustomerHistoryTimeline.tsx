@@ -471,13 +471,31 @@ const renderInteractionContent = (interaction: CustomerHistoryInteraction, custo
 
 export default function CustomerHistoryTimeline({
   historyItems,
+  selectedHistoryItemId: controlledSelectedId,
+  onSelectedHistoryItemIdChange,
+  viewingInteraction: controlledViewingInteraction,
+  onViewingInteractionChange,
 }: {
   historyItems: CustomerHistoryItem[];
+  /** When provided, the component runs in controlled mode — selection state lives in the parent. */
+  selectedHistoryItemId?: string | null;
+  onSelectedHistoryItemIdChange?: (id: string | null) => void;
+  viewingInteraction?: boolean;
+  onViewingInteractionChange?: (viewing: boolean) => void;
 }) {
-  const [selectedHistoryItemId, setSelectedHistoryItemId] = useState<
-    string | null
-  >(null);
-  const [viewingInteraction, setViewingInteraction] = useState(false);
+  // Uncontrolled (local) state — used only when the parent doesn't supply controlled props.
+  const [localSelectedId, setLocalSelectedId] = useState<string | null>(null);
+  const [localViewingInteraction, setLocalViewingInteraction] = useState(false);
+
+  const isControlled = controlledSelectedId !== undefined;
+  const selectedHistoryItemId = isControlled ? controlledSelectedId : localSelectedId;
+  const setSelectedHistoryItemId = isControlled
+    ? (id: string | null) => onSelectedHistoryItemIdChange?.(id)
+    : setLocalSelectedId;
+  const viewingInteraction = isControlled ? (controlledViewingInteraction ?? false) : localViewingInteraction;
+  const setViewingInteraction = isControlled
+    ? (v: boolean) => onViewingInteractionChange?.(v)
+    : setLocalViewingInteraction;
 
   const selectedHistoryItem =
     historyItems.find((h) => h.id === selectedHistoryItemId) ?? null;

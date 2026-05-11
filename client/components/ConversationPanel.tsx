@@ -89,6 +89,8 @@ interface ConversationPanelProps {
   scrollToBottomTrigger?: number;
   /** When true, hides the AI-generated "Suggested Next Steps" task list entirely. */
   suppressAgentTasks?: boolean;
+  /** Called when the agent clicks "Suggest Next Steps" so the parent can reveal deferred content (e.g. resolve boxes). */
+  onNextStepsRequested?: () => void;
   /** When set, overrides/injects a suggested reply into the AI suggestion panel (used for custom post-action responses). */
   forcedSuggestedReply?: string | null;
   /** When set, replaces the auto-generated suggestion carousel variants with these custom cards. */
@@ -120,6 +122,9 @@ interface ConversationPanelProps {
   onAiActionClick?: (actionId: string) => void;
 }
 
+// Persists the selected event-detail note across channel/tab switches so the
+// slide-out panel stays open when the agent navigates away and comes back.
+const selectedNoteByDraftKey = new Map<string, number>();
 
 export default function ConversationPanel({
   conversation,
@@ -143,6 +148,7 @@ export default function ConversationPanel({
   appendContent,
   scrollToBottomTrigger,
   suppressAgentTasks = false,
+  onNextStepsRequested,
   forcedSuggestedReply,
   forcedSuggestionVariants,
   scrollTopPadding = 0,
@@ -185,6 +191,7 @@ export default function ConversationPanel({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const conversationColRef = useRef<HTMLDivElement>(null);
   const footerRef = useRef<HTMLDivElement>(null);
   const narrowOverlayRef = useRef<HTMLDivElement>(null);
   const narrowAiScrollRef = useRef<HTMLDivElement>(null);
@@ -222,8 +229,24 @@ export default function ConversationPanel({
   const [suggestionPage, setSuggestionPage] = useState(0);
   const [suggestionPageDir, setSuggestionPageDir] = useState<"next" | "prev">("next");
   const [openedTicketId, setOpenedTicketId] = useState<string | null>(null);
-  const [expandedNoteIds, setExpandedNoteIds] = useState<Set<number>>(new Set());
+  const [expandedNoteIds, setExpandedNoteIds] = useState<Set<number>>(
+    () => new Set(conversation.messages.filter((m) => m.isHandoffCard).map((m) => m.id)),
+  );
+  // Slide-out event detail panel — tracks which internal note is selected.
+  // Initialised from the module-level map so the panel survives channel/tab switches.
+  const [selectedNoteId, setSelectedNoteIdRaw] = useState<number | null>(
+    () => selectedNoteByDraftKey.get(draftKey) ?? null,
+  );
+  const setSelectedNoteId = (update: React.SetStateAction<number | null>) => {
+    setSelectedNoteIdRaw((prev) => {
+      const next = typeof update === "function" ? update(prev) : update;
+      if (next !== null) { selectedNoteByDraftKey.set(draftKey, next); } else { selectedNoteByDraftKey.delete(draftKey); }
+      return next;
+    });
+  };
+  const selectedNote = selectedNoteId !== null ? conversation.messages.find((m) => m.id === selectedNoteId && m.isInternal && !m.isHandoffCard) ?? null : null;
   const [agentTasks, setAgentTasks] = useState<AgentTask[]>([]);
+  const [nextStepsRequested, setNextStepsRequested] = useState(false);
   const [revealedTaskIds, setRevealedTaskIds] = useState<Set<string>>(new Set());
   const [checkedTaskIds, setCheckedTaskIds] = useState<Set<string>>(new Set());
   const [taskProgress, setTaskProgress] = useState<Record<string, { stepIndex: number; paused: boolean }>>({});
@@ -276,6 +299,15 @@ export default function ConversationPanel({
   const latestMessageIsCustomer =
     latestNonInternalMessage?.role === "customer" ||
     (latestNonInternalMessage?.role === "agent" && !!latestNonInternalMessage?.author);
+  // True when the human agent has sent a reply after the most recent customer message.
+  // Used to suppress suggested next steps until the customer responds again.
+  const agentRepliedSinceLastCustomer = (() => {
+    const nonInternal = conversation.messages.filter((m) => !m.isInternal);
+    const lastCustIdx = nonInternal.map((m) => m.role).lastIndexOf("customer");
+    if (lastCustIdx === -1) return false;
+    // Check if there's a human-agent message (no author field = human) after the last customer msg
+    return nonInternal.slice(lastCustIdx + 1).some((m) => m.role === "agent" && !m.author);
+  })();
   const suggestionVariants = forcedSuggestionVariants && forcedSuggestionVariants.length > 0
     ? forcedSuggestionVariants
     : (latestCustomerMessage ? getInlineSuggestionVariants(conversation, latestCustomerMessage) : []);
@@ -343,25 +375,21 @@ export default function ConversationPanel({
     return () => observer.disconnect();
   }, []);
 
-  // Track container bounds so the portalled footer can be placed correctly with position:fixed.
-  // We use useLayoutEffect to update synchronously before paint to avoid position flicker.
+  // Track conversation-column bounds so the portalled footer can be placed correctly with
+  // position:fixed — aligned to the conversation column, not the full container (which may
+  // include a slide-out panel).  We poll with rAF so the footer moves in lockstep with the
+  // CSS transition on the slide-out panel (ResizeObserver alone fires too infrequently).
   useLayoutEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const update = () => {
-      const rect = container.getBoundingClientRect();
+    const col = conversationColRef.current;
+    if (!col) return;
+    let rafId = 0;
+    const apply = () => {
+      const rect = col.getBoundingClientRect();
       setContainerBounds({ left: rect.left, width: rect.width, bottom: rect.bottom });
     };
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(container);
-    window.addEventListener("resize", update);
-    window.addEventListener("scroll", update, true);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", update);
-      window.removeEventListener("scroll", update, true);
-    };
+    const loop = () => { apply(); rafId = requestAnimationFrame(loop); };
+    loop();
+    return () => cancelAnimationFrame(rafId);
   }, []);
 
   // Track footer height so the overlay stops exactly where the footer begins.
@@ -418,10 +446,12 @@ export default function ConversationPanel({
   // Reset agent tasks and all related state whenever the conversation changes (new customer/channel).
   useEffect(() => {
     setAgentTasks([]);
+    setNextStepsRequested(false);
     setRevealedTaskIds(new Set());
     setCheckedTaskIds(new Set());
     setTaskProgress({});
-    setExpandedNoteIds(new Set());
+    // Auto-expand handoff cards so the case overview is visible when the conversation loads.
+    setExpandedNoteIds(new Set(conversation.messages.filter((m) => m.isHandoffCard).map((m) => m.id)));
     taskRevealTimersRef.current.forEach(clearTimeout);
     taskRevealTimersRef.current = [];
     notedTaskIdsRef.current = new Set();
@@ -433,11 +463,42 @@ export default function ConversationPanel({
     }
     setCopilotInput("");
     setCopilotThinking(false);
+    // Restore the previously-selected event detail note for this conversation (if any).
+    setSelectedNoteIdRaw(selectedNoteByDraftKey.get(draftKey) ?? null);
   }, [conversation.label, draftKey]);
 
-  // When "Perform All Actions" is clicked in the summary panel, auto-check and start all tasks.
+  // Auto-expand any newly added handoff cards (e.g. injected after takeover).
+  useEffect(() => {
+    const handoffIds = conversation.messages.filter((m) => m.isHandoffCard).map((m) => m.id);
+    if (handoffIds.length === 0) return;
+    setExpandedNoteIds((prev) => {
+      const missing = handoffIds.filter((id) => !prev.has(id));
+      if (missing.length === 0) return prev;
+      const next = new Set(prev);
+      missing.forEach((id) => next.add(id));
+      return next;
+    });
+  }, [conversation.messages]);
+
+  // When the human agent sends a reply, clear suggested next steps so they don't persist.
+  // They'll reappear (behind the button) after the next customer response.
+  useEffect(() => {
+    if (agentRepliedSinceLastCustomer) {
+      setNextStepsRequested(false);
+      setAgentTasks([]);
+      setRevealedTaskIds(new Set());
+      setCheckedTaskIds(new Set());
+      setTaskProgress({});
+      taskRevealTimersRef.current.forEach(clearTimeout);
+      taskRevealTimersRef.current = [];
+    }
+  }, [agentRepliedSinceLastCustomer]);
+
+  // When "Perform All Actions" is clicked in the summary panel, auto-request + auto-check and start all tasks.
   useEffect(() => {
     if (!performAllActionsKey) return;
+    // Trigger task generation if not already requested.
+    setNextStepsRequested(true);
     // Ensure all tasks are visible, checked, and have progress started.
     setRevealedTaskIds(new Set(agentTasks.map((t) => t.id)));
     setCheckedTaskIds(new Set(agentTasks.map((t) => t.id)));
@@ -460,10 +521,12 @@ export default function ConversationPanel({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasAgentTasks]);
 
-  // Generate and stagger-reveal suggested agent tasks when a new customer message arrives
-  // OR when the conversation itself changes (conversation.label ensures this re-runs after
-  // the reset effect above clears the task list for the incoming assignment).
+  // Generate and stagger-reveal suggested agent tasks only after the agent clicks
+  // "Suggest Next Steps". The effect watches `nextStepsRequested` so it fires the
+  // moment the button is pressed, and also re-runs if the conversation changes while
+  // the flag is already true.
   useEffect(() => {
+    if (!nextStepsRequested) return;
     if (!latestCustomerMessage) return;
 
     const freshTasks = getSuggestedAgentTasks(conversation, latestCustomerMessage);
@@ -477,9 +540,13 @@ export default function ConversationPanel({
       // Stagger-reveal each new task with a 180ms delay between them.
       taskRevealTimersRef.current.forEach(clearTimeout);
       taskRevealTimersRef.current = [];
+      // Scroll to bottom immediately so the "Suggested Next Steps" header is visible,
+      // then again after each task card reveals so it stays in view as the list grows.
+      requestAnimationFrame(() => scrollToBottom("smooth"));
       newTasks.forEach((task, i) => {
         const timer = setTimeout(() => {
           setRevealedTaskIds((ids) => new Set([...ids, task.id]));
+          requestAnimationFrame(() => scrollToBottom("smooth"));
         }, 400 + i * 180);
         taskRevealTimersRef.current.push(timer);
       });
@@ -487,7 +554,7 @@ export default function ConversationPanel({
       return [...prev, ...newTasks];
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [latestCustomerMessage?.id, conversation.label]);
+  }, [nextStepsRequested, latestCustomerMessage?.id, conversation.label]);
 
   // Animate in voice-specific suggested tasks when the call is connected.
   useEffect(() => {
@@ -997,7 +1064,7 @@ export default function ConversationPanel({
 
   return (
     <div ref={containerRef} className={cn("relative flex min-h-0 flex-1 flex-row", className)}>
-      <div className={cn("relative flex min-h-0 flex-col overflow-hidden", hideTranscript ? "w-0 pointer-events-none overflow-hidden" : "flex-1")}>
+      <div ref={conversationColRef} className={cn("relative flex min-h-0 flex-col overflow-hidden", hideTranscript ? "w-0 pointer-events-none overflow-hidden" : "flex-1")}>
 
         {/* Narrow-mode tabs — shown below the header when width < 640 and AI panel is active */}
         {isNarrowPanel && showAiPanel && (
@@ -1038,7 +1105,7 @@ export default function ConversationPanel({
               <div className="pointer-events-auto">{voiceContentOverlay}</div>
             </div>
           )}
-          <div className={cn("flex-1 min-h-0 overflow-hidden", isVoiceChannel && voiceRightPanel ? "flex" : "flex flex-col")}>
+          <div className={cn("flex-1 min-h-0 overflow-hidden", (isVoiceChannel && voiceRightPanel) ? "flex" : "flex flex-col")}>
 
           <div ref={scrollAreaRef} className="flex-1 min-h-0 overflow-y-auto py-6" style={{ paddingBottom: isPendingAcceptance ? 0 : inlineFooter ? 16 : 120, ...(scrollTopPadding ? { paddingTop: scrollTopPadding } : {}) }}>
             <div className={cn("space-y-6 px-6", isWidePanel ? "m-8 mx-auto max-w-[800px]" : "m-8")}>
@@ -1202,49 +1269,152 @@ export default function ConversationPanel({
                     )}
                   >
                     {/* Handoff notice card — internal, agent-only green card */}
-                    {message.isHandoffCard && (
-                      <div className="rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] p-3 animate-in fade-in duration-300">
-                        <div className="mb-1.5 flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            {message.author === "Emily" ? (
-                              <img src={`${import.meta.env.BASE_URL}emily-avatar.jpg`} alt="Emily avatar" className="h-5 w-5 rounded-full object-cover shrink-0" />
-                            ) : (
-                              <img
-                                src={message.author === "Jacob"
-                                  ? "https://cdn.builder.io/api/v1/image/assets%2F9d3d716b4b844ab4bcf3267b33310813%2F9f1a8ec85d5f478b9a015a2b7eece268?format=webp&width=800&height=1200"
-                                  : "https://cdn.builder.io/api/v1/image/assets%2F9d3d716b4b844ab4bcf3267b33310813%2F054057b71e64441097a4902d7dcea754?format=webp&width=800&height=1200"}
-                                alt={`${message.author ?? "Aria"} avatar`}
-                                className="h-5 w-5 rounded-full object-cover shrink-0"
-                              />
-                            )}
-                            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#166744]">{message.author ?? "Aria"}</p>
+                    {message.isHandoffCard && (() => {
+                      const isHandoffExpanded = expandedNoteIds.has(message.id);
+                      // Parse content into structured sections
+                      const snapshotDelimiter = "Customer Snapshot:\n";
+                      const delimIdx = message.content.indexOf(snapshotDelimiter);
+                      let contextPart = "";
+                      let bullets: string[] = [];
+                      let trailingLines: string[] = [];
+                      if (delimIdx === -1) {
+                        contextPart = message.content;
+                      } else {
+                        contextPart = message.content.slice(0, delimIdx).trimEnd();
+                        const afterSnapshot = message.content.slice(delimIdx + snapshotDelimiter.length);
+                        const lines = afterSnapshot.split("\n");
+                        let pastBullets = false;
+                        for (const line of lines) {
+                          if (!pastBullets && line.startsWith("•")) {
+                            bullets.push(line.replace(/^•\s*/, ""));
+                          } else if (line.trim() === "" && !pastBullets) {
+                            pastBullets = true;
+                          } else {
+                            pastBullets = true;
+                            if (line.trim()) trailingLines.push(line);
+                          }
+                        }
+                      }
+                      return (
+                        <div className="rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] overflow-hidden animate-in fade-in duration-300">
+                          {/* Clickable header — always visible */}
+                          <button
+                            type="button"
+                            onClick={() => setExpandedNoteIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(message.id)) next.delete(message.id);
+                              else next.add(message.id);
+                              return next;
+                            })}
+                            className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
+                          >
+                            <div className="flex items-center gap-2">
+                              {message.author === "Emily" ? (
+                                <img src={`${import.meta.env.BASE_URL}emily-avatar.jpg`} alt="Emily avatar" className="h-5 w-5 rounded-full object-cover shrink-0" />
+                              ) : (
+                                <img
+                                  src={message.author === "Jacob"
+                                    ? "https://cdn.builder.io/api/v1/image/assets%2F9d3d716b4b844ab4bcf3267b33310813%2F9f1a8ec85d5f478b9a015a2b7eece268?format=webp&width=800&height=1200"
+                                    : "https://cdn.builder.io/api/v1/image/assets%2F9d3d716b4b844ab4bcf3267b33310813%2F054057b71e64441097a4902d7dcea754?format=webp&width=800&height=1200"}
+                                  alt={`${message.author ?? "Aria"} avatar`}
+                                  className="h-5 w-5 rounded-full object-cover shrink-0"
+                                />
+                              )}
+                              <p className="text-[10px] font-semibold uppercase tracking-widest text-[#166744]">{message.author ?? "Aria"}</p>
+                              <span className="rounded-full border border-[#24943E] px-2 py-0.5 text-[10px] font-medium text-[#166744]">Internal note</span>
+                            </div>
+                            <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-[#166744]/60 transition-transform duration-200", isHandoffExpanded && "rotate-180")} />
+                          </button>
+                          {/* Collapsible body */}
+                          <div className={cn("grid transition-all duration-200 ease-out", isHandoffExpanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
+                            <div className="overflow-hidden">
+                              <div className="px-3 pb-3 space-y-2.5">
+                                {/* Case description */}
+                                {contextPart && <p className="text-[13px] font-medium leading-5 text-[#166744] whitespace-pre-line">{contextPart}</p>}
+                                {/* Customer Profile inline card — below the description */}
+                                {customerRecord?.profile && (
+                                  <div className="rounded-lg border border-[#BBF7D0]/60 bg-white/60 px-3 py-2.5">
+                                    <div className="flex items-center justify-between gap-3">
+                                      <div className="flex items-center gap-2.5">
+                                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#C5DEF5] text-[11px] font-bold text-[#1260B0]">
+                                          {conversation.customerName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase()}
+                                        </div>
+                                        <div>
+                                          <p className="text-[12px] font-semibold text-[#111827] leading-tight">{conversation.customerName}</p>
+                                          <p className="text-[10px] text-[#667085] leading-snug">{customerRecord.profile.department} · {customerRecord.profile.tenureYears} yr{customerRecord.profile.tenureYears !== 1 ? "s" : ""} tenure</p>
+                                        </div>
+                                      </div>
+                                      <div className="text-right shrink-0">
+                                        <p className="text-[9px] text-[#98A2B3]">Balance</p>
+                                        <p className="text-[12px] font-semibold text-[#111827]">{customerRecord.profile.totalAUM}</p>
+                                      </div>
+                                    </div>
+                                    {customerRecord.profile.tags.length > 0 && (
+                                      <div className="mt-2 flex flex-wrap gap-1.5">
+                                        {customerRecord.profile.tags.map((tag) => (
+                                          <span
+                                            key={tag}
+                                            className={cn(
+                                              "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
+                                              tag === "Premier" ? "bg-[#EBF4FD] text-[#1260B0] border border-[#BFDBFE]" :
+                                              tag.includes("IVR") ? "bg-[#EFFBF1] text-[#208337] border border-[#24943E]" :
+                                              "bg-[#EBF4FD] text-[#166CCA] border border-[#BFDBFE]",
+                                            )}
+                                          >
+                                            {tag}{(tag.includes("Auth") || tag.includes("Biometrics")) ? " ✓" : ""}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                {/* Customer Snapshot bullets */}
+                                {bullets.length > 0 && (
+                                  <div className="rounded-lg border border-[#BBF7D0]/60 bg-[#DCFCE7]/40 px-3 py-2.5">
+                                    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-[#166744]/70">Customer Snapshot</p>
+                                    <ul className="space-y-1">
+                                      {bullets.map((b, i) => (
+                                        <li key={i} className="flex items-baseline gap-2 text-[12px] leading-[18px] text-[#166744]">
+                                          <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#22C55E]" />
+                                          {b}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                                {/* Transfer message */}
+                                {trailingLines.length > 0 && (
+                                  <p className="text-[13px] font-medium leading-5 text-[#166744]">{trailingLines.join(" ")}</p>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                          <span className="rounded-full border border-[#24943E] px-2 py-0.5 text-[10px] font-medium text-[#166744]">Internal note</span>
                         </div>
-                        <p className="text-[13px] font-medium leading-5 text-[#166744]">{message.content}</p>
-                      </div>
-                    )}
+                      );
+                    })()}
 
-                    {/* Internal note */}
+                    {/* Internal note — clickable to open slide-out detail panel */}
                     {message.isInternal && !message.isHandoffCard && (
-                      <div className="rounded-xl border border-dashed border-[#D0D5DD] bg-[#F9FAFB] overflow-hidden">
+                      <div
+                        className={cn(
+                          "rounded-xl border border-dashed overflow-hidden transition-colors cursor-pointer",
+                          selectedNoteId === message.id
+                            ? "border-[#166CCA] bg-[#EBF4FD]/40"
+                            : "border-[#D0D5DD] bg-[#F9FAFB] hover:bg-[#F3F4F6]",
+                        )}
+                      >
                         <button
                           type="button"
-                          className={cn(
-                            "flex w-full items-start gap-2.5 px-3.5 py-2.5 text-left",
-                            message.ticket ? "cursor-pointer hover:bg-[#F3F4F6] transition-colors" : "cursor-default",
-                          )}
-                          onClick={() => {
-                            if (!message.ticket) return;
-                            setExpandedNoteIds((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(message.id)) { next.delete(message.id); } else { next.add(message.id); }
-                              return next;
-                            });
-                          }}
+                          className="flex w-full items-start gap-2.5 px-3.5 py-2.5 text-left"
+                          onClick={() => setSelectedNoteId((prev) => prev === message.id ? null : message.id)}
                         >
-                          <div className="shrink-0 h-7 w-7 rounded-full bg-[#F2F4F7] border border-[#E4E7EC] flex items-center justify-center">
-                            <NotebookPen className="h-3.5 w-3.5 text-[#667085]" />
+                          <div className={cn(
+                            "shrink-0 h-7 w-7 rounded-full border flex items-center justify-center",
+                            selectedNoteId === message.id
+                              ? "bg-[#EBF4FD] border-[#BFDBFE]"
+                              : "bg-[#F2F4F7] border-[#E4E7EC]",
+                          )}>
+                            <NotebookPen className={cn("h-3.5 w-3.5", selectedNoteId === message.id ? "text-[#166CCA]" : "text-[#667085]")} />
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-0.5">
@@ -1253,19 +1423,8 @@ export default function ConversationPanel({
                             </div>
                             <p className="text-[13px] leading-5 text-[#344054]">{message.content}</p>
                           </div>
-                          {message.ticket && (
-                            <ChevronDown className={cn("mt-0.5 h-4 w-4 shrink-0 text-[#98A2B3] transition-transform", expandedNoteIds.has(message.id) && "rotate-180")} />
-                          )}
+                          <ChevronRight className={cn("mt-0.5 h-4 w-4 shrink-0 transition-colors", selectedNoteId === message.id ? "text-[#166CCA]" : "text-[#98A2B3]")} />
                         </button>
-                        {message.ticket && (
-                          <div className={cn("grid transition-all duration-200 ease-out", expandedNoteIds.has(message.id) ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
-                            <div className="overflow-hidden">
-                              <div className="border-t border-dashed border-[#D0D5DD] p-2">
-                                <InlineTicketRecord ticket={message.ticket} isOpen onToggle={() => {}} />
-                              </div>
-                            </div>
-                          </div>
-                        )}
                       </div>
                     )}
                     {/* Chat bubble — tag options live inside bubble so hover never breaks */}
@@ -1397,8 +1556,22 @@ export default function ConversationPanel({
                   return messageEl;
                 })}
 
-                {/* Suggested Next Steps — always inline */}
-                {!hideInput && agentTasks.length > 0 && (() => {
+                {/* Suggest Next Steps button — shown only after a customer message and before the agent replies */}
+                {!hideInput && !suppressAgentTasks && !nextStepsRequested && agentTasks.length === 0 && latestCustomerMessage && !agentRepliedSinceLastCustomer && (
+                  <div className="flex justify-center py-2">
+                    <button
+                      type="button"
+                      onClick={() => { setNextStepsRequested(true); onNextStepsRequested?.(); }}
+                      className="inline-flex items-center gap-2 rounded-xl border border-[#166CCA]/20 bg-[#EBF4FD] px-4 py-2 text-[12px] font-semibold text-[#166CCA] shadow-sm transition-all duration-200 hover:bg-[#DBEAFE] hover:shadow-md active:scale-[0.97]"
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      Suggest Next Steps
+                    </button>
+                  </div>
+                )}
+
+                {/* Suggested Next Steps — shown only when agent hasn't replied since last customer message */}
+                {!hideInput && agentTasks.length > 0 && !agentRepliedSinceLastCustomer && (() => {
                   const assignmentEntry = getCustomerAssignmentEntry(conversation.customerName);
                   const taskSummary = assignmentEntry?.summary ?? "I've reviewed the conversation and identified the key actions needed to resolve this case. Here are my suggested next steps, or feel free to ask for more assistance.";
                   const nextStepsContent = (
@@ -1731,7 +1904,7 @@ export default function ConversationPanel({
                     </Accordion>
                   </div>
                 )}
-                {agentTasks.length > 0 && !suppressAgentTasks && (
+                {agentTasks.length > 0 && !suppressAgentTasks && !agentRepliedSinceLastCustomer && (
                   <div className="overflow-hidden rounded-2xl border border-black/10 bg-[#F8F8F9]">
                     <div className="px-4 pt-3 pb-2">
                       <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#333333]">Suggested Next Steps</span>
@@ -2204,6 +2377,104 @@ export default function ConversationPanel({
         );
         return inlineFooter ? footerContent : createPortal(footerContent, document.body);
       })()}
+      </div>
+
+      {/* Slide-out event detail panel for internal notes — lives outside the conversation
+          column so the column shrinks and the fixed-position footer follows its width. */}
+      <div className={cn(
+        "shrink-0 min-h-0 overflow-hidden border-l border-[#E4E7EC] bg-white transition-all duration-200 ease-out",
+        selectedNote ? "w-[320px] opacity-100" : "w-0 opacity-0 border-l-0",
+      )}>
+        {selectedNote && (() => {
+          // Reverse-lookup which task produced this note
+          const noteTaskId = Object.entries(TASK_COMPLETION_NOTES).find(
+            ([, label]) => selectedNote.content.startsWith(label),
+          )?.[0] ?? null;
+          const steps = noteTaskId ? (TASK_STEPS[noteTaskId] ?? []) : [];
+          const actionTitle = noteTaskId ? (TASK_ACTION_TITLES[noteTaskId] ?? selectedNote.content) : selectedNote.content;
+          const dateMatch = selectedNote.content.match(/— (.+)$/);
+          const dateStr = dateMatch?.[1] ?? formatConversationMessageTimestamp(selectedNote.time);
+          return (
+            <div className="flex h-full flex-col">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-[#E4E7EC] px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#98A2B3]">Event Detail</p>
+                <button
+                  type="button"
+                  onClick={() => setSelectedNoteId(null)}
+                  className="flex h-6 w-6 items-center justify-center rounded-lg text-[#667085] hover:bg-[#F3F4F6] hover:text-[#333333] transition-colors"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              {/* Body */}
+              <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
+                {/* Event title card */}
+                <div className="rounded-xl border border-[#E4E7EC] bg-[#F9FAFB] p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#EBF4FD] border border-[#BFDBFE]">
+                      <NotebookPen className="h-3.5 w-3.5 text-[#166CCA]" />
+                    </div>
+                    <div>
+                      <p className="text-[13px] font-semibold text-[#111827] leading-tight">{selectedNote.content.replace(/\s*—\s*.+$/, "")}</p>
+                      <p className="text-[10px] text-[#98A2B3]">{dateStr}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Completed steps */}
+                {steps.length > 0 && (
+                  <div className="rounded-xl border border-[#E4E7EC] bg-white p-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#667085] mb-3">Completed Steps</p>
+                    <div className="space-y-0">
+                      {steps.map((step, idx) => (
+                        <div key={idx} className="flex items-start gap-2.5">
+                          <div className="flex flex-col items-center">
+                            <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#EFFBF1] border border-[#BBF7D0]">
+                              <Check className="h-2.5 w-2.5 text-[#16A34A]" />
+                            </div>
+                            {idx < steps.length - 1 && <div className="w-px h-4 bg-[#E4E7EC]" />}
+                          </div>
+                          <p className="text-[12px] leading-5 text-[#344054] pt-0.5">{step}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Ticket record if present */}
+                {selectedNote.ticket && (
+                  <InlineTicketRecord ticket={selectedNote.ticket} isOpen onToggle={() => {}} />
+                )}
+
+                {/* Agent & timestamp details */}
+                <div className="rounded-xl border border-[#E4E7EC] bg-white p-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#667085] mb-2">Details</p>
+                  <dl className="space-y-2 text-[12px]">
+                    <div className="flex items-start justify-between gap-2">
+                      <dt className="text-[#667085]">Status</dt>
+                      <dd className="font-medium text-[#16A34A]">Completed</dd>
+                    </div>
+                    <div className="flex items-start justify-between gap-2">
+                      <dt className="text-[#667085]">Performed By</dt>
+                      <dd className="font-medium text-[#111827]">AI Copilot</dd>
+                    </div>
+                    <div className="flex items-start justify-between gap-2">
+                      <dt className="text-[#667085]">Timestamp</dt>
+                      <dd className="font-medium text-[#111827]">{formatConversationMessageTimestamp(selectedNote.time)}</dd>
+                    </div>
+                    {noteTaskId && (
+                      <div className="flex items-start justify-between gap-2">
+                        <dt className="text-[#667085]">Action ID</dt>
+                        <dd className="font-mono text-[11px] text-[#98A2B3]">{noteTaskId}</dd>
+                      </div>
+                    )}
+                  </dl>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
     </div>

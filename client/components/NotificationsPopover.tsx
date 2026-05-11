@@ -138,6 +138,7 @@ const MIN_WIDTH = 280;
 const MIN_HEIGHT = 300;
 
 export default function NotificationsPopoverContent({
+  visible,
   position,
   size,
   zIndex,
@@ -148,6 +149,7 @@ export default function NotificationsPopoverContent({
   onUnreadCountChange,
   initialNotifications,
 }: {
+  visible?: boolean;
   position: { x: number; y: number };
   size: { width: number; height: number };
   zIndex: number;
@@ -216,7 +218,10 @@ export default function NotificationsPopoverContent({
 
   return (
     <div
-      className="fixed flex flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-[0_20px_50px_rgba(0,0,0,0.18)]"
+      className={cn(
+        "fixed flex flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-[0_20px_50px_rgba(0,0,0,0.18)] transition-[opacity,transform] duration-[280ms] ease-[cubic-bezier(0.16,1,0.3,1)] will-change-[opacity,transform]",
+        visible ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-[0.97] translate-y-1",
+      )}
       style={{
         left: position.x,
         top: position.y,

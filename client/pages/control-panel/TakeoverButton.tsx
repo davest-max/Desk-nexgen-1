@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import type { SharedConversationData } from "@/components/ConversationPanel";
-import { createConversationState } from "@/lib/customer-database";
+import { createConversationState, getCustomerRecord } from "@/lib/customer-database";
 import { pendingHandoffConversations } from "@/lib/queue-state";
 import { CURRENT_AGENT_NAME } from "@/lib/control-panel-data";
 import { staticAssignments } from "@/lib/static-assignments";
@@ -49,11 +49,19 @@ export function TakeoverButton({
     const sa = staticAssignments.find((s) => s.customerRecordId === customerRecordId);
     const contextSummary = existingHandoffCard?.content
       ?? (sa?.aiOverview?.whyNeeded
-        ? `Flagging for human agent now. Context: ${sa.aiOverview.whyNeeded}`
+        ? sa.aiOverview.whyNeeded
         : null);
+    const customerRecord = customerRecordId ? getCustomerRecord(customerRecordId) : null;
+    const snapshotLines = customerRecord?.customerSnapshot;
+    // Only append snapshot if contextSummary doesn't already contain one (avoids duplication
+    // when the seed handoff card already has the snapshot baked in).
+    const alreadyHasSnapshot = contextSummary?.includes("Customer Snapshot:");
+    const snapshotBlock = snapshotLines?.length && !alreadyHasSnapshot
+      ? `\n\nCustomer Snapshot:\n${snapshotLines.map((s) => `• ${s}`).join("\n")}`
+      : "";
     const combinedHandoffContent = contextSummary
-      ? `${contextSummary}\n\nI have transferred the assignment. You are now live with customer ${customerName}.`
-      : `I have transferred the assignment. You are now live with customer ${customerName}.`;
+      ? `${contextSummary}${snapshotBlock}\n\nI have transferred the assignment. You are now live with customer ${customerName}.`
+      : `I have transferred the assignment. You are now live with customer ${customerName}.${snapshotBlock}`;
     return {
       ...seed,
       messages: [

@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import {
   AlertTriangle,
   CalendarCheck,
+  CalendarDays,
   Check,
   CheckCircle,
   ChevronDown,
@@ -16,6 +17,7 @@ import {
   Phone,
   GalleryVertical,
   LayoutGrid,
+  PauseCircle,
   LayoutList,
   SlidersHorizontal,
   Send,
@@ -1765,8 +1767,8 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
   const [activePageTab, setActivePageTab] = useState<DeskPageTab>("queue");
   const [controlCenterTab, setControlCenterTab] = useState<"monitor" | "assigned" | "queue">(() => {
     if (mode === "inbox") return "queue";
-    // Always start on the Home tab when navigating to the control center
-    return "monitor";
+    // Restore the last active tab, defaulting to Home ("monitor")
+    return persistedState.controlCenterTab === "queue" ? "monitor" : persistedState.controlCenterTab;
   });
   const [issueTab, setIssueTab] = useState<IssueTab>(() => persistedState.issueTab);
   const [priorityFilters, setPriorityFilters] = useState<Set<Priority>>(() => new Set(persistedState.priorityFilters));
@@ -2650,7 +2652,104 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
 
           </div>
 
-            {/* Horizontal stat cards — hidden for now */}
+            {/* Horizontal stat cards */}
+            <div className="w-full max-w-4xl grid grid-cols-4 gap-4">
+              {/* Schedule */}
+              <div className="rounded-xl border border-border bg-white dark:bg-[#0F1629] dark:border-[#1E293B] shadow-sm p-4 flex flex-col">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[#EFF4FF]">
+                    <CalendarDays className="h-3.5 w-3.5 text-[#3B82F6]" />
+                  </div>
+                  <p className="text-[13px] font-semibold text-[#101828] dark:text-[#E2E8F0]">Schedule</p>
+                </div>
+                <div className="space-y-1.5 mb-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[12px] text-[#667085] dark:text-[#8898AB]">Total Events</span>
+                    <span className="text-[13px] font-semibold text-[#101828] dark:text-[#E2E8F0]">6</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[12px] text-[#667085] dark:text-[#8898AB]">Callbacks</span>
+                    <span className="text-[13px] font-semibold text-[#F59E0B]">3</span>
+                  </div>
+                </div>
+                <div className="mt-auto border-t border-border pt-2.5">
+                  <p className="text-[11px] text-[#667085] dark:text-[#8898AB]">Next up:</p>
+                  <p className="text-[12px] font-semibold text-[#101828] dark:text-[#E2E8F0] mt-0.5">Customer Callback</p>
+                  <p className="text-[11px] text-[#98A2B3]">09:00 AM</p>
+                </div>
+              </div>
+
+              {/* Performance */}
+              <div className="rounded-xl border border-border bg-white dark:bg-[#0F1629] dark:border-[#1E293B] shadow-sm p-4 flex flex-col">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[#EFFBF1]">
+                    <TrendingUp className="h-3.5 w-3.5 text-[#16A34A]" />
+                  </div>
+                  <p className="text-[13px] font-semibold text-[#101828] dark:text-[#E2E8F0]">Performance</p>
+                </div>
+                <div className="space-y-1.5 mb-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[12px] text-[#667085] dark:text-[#8898AB]">Cases Resolved</span>
+                    <span className="text-[13px] font-semibold text-[#101828] dark:text-[#E2E8F0]">12</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[12px] text-[#667085] dark:text-[#8898AB]">CSAT Score</span>
+                    <span className="text-[13px] font-semibold text-[#16A34A]">4.8</span>
+                  </div>
+                </div>
+                <div className="mt-auto border-t border-border pt-2.5">
+                  <p className="text-[11px] text-[#667085] dark:text-[#8898AB]">Handle Time:</p>
+                  <p className="text-[12px] font-semibold text-[#101828] dark:text-[#E2E8F0] mt-0.5">8m 32s</p>
+                  <p className="text-[11px] text-[#12B76A]">15% improvement</p>
+                </div>
+              </div>
+
+              {/* Messages */}
+              <div className="rounded-xl border border-border bg-white dark:bg-[#0F1629] dark:border-[#1E293B] shadow-sm p-4 flex flex-col">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[#F3EEFF]">
+                    <MessageSquare className="h-3.5 w-3.5 text-[#8B5CF6]" />
+                  </div>
+                  <p className="text-[13px] font-semibold text-[#101828] dark:text-[#E2E8F0]">Messages</p>
+                </div>
+                <div className="space-y-1.5 mb-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[12px] text-[#667085] dark:text-[#8898AB]">Unread</span>
+                    <span className="text-[13px] font-semibold text-[#101828] dark:text-[#E2E8F0]">3</span>
+                  </div>
+                </div>
+                <div className="mt-auto border-t border-border pt-2.5">
+                  <p className="text-[11px] text-[#667085] dark:text-[#8898AB]">Latest from:</p>
+                  <p className="text-[12px] font-semibold text-[#101828] dark:text-[#E2E8F0] mt-0.5">Sarah Johnson</p>
+                  <p className="text-[11px] text-[#98A2B3] truncate">Great job on the customer escalation yes...</p>
+                </div>
+              </div>
+
+              {/* Parked Work */}
+              <div className="rounded-xl border border-border bg-white dark:bg-[#0F1629] dark:border-[#1E293B] shadow-sm p-4 flex flex-col">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[#FFFAEB]">
+                    <PauseCircle className="h-3.5 w-3.5 text-[#F59E0B]" />
+                  </div>
+                  <p className="text-[13px] font-semibold text-[#101828] dark:text-[#E2E8F0]">Parked Work</p>
+                </div>
+                <div className="space-y-1.5 mb-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[12px] text-[#667085] dark:text-[#8898AB]">Total Parked</span>
+                    <span className="text-[13px] font-semibold text-[#101828] dark:text-[#E2E8F0]">3</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[12px] text-[#667085] dark:text-[#8898AB]">High Priority</span>
+                    <span className="text-[13px] font-semibold text-[#E53935]">1</span>
+                  </div>
+                </div>
+                <div className="mt-auto border-t border-border pt-2.5">
+                  <p className="text-[11px] text-[#667085] dark:text-[#8898AB]">Oldest:</p>
+                  <p className="text-[12px] font-semibold text-[#101828] dark:text-[#E2E8F0] mt-0.5">David Kim</p>
+                  <p className="text-[11px] text-[#F59E0B]">1 day ago</p>
+                </div>
+              </div>
+            </div>
 
             {/* AI input bar — sticky to bottom of scroll area */}
             <div className="sticky bottom-0 w-full max-w-4xl pt-3 pb-1">

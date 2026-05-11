@@ -815,6 +815,7 @@ const NiceLogoIcon = () => (
 );
 
 function AddNewPopoverContent({
+  visible,
   position,
   size,
   zIndex,
@@ -823,6 +824,7 @@ function AddNewPopoverContent({
   onClose,
   onInteractStart,
 }: {
+  visible?: boolean;
   position: {
     x: number;
     y: number;
@@ -892,7 +894,10 @@ function AddNewPopoverContent({
 
   return (
     <div
-      className="fixed flex min-h-[420px] min-w-[320px] flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-[0_20px_50px_rgba(0,0,0,0.18)]"
+      className={cn(
+        "fixed flex min-h-[420px] min-w-[320px] flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-[0_20px_50px_rgba(0,0,0,0.18)] transition-[opacity,transform] duration-[280ms] ease-[cubic-bezier(0.16,1,0.3,1)] will-change-[opacity,transform]",
+        visible ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-[0.97] translate-y-1",
+      )}
       style={{
         left: position.x,
         top: position.y,
@@ -1499,6 +1504,108 @@ function CaseMoreOptionsMenu({ onDismiss, onClose, iconSize = "md" }: { onDismis
   );
 }
 
+/**
+ * Hook that returns a "deferred" value and an opacity flag.
+ * When `activeKey` changes, opacity drops to 0 for `duration` ms (fade-out),
+ * then the deferred value updates and opacity returns to 1 (fade-in).
+ * This lets the parent keep rendering its ternary against the *deferred* key
+ * so old content stays visible during the fade-out.
+ */
+/**
+ * Phase-based fade transition that guarantees no flash of new content.
+ *
+ * 1. "idle"     → opacity 1, visible, no CSS transition (steady state)
+ * 2. "hide"     → opacity 0, visibility hidden, NO CSS transition (instant disappear)
+ * 3. "swap"     → opacity 0, visibility hidden, content switches via setDeferredKey
+ * 4. "settle"   → opacity 0, visibility hidden, new content renders & scrolls settle
+ * 5. "enter"    → opacity 1, visible, WITH CSS transition (smooth fade-in)
+ *
+ * The fade-OUT is instant (no CSS transition) and uses visibility:hidden so there
+ * is zero chance of a flash. Content only changes while truly invisible. The
+ * settle phase gives the new content time to mount, layout, and scroll-to-bottom
+ * before anything becomes visible. The only animated part is the fade-IN.
+ */
+function useFadeTransition<T extends string>(activeKey: T, fadeInMs = 200, settleMs = 120) {
+  const [deferredKey, setDeferredKey] = useState(activeKey);
+  const [phase, setPhase] = useState<"idle" | "hide" | "swap" | "settle" | "enter">("idle");
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const deferredKeyRef = useRef(deferredKey);
+  deferredKeyRef.current = deferredKey;
+
+  useEffect(() => {
+    if (activeKey === deferredKeyRef.current) return;
+
+    // Cancel any in-flight transition
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+
+    // Phase 1 → instant hide (visibility:hidden + opacity:0, no CSS transition)
+    setPhase("hide");
+
+    // Phase 2 → after the browser paints the hidden state, swap the content key
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = requestAnimationFrame(() => {
+        setDeferredKey(activeKey);
+        setPhase("swap");
+
+        // Phase 3 → settle: let the new content mount, layout, and scroll-to-bottom
+        timerRef.current = setTimeout(() => {
+          setPhase("settle");
+          // Phase 4 → fade in: set opacity 1 with CSS transition, visibility visible
+          timerRef.current = setTimeout(() => {
+            rafRef.current = requestAnimationFrame(() => {
+              setPhase("enter");
+              // Return to idle after the CSS fade-in completes
+              timerRef.current = setTimeout(() => setPhase("idle"), fadeInMs + 20);
+            });
+          }, settleMs);
+        }, 0);
+      });
+    });
+
+    return () => {
+      if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeKey, fadeInMs, settleMs]);
+
+  const isVisible = phase === "idle" || phase === "enter";
+  const opacity = isVisible ? 1 : 0;
+  const transition = phase === "enter" ? `opacity ${fadeInMs}ms ease-out` : "none";
+  const visibility = isVisible ? ("visible" as const) : ("hidden" as const);
+
+  return { deferredKey, opacity, transition, visibility } as const;
+}
+
+/**
+ * Keeps a component mounted for `delay` ms after `isOpen` goes false,
+ * so exit animations can play before the component unmounts.
+ *
+ * Returns `{ mounted, visible }`:
+ *   - `mounted`: whether the component should be in the tree
+ *   - `visible`: whether it should be at full opacity (drives the CSS class)
+ */
+function useAnimatedPresence(isOpen: boolean, delay = 200) {
+  const [mounted, setMounted] = useState(isOpen);
+  const [visible, setVisible] = useState(isOpen);
+
+  useEffect(() => {
+    if (isOpen) {
+      setMounted(true);
+      // Wait one frame so the element renders at opacity-0, then transition in.
+      requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true)));
+    } else {
+      setVisible(false);
+      const id = setTimeout(() => setMounted(false), delay);
+      return () => clearTimeout(id);
+    }
+  }, [isOpen, delay]);
+
+  return { mounted, visible };
+}
+
 function DockedConversationPanel({
   isOpen,
   conversation,
@@ -1618,10 +1725,14 @@ function DockedConversationPanel({
   const [isNarrowPanel, setIsNarrowPanel] = useState(false);
   const [isHandoffSummaryOpen, setIsHandoffSummaryOpen] = useState(initialSummaryOpen ?? false);
   const [summaryTab, setSummaryTab] = useState<CustomerChannel | "history" | "conversation">(activeChannel);
+  // Composite fade key so that BOTH tab switches AND case switches trigger a crossfade.
+  const fadeKey = `${customerRecordId}::${summaryTab}`;
+  const { deferredKey: deferredFadeKey, opacity: tabFadeOpacity, transition: tabFadeTransition, visibility: tabFadeVisibility } = useFadeTransition(fadeKey);
+  const visibleTab = deferredFadeKey.split("::")[1] as CustomerChannel | "history" | "conversation";
   // Track which transferred item we've already opened the customer info popunder for, to avoid re-firing.
   const hasOpenedCustomerInfoForItemRef = useRef<string | null>(null);
   const [isAttemptedResolutionOpen, setIsAttemptedResolutionOpen] = useState(true);
-  const [isCustomerProfileOpen, setIsCustomerProfileOpen] = useState(true);
+  const [isCustomerProfileOpen, setIsCustomerProfileOpen] = useState(false);
   const [hasAgentTasks, setHasAgentTasks] = useState(false);
   const customerRecord = getCustomerRecord(customerRecordId);
   const [isWidePanel] = useState(true);
@@ -1645,6 +1756,7 @@ function DockedConversationPanel({
   useEffect(() => {
     setSelectedHistoryItemId(null);
     setViewingInteraction(false);
+    setResolveBoxVisible(false);
     setIsHandoffSummaryOpen((current) => {
       // Only collapse if the summary was opened by a history event click (not by
       // initialSummaryOpen / caseOverviewOpenTrigger, which are case-specific props).
@@ -1671,6 +1783,8 @@ function DockedConversationPanel({
   const [resolveStepIndex, setResolveStepIndex] = useState(0);
   const [resolveComplete, setResolveComplete] = useState(false);
   const resolveTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  // Gate resolve-flow boxes behind "Suggest Next Steps" so they don't auto-show on takeover.
+  const [resolveBoxVisible, setResolveBoxVisible] = useState(false);
 
   // ── Customer history helpers ──────────────────────────────────────────────
 
@@ -2407,7 +2521,9 @@ function DockedConversationPanel({
     const observer = new ResizeObserver((entries) => {
       const rect = entries[0]?.contentRect;
       const height = rect?.height ?? el.offsetHeight;
+      const width = rect?.width ?? el.offsetWidth;
       setPanelHeight(height);
+      setIsNarrowPanel(width < 768);
     });
     observer.observe(el);
     return () => observer.disconnect();
@@ -2512,10 +2628,10 @@ function DockedConversationPanel({
       ref={panelContainerRef}
       aria-hidden={!isOpen}
       className={cn(
-        "relative min-h-0 overflow-visible transition-[margin,opacity,transform] duration-500 ease-out",
+        "relative min-h-0 overflow-visible",
         isOpen && (!isEqualSplit || equalSplitWidth === undefined) && "min-w-0 flex-1 basis-0",
         isOpen && isEqualSplit && equalSplitWidth !== undefined && "min-w-0 shrink-0",
-        isOpen ? "opacity-100" : "pointer-events-none w-0 -translate-x-4 opacity-0",
+        !isOpen && "pointer-events-none flex-grow-0 basis-0 w-0",
       )}
       style={{
         width: isOpen && isEqualSplit && equalSplitWidth !== undefined ? equalSplitWidth : undefined,
@@ -2524,9 +2640,9 @@ function DockedConversationPanel({
     >
       <div
         className={cn(
-          "flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-black/[0.16] bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-[opacity,transform,box-shadow] duration-500 ease-out",
+          "flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-black/[0.16] bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-[opacity,transform,box-shadow] duration-[400ms] ease-[cubic-bezier(0.16,1,0.3,1)]",
           "will-change-[opacity,transform]",
-          isContentEntered ? "opacity-100" : "translate-x-3 scale-[0.985] opacity-0",
+          isContentEntered ? "opacity-100 scale-100" : "scale-[0.97] opacity-0",
         )}
       >
         {isContentVisible && (
@@ -2561,14 +2677,19 @@ function DockedConversationPanel({
                             setSummaryTab(tab);
                             if (tab !== "history") onSelectChannel(tab as CustomerChannel);
                           }}
+                          title={isNarrowPanel ? (tab === "history" ? "Customer History" : tab === "sms" ? "SMS" : tab === "whatsapp" ? "WhatsApp" : tab === "email" ? "Email" : tab === "voice" ? "Voice" : "Chat") : undefined}
                           className={cn(
-                            "rounded-lg px-3 py-1 text-[12px] font-medium transition-all duration-150",
+                            "rounded-lg text-[12px] font-medium transition-all duration-150",
+                            isNarrowPanel ? "px-2 py-1.5" : "px-3 py-1",
                             summaryTab === tab
                               ? "bg-white dark:bg-[#1C2A3A] text-[#101828] dark:text-[#E2E8F0] shadow-sm"
                               : "text-[#667085] dark:text-[#8898AB] hover:text-[#333333] dark:hover:text-[#CBD5E1]",
                           )}
                         >
-                          {tab === "history" ? "Customer History" : tab === "sms" ? "SMS" : tab === "whatsapp" ? "WhatsApp" : tab === "email" ? "Email" : tab === "voice" ? "Voice" : "Chat"}
+                          <span className="flex items-center gap-1.5">
+                            {tab === "history" ? <Clock className={isNarrowPanel ? "h-3.5 w-3.5" : "h-3 w-3"} /> : tab === "voice" ? <Phone className={isNarrowPanel ? "h-3.5 w-3.5" : "h-3 w-3"} /> : tab === "email" ? <Mail className={isNarrowPanel ? "h-3.5 w-3.5" : "h-3 w-3"} /> : tab === "sms" ? <MessageSquare className={isNarrowPanel ? "h-3.5 w-3.5" : "h-3 w-3"} /> : tab === "whatsapp" ? <WhatsAppIcon className={isNarrowPanel ? "h-3.5 w-3.5" : "h-3 w-3"} /> : <MessageCircle className={isNarrowPanel ? "h-3.5 w-3.5" : "h-3 w-3"} />}
+                            {!isNarrowPanel && (tab === "history" ? "Customer History" : tab === "sms" ? "SMS" : tab === "whatsapp" ? "WhatsApp" : tab === "email" ? "Email" : tab === "voice" ? "Voice" : "Chat")}
+                          </span>
                         </button>
                       ))}
                       {/* + New Channel as icon button at end of tabs */}
@@ -2576,8 +2697,9 @@ function DockedConversationPanel({
                         <DropdownMenuTrigger asChild>
                           <button
                             type="button"
+                            title="Add channel"
                             onMouseDown={(e) => e.stopPropagation()}
-                            className="flex h-6 w-6 items-center justify-center rounded-lg text-[#667085] hover:bg-white hover:text-[#344054] transition-all duration-150"
+                            className="flex h-6 w-6 items-center justify-center rounded-lg text-[#667085] dark:text-[#8898AB] hover:bg-white dark:hover:bg-[#1C2A3A] hover:text-[#333333] dark:hover:text-[#CBD5E1] hover:shadow-sm transition-all duration-150"
                             aria-label="Add channel"
                           >
                             <Plus className="h-3.5 w-3.5 stroke-[2]" />
@@ -2624,10 +2746,19 @@ function DockedConversationPanel({
             <div className="relative min-h-0 flex-1 flex flex-row overflow-hidden">
 
               {/* Main conversation / customer history — tab bar above toggles content */}
-              <div className="min-h-0 flex-1 overflow-hidden flex flex-col">
-                {summaryTab === "history" ? (
+              <div
+                className="min-h-0 flex-1 overflow-hidden flex flex-col"
+                style={{ opacity: tabFadeOpacity, transition: tabFadeTransition, visibility: tabFadeVisibility }}
+              >
+                {visibleTab === "history" ? (
                   /* Customer History timeline */
-                  <CustomerHistoryTimeline historyItems={[...(customerRecord?.customerHistory ?? []), ...extraHistoryItems]} />
+                  <CustomerHistoryTimeline
+                    historyItems={[...(customerRecord?.customerHistory ?? []), ...extraHistoryItems]}
+                    selectedHistoryItemId={selectedHistoryItemId}
+                    onSelectedHistoryItemIdChange={setSelectedHistoryItemId}
+                    viewingInteraction={viewingInteraction}
+                    onViewingInteractionChange={setViewingInteraction}
+                  />
                 ) : showTaskSummary ? (
                   <TaskSummaryView
                     assignment={{
@@ -2638,9 +2769,10 @@ function DockedConversationPanel({
                   />
                 ) : (
                   <ConversationPanel
+                    key={visibleTab}
                     conversation={conversation}
                     openChannels={openChannels}
-                    activeChannel={activeChannel}
+                    activeChannel={visibleTab as CustomerChannel}
                     customerId={customerRecordId}
                     draftKey={`docked-${conversation.label}-${conversation.customerName}`}
                     onConversationChange={onConversationChange}
@@ -2655,7 +2787,8 @@ function DockedConversationPanel({
                     isWidePanel={isWidePanel}
                     onAgentTasksChange={setHasAgentTasks}
                     suppressAgentTasks={isOptionsResolve}
-                    appendContent={supervisorResolveBox ?? optionsResolveBox}
+                    onNextStepsRequested={() => setResolveBoxVisible(true)}
+                    appendContent={resolveBoxVisible ? (supervisorResolveBox ?? optionsResolveBox) : undefined}
                     forcedSuggestedReply={isOptionsResolve ? optionsForcedReply : null}
                     forcedSuggestionVariants={isOptionsResolve ? optionsForcedVariants : null}
                     aiConfidence={aiConfidence}
@@ -2847,7 +2980,13 @@ function DockedConversationPanel({
                         /* Customer History timeline — narrow drawer */
                         <div className="px-1">
                           <div className="max-w-[800px] mx-auto w-full">
-                            <CustomerHistoryTimeline historyItems={[...(customerRecord?.customerHistory ?? []), ...extraHistoryItems]} />
+                            <CustomerHistoryTimeline
+                              historyItems={[...(customerRecord?.customerHistory ?? []), ...extraHistoryItems]}
+                              selectedHistoryItemId={selectedHistoryItemId}
+                              onSelectedHistoryItemIdChange={setSelectedHistoryItemId}
+                              viewingInteraction={viewingInteraction}
+                              onViewingInteractionChange={setViewingInteraction}
+                            />
                           </div>
                         </div>
                       )}
@@ -2878,7 +3017,7 @@ function DockedConversationPanel({
               <div
                 className={cn(
                   "flex-shrink-0 border-l border-border flex flex-col bg-card dark:bg-[#0C1A26] overflow-hidden transition-[width,opacity] duration-300 ease-in-out",
-                  isHandoffSummaryOpen && (summaryTab === "history" || !selectedHistoryItemId) ? "w-[350px] opacity-100" : "w-0 opacity-0 border-l-0",
+                  isHandoffSummaryOpen && (visibleTab === "history" || !selectedHistoryItemId) ? "w-[350px] opacity-100" : "w-0 opacity-0 border-l-0",
                 )}
               >
                 {/* ── History item detail panel ────────────────────────────── */}
@@ -3259,9 +3398,9 @@ function CombinedInteractionPanel({
     <div
       aria-hidden={!isOpen}
       className={cn(
-        "relative min-h-0 overflow-visible transition-[width,margin,opacity,transform] duration-300 ease-out",
+        "relative min-h-0 overflow-visible",
         (isFullWidth || isEqualSplit) && "min-w-0 flex-1 basis-0",
-        isOpen ? "opacity-100" : "pointer-events-none -translate-x-4 opacity-0",
+        !isOpen && "pointer-events-none",
       )}
       style={{
         width: isFullWidth || isEqualSplit ? undefined : isOpen ? width : 0,
@@ -3392,14 +3531,14 @@ function InlineAppSpacePanel({
     <div
       aria-hidden={!isOpen}
       className={cn(
-        "min-h-0 overflow-hidden transition-[width,opacity,transform] duration-300 ease-out",
-        isOpen ? "min-w-0 flex-1 basis-0 opacity-100" : "pointer-events-none w-0 opacity-0",
+        "min-h-0 overflow-hidden",
+        isOpen ? "min-w-0 flex-1 basis-0" : "pointer-events-none flex-grow-0 basis-0 w-0",
       )}
     >
       <div
         className={cn(
-          "h-full min-h-0 w-full transition-[opacity,transform] duration-300 ease-out",
-          isOpen && isEntered ? "opacity-100" : "translate-x-4 opacity-0",
+          "h-full min-h-0 w-full transition-[opacity,transform] duration-[350ms] ease-[cubic-bezier(0.16,1,0.3,1)]",
+          isOpen && isEntered ? "opacity-100 scale-100" : "scale-[0.97] opacity-0",
         )}
       >
         {children}
@@ -3522,12 +3661,10 @@ function DockedCustomerInfoPanel({
     <div
       aria-hidden={!isOpen}
       className={cn(
-        "relative hidden min-h-0 overflow-visible transition-[width,margin,opacity,transform] duration-300 ease-out min-[1024px]:block",
+        "relative hidden min-h-0 overflow-visible min-[1024px]:block",
         isEqualSplit && equalSplitWidth === undefined && "min-w-0 flex-1 basis-0",
         isEqualSplit && equalSplitWidth !== undefined && "shrink-0",
-        isOpen
-          ? "min-[1024px]:opacity-100"
-          : "pointer-events-none min-[1024px]:translate-x-4 min-[1024px]:opacity-0",
+        !isOpen && "pointer-events-none",
       )}
       style={{
         width: isEqualSplit ? equalSplitWidth : isOpen ? width : 0,
@@ -3536,8 +3673,8 @@ function DockedCustomerInfoPanel({
     >
       <div
         className={cn(
-          "flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-black/[0.16] bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-[opacity,transform,box-shadow] duration-200 ease-out will-change-[opacity,transform]",
-          isContentEntered ? "opacity-100" : "translate-x-3 scale-[0.985] opacity-0",
+          "flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-black/[0.16] bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-[opacity,transform,box-shadow] duration-[350ms] ease-[cubic-bezier(0.16,1,0.3,1)] will-change-[opacity,transform]",
+          isContentEntered ? "opacity-100 scale-100" : "scale-[0.97] opacity-0",
         )}
       >
         {isContentVisible ? (
@@ -4880,8 +5017,8 @@ function DockedTranscriptPanel({
     <div
       aria-hidden={!isOpen}
       className={cn(
-        "relative hidden min-h-0 overflow-visible transition-[width,margin,opacity,transform] duration-300 ease-out min-[1024px]:block",
-        isOpen ? "min-[1024px]:opacity-100" : "pointer-events-none min-[1024px]:translate-x-4 min-[1024px]:opacity-0",
+        "relative hidden min-h-0 overflow-visible min-[1024px]:block",
+        !isOpen && "pointer-events-none",
       )}
       style={{
         width: isOpen ? width : 0,
@@ -4890,8 +5027,8 @@ function DockedTranscriptPanel({
     >
       <div
         className={cn(
-          "flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-black/[0.16] bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-[opacity,transform,box-shadow] duration-200 ease-out will-change-[opacity,transform]",
-          isContentEntered ? "opacity-100" : "translate-x-3 scale-[0.985] opacity-0",
+          "flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-black/[0.16] bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-[opacity,transform,box-shadow] duration-[350ms] ease-[cubic-bezier(0.16,1,0.3,1)] will-change-[opacity,transform]",
+          isContentEntered ? "opacity-100 scale-100" : "scale-[0.97] opacity-0",
         )}
       >
         {isContentVisible ? (
@@ -5090,6 +5227,7 @@ function DockedCopilotPanel({
 }
 
 function DeskCanvasPopunder({
+  visible,
   view,
   position,
   size,
@@ -5102,6 +5240,7 @@ function DeskCanvasPopunder({
   dragActivation = null,
   onInteractStart,
 }: {
+  visible?: boolean;
   view: DeskCanvasView;
   position: DeskCanvasPopunderPosition;
   size: DeskCanvasPopunderSize;
@@ -5203,7 +5342,10 @@ function DeskCanvasPopunder({
 
   return (
     <div
-      className="fixed flex min-h-[420px] flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-[0_20px_50px_rgba(0,0,0,0.18)]"
+      className={cn(
+        "fixed flex min-h-[420px] flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-[0_20px_50px_rgba(0,0,0,0.18)] transition-[opacity,transform] duration-[280ms] ease-[cubic-bezier(0.16,1,0.3,1)] will-change-[opacity,transform]",
+        visible ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-[0.97] translate-y-1",
+      )}
       style={{
         left: position.x,
         top: position.y,
@@ -5309,6 +5451,7 @@ function DeskCanvasPopunder({
 }
 
 function ConversationPopunder({
+  visible,
   position,
   size,
   conversation,
@@ -5334,6 +5477,7 @@ function ConversationPopunder({
   dragActivation = null,
   onInteractStart,
 }: {
+  visible?: boolean;
   position: ConversationPopunderPosition;
   size: ConversationPopunderSize;
   conversation: SharedConversationData;
@@ -5365,6 +5509,9 @@ function ConversationPopunder({
   const isResizingRef = useRef(false);
   const [isAiPanelVisible, setIsAiPanelVisible] = useState(false);
   const [popunderTab, setPopunderTab] = useState<"conversation" | "history">("conversation");
+  // Fade transition for tab / channel switching inside the popunder.
+  const popunderFadeKey = popunderTab === "history" ? "history" : activeChannel;
+  const { deferredKey: popunderVisibleKey, opacity: popunderFadeOpacity, transition: popunderFadeTransition, visibility: popunderFadeVisibility } = useFadeTransition(popunderFadeKey);
   const shouldStackHeaderActions = size.width < 800;
   const isVeryNarrow = size.width < 640;
 
@@ -5430,7 +5577,10 @@ function ConversationPopunder({
 
   return (
     <div
-      className="fixed flex min-h-[420px] min-w-[360px] flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-[0_20px_50px_rgba(0,0,0,0.18)]"
+      className={cn(
+        "fixed flex min-h-[420px] min-w-[360px] flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-[0_20px_50px_rgba(0,0,0,0.18)] transition-[opacity,transform] duration-[280ms] ease-[cubic-bezier(0.16,1,0.3,1)] will-change-[opacity,transform]",
+        visible ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-[0.97] translate-y-1",
+      )}
       style={{
         left: position.x,
         top: position.y,
@@ -5480,7 +5630,10 @@ function ConversationPopunder({
                       : "text-[#667085] dark:text-[#8898AB] hover:text-[#333333] dark:hover:text-[#CBD5E1]",
                   )}
                 >
-                  {tab === "history" ? "Customer History" : tab === "sms" ? "SMS" : tab === "whatsapp" ? "WhatsApp" : tab === "email" ? "Email" : tab === "voice" ? "Voice" : "Chat"}
+                  <span className="flex items-center gap-1.5">
+                    {tab === "history" ? <Clock className="h-3 w-3" /> : tab === "voice" ? <Phone className="h-3 w-3" /> : tab === "email" ? <Mail className="h-3 w-3" /> : tab === "sms" ? <MessageSquare className="h-3 w-3" /> : tab === "whatsapp" ? <WhatsAppIcon className="h-3 w-3" /> : <MessageCircle className="h-3 w-3" />}
+                    {tab === "history" ? "Customer History" : tab === "sms" ? "SMS" : tab === "whatsapp" ? "WhatsApp" : tab === "email" ? "Email" : tab === "voice" ? "Voice" : "Chat"}
+                  </span>
                 </button>
               ))}
               {/* + New Channel inside tab group */}
@@ -5488,8 +5641,9 @@ function ConversationPopunder({
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
+                    title="Add channel"
                     onMouseDown={(e) => e.stopPropagation()}
-                    className="flex h-6 w-6 items-center justify-center rounded-lg text-[#667085] hover:bg-white hover:text-[#344054] transition-all duration-150"
+                    className="flex h-6 w-6 items-center justify-center rounded-lg text-[#667085] dark:text-[#8898AB] hover:bg-white dark:hover:bg-[#1C2A3A] hover:text-[#333333] dark:hover:text-[#CBD5E1] hover:shadow-sm transition-all duration-150"
                     aria-label="Add channel"
                   >
                     <Plus className="h-3.5 w-3.5 stroke-[2]" />
@@ -5538,23 +5692,26 @@ function ConversationPopunder({
         </div>
       </div>
 
-      {popunderTab === "history" ? (
-        <CustomerHistoryTimeline historyItems={getCustomerRecord(customerRecordId)?.customerHistory ?? []} />
-      ) : (
-        <ConversationPanel
-          conversation={conversation}
-          openChannels={openChannels}
-          activeChannel={activeChannel}
-          customerId={customerRecordId}
-          draftKey={`popunder-${conversation.label}-${conversation.customerName}`}
-          onConversationChange={onConversationChange}
-          onSelectChannel={onSelectChannel}
-          onOpenDeskPanel={onOpenDeskPanel}
-          onResolveAssignment={onResolveAssignment}
-          showAiPanel={isAiPanelVisible}
-          inlineFooter
-        />
-      )}
+      <div className="min-h-0 flex-1 overflow-hidden flex flex-col" style={{ opacity: popunderFadeOpacity, transition: popunderFadeTransition, visibility: popunderFadeVisibility }}>
+        {popunderVisibleKey === "history" ? (
+          <CustomerHistoryTimeline historyItems={getCustomerRecord(customerRecordId)?.customerHistory ?? []} />
+        ) : (
+          <ConversationPanel
+            key={popunderVisibleKey}
+            conversation={conversation}
+            openChannels={openChannels}
+            activeChannel={popunderVisibleKey as CustomerChannel}
+            customerId={customerRecordId}
+            draftKey={`popunder-${conversation.label}-${conversation.customerName}`}
+            onConversationChange={onConversationChange}
+            onSelectChannel={onSelectChannel}
+            onOpenDeskPanel={onOpenDeskPanel}
+            onResolveAssignment={onResolveAssignment}
+            showAiPanel={isAiPanelVisible}
+            inlineFooter
+          />
+        )}
+      </div>
 
       <button
         type="button"
@@ -9018,7 +9175,14 @@ export default function Layout({ children }: LayoutProps) {
   const [isAddNewFlowOpen, setIsAddNewFlowOpen] = useState(false);
   const [addNewFlowAnchorRect, setAddNewFlowAnchorRect] = useState<DOMRect | null>(null);
   const [isCopilotPopoverOpen, setIsCopilotPopoverOpen] = useState(true);
+
+  // Animated-presence wrappers – keep popunders mounted during exit animations.
+  const notificationsPresence = useAnimatedPresence(isNotificationsPopoverOpen);
+  const chatPresence = useAnimatedPresence(isChatPopoverOpen);
+  const addNewPresence = useAnimatedPresence(isAddNewPopoverOpen);
+
   const [deskCanvasPopunderView, setDeskCanvasPopunderView] = useState<DeskCanvasView | null>(null);
+  const deskCanvasPresence = useAnimatedPresence(!!deskCanvasPopunderView);
   // Independent popovers for Directory ("desk") and Copilot so they can be open simultaneously
   const [isDeskViewPopunderOpen, setIsDeskViewPopunderOpen] = useState(false);
   const [deskViewPopunderPosition, setDeskViewPopunderPosition] = useState<DeskCanvasPopunderPosition>(() => ({ x: 0, y: 0 }));
@@ -9027,6 +9191,7 @@ export default function Layout({ children }: LayoutProps) {
     height: typeof window === "undefined" ? 720 : Math.max(DESK_CANVAS_POPOUNDER_MIN_HEIGHT, window.innerHeight - 80),
   }));
   const [isCopilotViewPopunderOpen, setIsCopilotViewPopunderOpen] = useState(false);
+  const copilotPopunderPresence = useAnimatedPresence(isCopilotViewPopunderOpen);
   const [copilotViewPopunderPosition, setCopilotViewPopunderPosition] = useState<DeskCanvasPopunderPosition>(() => ({ x: 0, y: 0 }));
   const [copilotViewPopunderSize, setCopilotViewPopunderSize] = useState<DeskCanvasPopunderSize>(() => ({
     width: getDeskCanvasPopunderDefaultWidth("copilot"),
@@ -9155,6 +9320,7 @@ export default function Layout({ children }: LayoutProps) {
     }).conversationWidth,
   );
   const [isConversationPopunderOpen, setIsConversationPopunderOpen] = useState(false);
+  const conversationPopunderPresence = useAnimatedPresence(isConversationPopunderOpen);
   const [isCustomerInfoPanelOpen, setIsCustomerInfoPanelOpen] = useState(false);
   // When true, the customer info popunder is docked adjacent (to the right) of the
   // conversation panel on the activity route, rather than floating freely.
@@ -9288,7 +9454,8 @@ export default function Layout({ children }: LayoutProps) {
       navigate("/activity");
       setCopilotPopunderPosition(getAnchoredCopilotPopunderPosition());
       setIsCopilotPopoverOpen(true);
-      // Auto-open the Customer Information popunder with the lead intelligence overview card
+      // Pre-populate the Customer Information takeover card data so it's ready when the agent
+      // manually opens the panel, but don't auto-open the popunder on takeover.
       const li = capturedLeadItem.leadIntelligence;
       if (li) {
         const ariaAvatarUrl = "https://cdn.builder.io/api/v1/image/assets%2F9d3d716b4b844ab4bcf3267b33310813%2F054057b71e64441097a4902d7dcea754?format=webp&width=800&height=1200";
@@ -9300,13 +9467,6 @@ export default function Layout({ children }: LayoutProps) {
           aiConfidenceReason: li.aiConfidenceReason ?? "Based on 3 similar resolved cases and firmware documentation match.",
         });
         setCustomerInfoTakeoverStartTime(Date.now());
-        if (!customerInfoHasBeenPositionedRef.current) {
-          setCustomerInfoPopunderSize({ width: 360, height: 600 });
-          setCustomerInfoPopunderPosition(getAnchoredCustomerInfoPopunderPosition());
-          customerInfoHasBeenPositionedRef.current = true;
-        }
-        bringFloatingPanelToFront("customerInfo");
-        setIsTakeoverInfoOpen(true);
       }
       setLaunchingLeadId(null);
       // Dismiss both the toast and the Home tab alert
@@ -9358,16 +9518,16 @@ export default function Layout({ children }: LayoutProps) {
 
   useEffect(() => {
     setIsPageEntered(false);
-    // Double rAF ensures the `false` state actually paints before transitioning in
-    let inner: number;
-    const outer = window.requestAnimationFrame(() => {
-      inner = window.requestAnimationFrame(() => {
+    // Brief hold at opacity 0 so the fade-in is perceptible, then transition in.
+    let timerId: ReturnType<typeof setTimeout>;
+    const frameId = window.requestAnimationFrame(() => {
+      timerId = setTimeout(() => {
         setIsPageEntered(true);
-      });
+      }, 60);
     });
     return () => {
-      window.cancelAnimationFrame(outer);
-      window.cancelAnimationFrame(inner);
+      window.cancelAnimationFrame(frameId);
+      clearTimeout(timerId);
     };
   }, [location.pathname, contentRevealTrigger]);
 
@@ -9988,12 +10148,31 @@ export default function Layout({ children }: LayoutProps) {
     // Also decrement escalated badge if this was an escalated case
     if (customerRecordId === "marcus") setIsMarcusResolved(true);
 
+    // Gather data for the rich dismissal toast before removing the assignment
+    const resolveAssignment = assignmentItemsById[selectedAssignmentId];
+    const resolveSa = staticAssignments.find(
+      (s) => s.customerRecordId === customerRecordId || s.customerId === resolveAssignment?.customerId,
+    );
     handleRemoveVisibleAssignment(selectedAssignmentId);
-    toast(`Case resolved — ${assignmentName}`, {
-      description: "The case has been marked as resolved and removed from the queue.",
-      position: "bottom-right",
-      duration: 4000,
-    });
+
+    // Show rich DismissalToast instead of plain sonner toast
+    if (resolveAssignment || resolveSa) {
+      const custId = resolveAssignment?.customerId ?? resolveSa?.customerId ?? customerRecordId;
+      const preview = resolveAssignment?.preview ?? resolveSa?.preview ?? "";
+      const botType = resolveSa?.botType ?? "Aria";
+      const chan = resolveAssignment?.channel ?? resolveSa?.channel ?? "chat";
+      const actions = resolveSa?.aiOverview?.actions ?? [];
+      setDismissalToast({
+        customerName: assignmentName,
+        customerId: custId,
+        status: "resolved",
+        resolvedStatus: "Resolved",
+        actions,
+        preview,
+        botType,
+        channel: chan,
+      });
+    }
   };
 
   // When the agent switches to a different case while in post-call history mode, finish the cleanup.
@@ -11276,11 +11455,16 @@ export default function Layout({ children }: LayoutProps) {
     // Build context summary from the static assignment when no seed handoff card exists
     const contextSummary = existingHandoff?.content
       ?? (sa?.aiOverview?.whyNeeded
-        ? `Flagging for human agent now. Context: ${sa.aiOverview.whyNeeded}`
+        ? sa.aiOverview.whyNeeded
         : null);
+    const snapshotLines = takeoverRecord?.customerSnapshot;
+    const alreadyHasSnapshot = contextSummary?.includes("Customer Snapshot:");
+    const snapshotBlock = snapshotLines?.length && !alreadyHasSnapshot
+      ? `\n\nCustomer Snapshot:\n${snapshotLines.map((s: string) => `• ${s}`).join("\n")}`
+      : "";
     const combinedHandoff = contextSummary
-      ? `${contextSummary}\n\nI have transferred the assignment. You are now live with customer ${item.name}.`
-      : `I have transferred the assignment. You are now live with customer ${item.name}.`;
+      ? `${contextSummary}${snapshotBlock}\n\nI have transferred the assignment. You are now live with customer ${item.name}.`
+      : `I have transferred the assignment. You are now live with customer ${item.name}.${snapshotBlock}`;
     const conversationWithHandoff = baseConversation
       ? {
           ...baseConversation,
@@ -12574,8 +12758,8 @@ export default function Layout({ children }: LayoutProps) {
         {isActivityRoute && visibleAssignments.length === 0 && (
           <div className={cn(
             "flex min-w-0 flex-1 flex-col items-center justify-center gap-5 rounded-lg border border-black/[0.10] bg-white",
-            "transition-[opacity,transform] duration-500 ease-out will-change-[opacity,transform]",
-            isPageEntered ? "opacity-100" : "translate-x-3 scale-[0.985] opacity-0",
+            "transition-[opacity,transform] duration-[400ms] ease-[cubic-bezier(0.16,1,0.3,1)] will-change-[opacity,transform]",
+            isPageEntered ? "opacity-100 scale-100" : "scale-[0.97] opacity-0",
           )}>
             <div className="flex flex-col items-center gap-4 text-center px-8 max-w-sm">
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#F2F4F7]">
@@ -12605,8 +12789,8 @@ export default function Layout({ children }: LayoutProps) {
         {isCombinedInteractionPanel ? (
           <div className={cn(
             "flex min-w-0 flex-1",
-            "transition-[opacity,transform] duration-500 ease-out will-change-[opacity,transform]",
-            isPageEntered ? "opacity-100" : "translate-x-3 scale-[0.985] opacity-0",
+            "transition-[opacity,transform] duration-[400ms] ease-[cubic-bezier(0.16,1,0.3,1)] will-change-[opacity,transform]",
+            isPageEntered ? "opacity-100 scale-100" : "scale-[0.97] opacity-0",
           )}>
             <CombinedInteractionPanel
               isOpen={isCanvasMergedIntoCombinedPanel ? true : isConversationPanelOpen || isCustomerInfoPanelOpen}
@@ -12653,8 +12837,8 @@ export default function Layout({ children }: LayoutProps) {
         ) : isAppSpaceSplitLayout ? (
           <div className={cn(
             "flex min-w-0 flex-1 items-stretch gap-4",
-            "transition-[opacity,transform] duration-500 ease-out will-change-[opacity,transform]",
-            isPageEntered ? "opacity-100" : "translate-x-3 scale-[0.985] opacity-0",
+            "transition-[opacity,transform] duration-[400ms] ease-[cubic-bezier(0.16,1,0.3,1)] will-change-[opacity,transform]",
+            isPageEntered ? "opacity-100 scale-100" : "scale-[0.97] opacity-0",
           )}>
             {isInlineConversationSplitPanelVisible ? (
               <DockedConversationPanel
@@ -12747,12 +12931,7 @@ export default function Layout({ children }: LayoutProps) {
                 activeCaseTransferredItem={activeCaseTransferredItem}
                 onTakeoverOpen={(pos) => {
                   if (pos) conversationPanelHeaderBottomRef.current = pos.y;
-                  bringFloatingPanelToFront("customerInfo");
-                  if (!customerInfoHasBeenPositionedRef.current) {
-                    setCustomerInfoPopunderPosition(getAnchoredCustomerInfoPopunderPosition());
-                    setCustomerInfoPopunderSize({ width: 360, height: 600 });
-                    customerInfoHasBeenPositionedRef.current = true;
-                  }
+                  // Pre-populate takeover card data but don't auto-open the popunder.
                   setCustomerInfoTakeoverStartTime(Date.now());
                   const botLabel = selectedAssignment.label ?? "Aria";
                   const botAvatarUrl = botLabel === "Emily"
@@ -12773,7 +12952,6 @@ export default function Layout({ children }: LayoutProps) {
                       aiConfidenceReason: selectedAssignment.aiConfidenceReason ?? "Based on 3 similar resolved cases and firmware documentation match.",
                     });
                   }
-                  setIsTakeoverInfoOpen(true);
                 }}
                 aiConfidence={selectedAssignment.aiConfidence}
                 aiConfidenceReason={selectedAssignment.aiConfidenceReason}
@@ -13025,20 +13203,8 @@ export default function Layout({ children }: LayoutProps) {
                     aiConfidenceReason: selectedAssignment.aiConfidenceReason ?? "Based on 3 similar resolved cases and firmware documentation match.",
                   });
                 }
-                // If the panel is already docked adjacent to the conversation, don't open
-                // a floating popunder — the docked panel will display the updated card.
-                if (isCustomerInfoInConversationDockMode) {
-                  setIsConversationDockedPanelOpen(true);
-                  return;
-                }
-                bringFloatingPanelToFront("customerInfo");
-                if (!customerInfoHasBeenPositionedRef.current) {
-                  setCustomerInfoPopunderPosition(getAnchoredCustomerInfoPopunderPosition());
-                  setCustomerInfoPopunderSize({ width: 360, height: 600 });
-                  customerInfoHasBeenPositionedRef.current = true;
-                }
+                // Pre-populate takeover data but don't auto-open the popunder.
                 setCustomerInfoTakeoverStartTime(Date.now());
-                setIsTakeoverInfoOpen(true);
               }}
               onAiActionClick={(actionId) => {
                 if (actionId === "auto-resolve-dismiss") {
@@ -13184,7 +13350,7 @@ export default function Layout({ children }: LayoutProps) {
             className={cn(
               "flex min-w-0 flex-1 flex-col overflow-hidden min-[800px]:min-w-[360px]",
               "transition-[opacity,transform] duration-500 ease-out will-change-[opacity,transform]",
-              isPageEntered ? "opacity-100" : "translate-x-3 scale-[0.985] opacity-0",
+              isPageEntered ? "opacity-100" : "scale-[0.985] opacity-0",
               isActivityRoute ? "bg-transparent" : "rounded-lg border border-black/[0.16] bg-white",
             )}
           >
@@ -13193,8 +13359,9 @@ export default function Layout({ children }: LayoutProps) {
         )}
       </div>
 
-      {isConversationPopunderOpen && !isConversationPanelOpen && (
+      {conversationPopunderPresence.mounted && !isConversationPanelOpen && (
         <ConversationPopunder
+          visible={conversationPopunderPresence.visible}
           position={conversationPopunderPosition}
           size={conversationPopunderSize}
           conversation={conversationState}
@@ -13285,8 +13452,9 @@ export default function Layout({ children }: LayoutProps) {
       )}
 
       {/* Independent Copilot popunder */}
-      {isCopilotViewPopunderOpen && (
+      {copilotPopunderPresence.mounted && (
         <DeskCanvasPopunder
+          visible={copilotPopunderPresence.visible}
           view="copilot"
           position={copilotViewPopunderPosition}
           size={copilotViewPopunderSize}
@@ -13300,8 +13468,9 @@ export default function Layout({ children }: LayoutProps) {
       )}
 
       {/* Shared popunder for notes / add / customer / notifications */}
-      {deskCanvasPopunderView && (
+      {deskCanvasPresence.mounted && deskCanvasPopunderView && (
         <DeskCanvasPopunder
+          visible={deskCanvasPresence.visible}
           view={deskCanvasPopunderView}
           position={deskCanvasPopunderPosition}
           size={deskCanvasPopunderSize}
@@ -13438,8 +13607,9 @@ export default function Layout({ children }: LayoutProps) {
 
       {/* ConnectedAppsPopover is now rendered inline as a flyout submenu in the status dropdown */}
 
-      {isNotificationsPopoverOpen && (
+      {notificationsPresence.mounted && (
         <NotificationsPopoverContent
+          visible={notificationsPresence.visible}
           position={notificationsPopunderPosition}
           size={notificationsPopunderSize}
           zIndex={getFloatingPanelZIndex("notifications")}
@@ -13586,13 +13756,19 @@ export default function Layout({ children }: LayoutProps) {
             const modalExistingHandoff = conversation?.messages.find((msg) => msg.isHandoffCard);
             const modalContextSummary = modalExistingHandoff?.content
               ?? (escalatedToastModal.aiOverview?.whyNeeded
-                ? `Flagging for human agent now. Context: ${escalatedToastModal.aiOverview.whyNeeded}`
+                ? escalatedToastModal.aiOverview.whyNeeded
                 : sa?.aiOverview?.whyNeeded
-                  ? `Flagging for human agent now. Context: ${sa.aiOverview.whyNeeded}`
+                  ? sa.aiOverview.whyNeeded
                   : null);
+            const modalCustomerRecord = escalatedToastModal.customerRecordId ? getCustomerRecord(escalatedToastModal.customerRecordId) : null;
+            const modalSnapshotLines = modalCustomerRecord?.customerSnapshot;
+            const modalAlreadyHasSnapshot = modalContextSummary?.includes("Customer Snapshot:");
+            const modalSnapshotBlock = modalSnapshotLines?.length && !modalAlreadyHasSnapshot
+              ? `\n\nCustomer Snapshot:\n${modalSnapshotLines.map((s: string) => `• ${s}`).join("\n")}`
+              : "";
             const modalCombinedHandoff = modalContextSummary
-              ? `${modalContextSummary}\n\nI have transferred the assignment. You are now live with customer ${escalatedToastModal.name}.`
-              : `I have transferred the assignment. You are now live with customer ${escalatedToastModal.name}.`;
+              ? `${modalContextSummary}${modalSnapshotBlock}\n\nI have transferred the assignment. You are now live with customer ${escalatedToastModal.name}.`
+              : `I have transferred the assignment. You are now live with customer ${escalatedToastModal.name}.${modalSnapshotBlock}`;
             const conversationWithHandoff = conversation
               ? {
                   ...conversation,
@@ -13660,13 +13836,19 @@ export default function Layout({ children }: LayoutProps) {
             const superviseExistingHandoff = superviseBase?.messages.find((msg) => msg.isHandoffCard);
             const superviseContextSummary = superviseExistingHandoff?.content
               ?? (escalatedToastModal.aiOverview?.whyNeeded
-                ? `Flagging for human agent now. Context: ${escalatedToastModal.aiOverview.whyNeeded}`
+                ? escalatedToastModal.aiOverview.whyNeeded
                 : sa?.aiOverview?.whyNeeded
-                  ? `Flagging for human agent now. Context: ${sa.aiOverview.whyNeeded}`
+                  ? sa.aiOverview.whyNeeded
                   : null);
+            const superviseCustomerRecord = escalatedToastModal.customerRecordId ? getCustomerRecord(escalatedToastModal.customerRecordId) : null;
+            const superviseSnapshotLines = superviseCustomerRecord?.customerSnapshot;
+            const superviseAlreadyHasSnapshot = superviseContextSummary?.includes("Customer Snapshot:");
+            const superviseSnapshotBlock = superviseSnapshotLines?.length && !superviseAlreadyHasSnapshot
+              ? `\n\nCustomer Snapshot:\n${superviseSnapshotLines.map((s: string) => `• ${s}`).join("\n")}`
+              : "";
             const superviseCombinedHandoff = superviseContextSummary
-              ? `${superviseContextSummary}\n\nI have transferred the assignment. You are now live with customer ${escalatedToastModal.name}.`
-              : `I have transferred the assignment. You are now live with customer ${escalatedToastModal.name}.`;
+              ? `${superviseContextSummary}${superviseSnapshotBlock}\n\nI have transferred the assignment. You are now live with customer ${escalatedToastModal.name}.`
+              : `I have transferred the assignment. You are now live with customer ${escalatedToastModal.name}.${superviseSnapshotBlock}`;
             const superviseConversation = superviseBase
               ? {
                   ...superviseBase,
@@ -13757,8 +13939,9 @@ export default function Layout({ children }: LayoutProps) {
         />
       )}
 
-      {isChatPopoverOpen && (
+      {chatPresence.mounted && (
         <ChatPopoverContent
+          visible={chatPresence.visible}
           position={chatPopunderPosition}
           size={chatPopunderSize}
           zIndex={getFloatingPanelZIndex("chat")}
@@ -13772,8 +13955,9 @@ export default function Layout({ children }: LayoutProps) {
       )}
 
 
-      {isAddNewPopoverOpen && (
+      {addNewPresence.mounted && (
         <AddNewPopoverContent
+          visible={addNewPresence.visible}
           position={addNewPopunderPosition}
           size={addNewPopunderSize}
           zIndex={getFloatingPanelZIndex("addNew")}
