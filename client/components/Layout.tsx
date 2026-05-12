@@ -103,6 +103,7 @@ import { conversationChannelOptions } from "@/components/ConversationChannelTogg
 import { type RecentInteractionItem } from "@/components/RecentInteractionsPanel";
 import { cn } from "@/lib/utils";
 import {
+  buildTakeoverConversation,
   createConversationState,
   customerDatabase,
   defaultCustomerId,
@@ -8978,11 +8979,17 @@ function generateSimulatedCustomerReply(conversation: SharedConversationData, ag
     .find((message) => message.role === "customer")
     ?.content.toLowerCase() ?? "";
 
-  // ── Marcus Webb — refund confirmation reply with 5-star review ──
+  // ── Marcus Webb — happy reply after any resolution (refund/reship/intercept) ──
   if (
     conversation.customerName === "Marcus Webb" &&
-    (normalizedMessage.includes("refund") || normalizedMessage.includes("processed")) &&
-    (normalizedMessage.includes("wb-88214") || normalizedMessage.includes("order"))
+    (normalizedMessage.includes("refund") || normalizedMessage.includes("processed") ||
+     normalizedMessage.includes("reship") || normalizedMessage.includes("overnight") ||
+     normalizedMessage.includes("intercept") || normalizedMessage.includes("redirect") ||
+     normalizedMessage.includes("new order") || normalizedMessage.includes("on its way") ||
+     normalizedMessage.includes("replacement")) &&
+    (normalizedMessage.includes("wb-88214") || normalizedMessage.includes("order") ||
+     normalizedMessage.includes("austin") || normalizedMessage.includes("sweater") ||
+     normalizedMessage.includes("marcus") || normalizedMessage.includes("saturday"))
   ) {
     return {
       content: "Thank you so much! I really appreciate it.",
@@ -11437,66 +11444,19 @@ export default function Layout({ children }: LayoutProps) {
     // Mark the static case as "handled" so the queue removes it on next render
     // (prevents double-entry when the live resolved assignment appears in resolvedNormalised).
     if (sa) pendingQueueRejections.add(sa.id);
-    // Call acceptIssue directly — ONE navigation to /activity so the page
-    // fade-in animation fires cleanly (double navigation via /control-center breaks it).
     const customerRecordId = sa?.customerRecordId ?? item.customerRecordId;
-    const channel = (item.channel === "sms" ? "sms" : "chat") as "chat" | "sms";
-    // item.label is the bot display name ("Aria", "Jacob", "Emily") — stamp pre-takeover
-    // agent messages with it so they render with the bot's avatar, not the human agent's.
     const botAuthor = item.label ?? "Aria";
-    const baseConversation = customerRecordId
-      ? createConversationState(customerRecordId, channel, botAuthor)
+    // Use the shared buildTakeoverConversation — same function TakeoverButton and the
+    // toast modal use, so every takeover path produces identical output.
+    const initialConversation = customerRecordId
+      ? buildTakeoverConversation({
+          customerRecordId,
+          customerName: item.name,
+          botType: botAuthor,
+          channel: (item.channel === "sms" ? "sms" : "chat") as "chat" | "sms",
+          aiWhyNeeded: sa?.aiOverview?.whyNeeded ?? null,
+        })
       : undefined;
-    // Append a warm handoff message from the bot at the moment of takeover,
-    // followed by the internal handoff card (agent-only green transfer notice).
-    const takeoverRecord = customerRecordId ? getCustomerRecord(customerRecordId) : null;
-    const skipTransferMessage = takeoverRecord?.seedHasTransferMessage === true;
-    const existingHandoff = baseConversation?.messages.find((msg) => msg.isHandoffCard);
-    // Build context summary from the static assignment when no seed handoff card exists
-    const contextSummary = existingHandoff?.content
-      ?? (sa?.aiOverview?.whyNeeded
-        ? sa.aiOverview.whyNeeded
-        : null);
-    const snapshotLines = takeoverRecord?.customerSnapshot;
-    const alreadyHasSnapshot = contextSummary?.includes("Customer Snapshot:");
-    const snapshotBlock = snapshotLines?.length && !alreadyHasSnapshot
-      ? `\n\nCustomer Snapshot:\n${snapshotLines.map((s: string) => `• ${s}`).join("\n")}`
-      : "";
-    const combinedHandoff = contextSummary
-      ? `${contextSummary}${snapshotBlock}\n\nI have transferred the assignment. You are now live with customer ${item.name}.`
-      : `I have transferred the assignment. You are now live with customer ${item.name}.${snapshotBlock}`;
-    const conversationWithHandoff = baseConversation
-      ? {
-          ...baseConversation,
-          messages: [
-            // Remove the original handoff card — it will be re-added after the transfer message
-            ...baseConversation.messages.filter((msg) => !msg.isHandoffCard),
-            // Some customers already have a transfer message in their seed conversation data,
-            // so skip injecting a duplicate transfer bubble for them.
-            ...(!skipTransferMessage ? [{
-              id: (baseConversation.messages[baseConversation.messages.length - 1]?.id ?? 0) + 1,
-              role: "agent" as const,
-              author: botAuthor,
-              content: "I'm going to transfer you to a live customer service agent, please hold.",
-              time: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
-            }] : []),
-            // Combined handoff card — placed after the transfer message
-            {
-              id: (baseConversation.messages[baseConversation.messages.length - 1]?.id ?? 0) + (skipTransferMessage ? 1 : 2),
-              role: "agent" as const,
-              author: botAuthor,
-              content: combinedHandoff,
-              time: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
-              isInternal: true,
-              isHandoffCard: true,
-            },
-          ],
-        }
-      : undefined;
-    // Pre-populate the reply draft from database if configured for this customer
-    const initialConversation = takeoverRecord?.takeoverDraft && conversationWithHandoff
-      ? { ...conversationWithHandoff, draft: takeoverRecord.takeoverDraft }
-      : conversationWithHandoff;
 
     acceptIssue({
       id: sa?.id ?? item.id,
@@ -13749,58 +13709,52 @@ export default function Layout({ children }: LayoutProps) {
                 preview: escalatedToastModal.preview,
               });
             }
-            // Append warm handoff message from the bot at the moment of takeover,
-            // followed by the internal handoff card (agent-only green transfer notice).
+            // Build the takeover conversation. If the modal passed injected messages
+            // (approved responses / actions from the guided review), preserve them
+            // instead of rebuilding from the seed which would lose that history.
             const modalBotAuthor = escalatedToastModal.botType ?? "Aria";
-            const isModalMarcus = escalatedToastModal.customerRecordId === "marcus";
-            const modalExistingHandoff = conversation?.messages.find((msg) => msg.isHandoffCard);
-            const modalContextSummary = modalExistingHandoff?.content
-              ?? (escalatedToastModal.aiOverview?.whyNeeded
-                ? escalatedToastModal.aiOverview.whyNeeded
-                : sa?.aiOverview?.whyNeeded
-                  ? sa.aiOverview.whyNeeded
-                  : null);
-            const modalCustomerRecord = escalatedToastModal.customerRecordId ? getCustomerRecord(escalatedToastModal.customerRecordId) : null;
-            const modalSnapshotLines = modalCustomerRecord?.customerSnapshot;
-            const modalAlreadyHasSnapshot = modalContextSummary?.includes("Customer Snapshot:");
-            const modalSnapshotBlock = modalSnapshotLines?.length && !modalAlreadyHasSnapshot
-              ? `\n\nCustomer Snapshot:\n${modalSnapshotLines.map((s: string) => `• ${s}`).join("\n")}`
-              : "";
-            const modalCombinedHandoff = modalContextSummary
-              ? `${modalContextSummary}${modalSnapshotBlock}\n\nI have transferred the assignment. You are now live with customer ${escalatedToastModal.name}.`
-              : `I have transferred the assignment. You are now live with customer ${escalatedToastModal.name}.${modalSnapshotBlock}`;
-            const conversationWithHandoff = conversation
-              ? {
-                  ...conversation,
-                  messages: [
-                    // Remove the original handoff card — it will be re-added after the transfer message
-                    ...conversation.messages.filter((msg) => !msg.isHandoffCard),
-                    // Marcus already has a generic handoff message in the static conversation data,
-                    // so skip injecting the transfer bubble for him to avoid duplication.
-                    ...(!isModalMarcus ? [{
-                      id: (conversation.messages[conversation.messages.length - 1]?.id ?? 0) + 1,
-                      role: "agent" as const,
-                      author: modalBotAuthor,
-                      content: "I'm going to transfer you to a live customer service agent, please hold.",
-                      time: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
-                    }] : []),
-                    // Combined handoff card — placed after the transfer message
-                    {
-                      id: (conversation.messages[conversation.messages.length - 1]?.id ?? 0) + (isModalMarcus ? 1 : 2),
-                      role: "agent" as const,
-                      author: modalBotAuthor,
-                      content: modalCombinedHandoff,
-                      time: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
-                      isInternal: true,
-                      isHandoffCard: true,
-                    },
-                  ],
-                }
+            const customerRecordId = escalatedToastModal.customerRecordId;
+            const baseTakeover = customerRecordId
+              ? buildTakeoverConversation({
+                  customerRecordId,
+                  customerName: escalatedToastModal.name,
+                  botType: modalBotAuthor,
+                  channel: (escalatedToastModal.channel === "sms" ? "sms" : "chat") as "chat" | "sms",
+                  aiWhyNeeded: escalatedToastModal.aiOverview?.whyNeeded ?? sa?.aiOverview?.whyNeeded ?? null,
+                })
               : conversation;
-            // For Marcus's case, pre-populate the reply draft when the agent takes over
-            const takeoverConversation = escalatedToastModal.customerRecordId === "marcus"
-              ? { ...conversationWithHandoff, draft: "Hi Marcus, this is Jeff. I've reviewed everything and I want to help you fix this. I can see the party is Saturday — let's make sure your dad gets his gift in time." }
-              : conversationWithHandoff;
+            // The modal's `conversation` includes seed messages + injectedMessages from
+            // the guided review. Compare against the raw seed to detect injected content.
+            // If the modal has more messages, it means the agent approved responses during
+            // the review — merge them with the handoff card from buildTakeoverConversation.
+            const takeoverConversation = (() => {
+              if (!customerRecordId || !conversation) return baseTakeover;
+              const ch = (escalatedToastModal.channel === "sms" ? "sms" : "chat") as "chat" | "sms";
+              const seed = createConversationState(customerRecordId, ch, modalBotAuthor);
+              const seedCount = seed.messages.length;
+              const modalCount = conversation.messages.length;
+              if (modalCount > seedCount) {
+                // Modal has extra messages from the guided review — keep them all,
+                // strip the original handoff card, then append the enriched handoff
+                // card (with customer snapshot) and transfer message from buildTakeoverConversation.
+                const handoffCard = baseTakeover.messages.find((m: ConversationMessage) => m.isHandoffCard);
+                const transferMsg = baseTakeover.messages.find((m: ConversationMessage) =>
+                  !m.isHandoffCard && !seed.messages.some((s: ConversationMessage) => s.id === m.id));
+                const modalNonHandoff = conversation.messages.filter((m: ConversationMessage) => !m.isHandoffCard);
+                return {
+                  ...baseTakeover,
+                  guidedReviewCompleted: true,
+                  messages: [
+                    ...modalNonHandoff,
+                    ...(transferMsg ? [transferMsg] : []),
+                    ...(handoffCard ? [handoffCard] : []),
+                  ],
+                };
+              }
+              return baseTakeover;
+            })();
+            // Write to the module-level store so Layout reads it in acceptIssue / setConversationStateForAssignment
+            if (customerRecordId) pendingHandoffConversations.set(customerRecordId, takeoverConversation as SharedConversationData);
             // Call acceptIssue directly — ONE navigation to /activity for a clean fade-in
             acceptIssue({
               id: escalatedToastModal.id,
@@ -13828,53 +13782,21 @@ export default function Layout({ children }: LayoutProps) {
             const sa = staticAssignments.find(
               (s) => s.customerRecordId === escalatedToastModal.customerRecordId || s.customerId === escalatedToastModal.customerId,
             );
-            // Build conversation with warm handoff message
+            // Use the shared buildTakeoverConversation — identical to onTakeover path above.
             const superviseBotAuthor = escalatedToastModal.botType ?? "Aria";
-            const superviseBase = escalatedToastModal.customerRecordId
-              ? createConversationState(escalatedToastModal.customerRecordId, (escalatedToastModal.channel === "sms" ? "sms" : "chat") as "chat" | "sms", superviseBotAuthor)
+            const superviseCustomerRecordId = escalatedToastModal.customerRecordId;
+            const superviseConversation = superviseCustomerRecordId
+              ? buildTakeoverConversation({
+                  customerRecordId: superviseCustomerRecordId,
+                  customerName: escalatedToastModal.name,
+                  botType: superviseBotAuthor,
+                  channel: (escalatedToastModal.channel === "sms" ? "sms" : "chat") as "chat" | "sms",
+                  aiWhyNeeded: escalatedToastModal.aiOverview?.whyNeeded ?? sa?.aiOverview?.whyNeeded ?? null,
+                })
               : undefined;
-            const superviseExistingHandoff = superviseBase?.messages.find((msg) => msg.isHandoffCard);
-            const superviseContextSummary = superviseExistingHandoff?.content
-              ?? (escalatedToastModal.aiOverview?.whyNeeded
-                ? escalatedToastModal.aiOverview.whyNeeded
-                : sa?.aiOverview?.whyNeeded
-                  ? sa.aiOverview.whyNeeded
-                  : null);
-            const superviseCustomerRecord = escalatedToastModal.customerRecordId ? getCustomerRecord(escalatedToastModal.customerRecordId) : null;
-            const superviseSnapshotLines = superviseCustomerRecord?.customerSnapshot;
-            const superviseAlreadyHasSnapshot = superviseContextSummary?.includes("Customer Snapshot:");
-            const superviseSnapshotBlock = superviseSnapshotLines?.length && !superviseAlreadyHasSnapshot
-              ? `\n\nCustomer Snapshot:\n${superviseSnapshotLines.map((s: string) => `• ${s}`).join("\n")}`
-              : "";
-            const superviseCombinedHandoff = superviseContextSummary
-              ? `${superviseContextSummary}${superviseSnapshotBlock}\n\nI have transferred the assignment. You are now live with customer ${escalatedToastModal.name}.`
-              : `I have transferred the assignment. You are now live with customer ${escalatedToastModal.name}.${superviseSnapshotBlock}`;
-            const superviseConversation = superviseBase
-              ? {
-                  ...superviseBase,
-                  messages: [
-                    // Remove original handoff card — re-added after transfer message
-                    ...superviseBase.messages.filter((msg) => !msg.isHandoffCard),
-                    {
-                      id: (superviseBase.messages[superviseBase.messages.length - 1]?.id ?? 0) + 1,
-                      role: "agent" as const,
-                      author: superviseBotAuthor,
-                      content: "I'm going to transfer you to a live customer service agent, please hold.",
-                      time: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
-                    },
-                    // Combined handoff card — placed after the transfer message
-                    {
-                      id: (superviseBase.messages[superviseBase.messages.length - 1]?.id ?? 0) + 2,
-                      role: "agent" as const,
-                      author: superviseBotAuthor,
-                      content: superviseCombinedHandoff,
-                      time: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
-                      isInternal: true,
-                      isHandoffCard: true,
-                    },
-                  ],
-                }
-              : undefined;
+            if (superviseCustomerRecordId && superviseConversation) {
+              pendingHandoffConversations.set(superviseCustomerRecordId, superviseConversation);
+            }
             acceptIssue({
               id: escalatedToastModal.id,
               name: escalatedToastModal.name,

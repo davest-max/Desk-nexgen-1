@@ -7,6 +7,12 @@
 export type CustomerAssignmentTask = {
   id: string;
   label: string;
+  /** When set, tasks sharing the same group string behave as radio buttons (mutually exclusive). */
+  group?: string;
+  /** Display label above the description (e.g. "Option 1"). Triggers options-style layout. */
+  optionLabel?: string;
+  /** Visual variant for special styling (e.g. goodwill gesture card). */
+  variant?: "goodwill";
 };
 
 export type CustomerAssignmentEntry = {
@@ -17,6 +23,22 @@ export type CustomerAssignmentEntry = {
 
 const customerAssignmentTaskDatabase: Record<string, CustomerAssignmentEntry> = {
   // ── Live assignment customers (customer-database.ts) ──────────────────────
+
+  "marcus webb": {
+    summary: "Marcus's order #WB-88214 (Charcoal Merino Sweater, $129) was shipped to his old Denver address due to a system-side caching error. The package is already in transit and he needs the item before Saturday for his dad's birthday. Here are my suggested actions, or ask me for more assistance.",
+    nextSteps: [
+      "Option 1 — Reship immediately: Place a new expedited order to the correct address. System shows Saturday delivery is achievable with overnight shipping at no cost to Marcus. One-click action available.",
+      "Option 2 — Full refund + reorder: Issue a full refund for the original order and place a new one. Estimated refund processing: 3–5 business days.",
+      "Option 3 — Package intercept attempt: Submit a carrier intercept request, low probability of success given current transit stage, but worth attempting in parallel.",
+      "Applies a 20% discount code to Marcus's account as a goodwill gesture for the inconvenience, visible as a one-click action in the loyalty tools panel.",
+    ],
+    suggestedActions: [
+      { id: "reship-overnight", label: "Reship overnight to Austin address (2847 Ridgewood Ave)", group: "resolution", optionLabel: "Option 1" },
+      { id: "full-refund-reorder", label: "Issue full refund — let Marcus reorder at his convenience", group: "resolution", optionLabel: "Option 2" },
+      { id: "carrier-intercept", label: "Attempt carrier intercept to redirect Denver package", group: "resolution", optionLabel: "Option 3" },
+      { id: "apply-discount", label: "Apply 20% discount code on next order (CARE20) — apologize for the address caching error", variant: "goodwill" },
+    ],
+  },
 
   "alex kowalski": {
     summary: "Alex is a low-to-moderate fraud risk (score 34) and is showing frustration after repeated failed upgrade attempts. A billing zip mismatch is blocking the transaction — clearing the security flag should resolve this quickly. Here are my suggested actions, or ask me for more assistance.",
@@ -365,3 +387,60 @@ const customerAssignmentTaskDatabase: Record<string, CustomerAssignmentEntry> = 
 export function getCustomerAssignmentEntry(customerName: string): CustomerAssignmentEntry | null {
   return customerAssignmentTaskDatabase[customerName.toLowerCase().trim()] ?? null;
 }
+
+// ── Post-resolve suggested response variants for options-style flows ──────────
+// Keyed by resolution task id → { withGoodwill: string[], withoutGoodwill: string[] }
+// Each array should contain 3 response variants for the card carousel.
+
+export type ResolveResponseVariants = {
+  withGoodwill: string[];
+  withoutGoodwill: string[];
+  /** Completion note fragment for the internal note (replaces the default). */
+  completionNote?: string;
+  completionNoteWithGoodwill?: string;
+};
+
+export const resolveResponseVariantsByTaskId: Record<string, ResolveResponseVariants> = {
+  "reship-overnight": {
+    withGoodwill: [
+      "Marcus, I've placed a new expedited order to your Austin address at 2847 Ridgewood Ave — it should arrive by Saturday. I've also applied a 20% discount code (CARE20) to your account as an apology for the address mix-up. Is there anything else I can help with?",
+      "Good news, Marcus — a replacement Charcoal Merino Sweater is on its way overnight to your Austin address and should arrive in time for Saturday. As a goodwill gesture, I've added a 20% discount (CARE20) to your next order. Let me know if there's anything else!",
+      "I've reshipped your order overnight to 2847 Ridgewood Ave, Austin. Delivery is on track for Saturday. I've also applied a CARE20 discount code (20% off) to your account for the inconvenience. Is there anything else you need?",
+    ],
+    withoutGoodwill: [
+      "Marcus, I've placed a new expedited order to your Austin address at 2847 Ridgewood Ave — it should arrive by Saturday. Is there anything else I can help with?",
+      "Good news, Marcus — a replacement Charcoal Merino Sweater is on its way overnight to your Austin address and should arrive in time for Saturday. Let me know if there's anything else!",
+      "I've reshipped your order overnight to 2847 Ridgewood Ave, Austin. Delivery is on track for Saturday. Is there anything else you need?",
+    ],
+    completionNote: "Resolution actioned for order #WB-88214: Overnight reship placed to Austin address (2847 Ridgewood Ave). Saturday delivery confirmed.",
+    completionNoteWithGoodwill: "Resolution actioned for order #WB-88214: Overnight reship placed to Austin address (2847 Ridgewood Ave). Goodwill discount code CARE20 (20%) applied to account.",
+  },
+  "full-refund-reorder": {
+    withGoodwill: [
+      "Marcus, I've processed a full refund for order #WB-88214. You should see it back in your account within 3–5 business days. I've also applied a 20% discount code (CARE20) to your account as an apology for the address caching error. Feel free to reorder at your convenience!",
+      "I'm sorry for the trouble with this order, Marcus. I've issued a full refund for #WB-88214 — it will appear within 3–5 business days. Feel free to place a new order whenever you're ready, and I've added a 20% discount (CARE20) for next time. Is there anything else I can do?",
+      "Your full refund for order #WB-88214 has been issued, Marcus. Expect it to hit your account within 3–5 business days. I've also applied a CARE20 discount code (20% off) as a goodwill gesture for the inconvenience. Let me know if you need help with anything else!",
+    ],
+    withoutGoodwill: [
+      "Marcus, I've processed a full refund for order #WB-88214. You should see it back in your account within 3–5 business days. Feel free to reorder at your convenience!",
+      "I'm sorry for the trouble with this order, Marcus. I've issued a full refund for #WB-88214 — it will appear within 3–5 business days. Feel free to place a new order whenever you're ready. Is there anything else I can do?",
+      "Your full refund for order #WB-88214 has been issued, Marcus. Expect it to hit your account within 3–5 business days. Let me know if you need help with anything else!",
+    ],
+    completionNote: "Resolution actioned for order #WB-88214: Full refund issued — Marcus free to reorder at his convenience.",
+    completionNoteWithGoodwill: "Resolution actioned for order #WB-88214: Full refund issued — Marcus free to reorder at his convenience. Goodwill discount code CARE20 (20%) applied to account.",
+  },
+  "carrier-intercept": {
+    withGoodwill: [
+      "Marcus, I've submitted a carrier intercept request to try to redirect the Denver package to your Austin address. I should note this has a low probability of success at this transit stage, but we're giving it a shot. I've also applied a 20% discount code (CARE20) for the inconvenience. I'll keep you updated on the status!",
+      "I've filed an intercept request with the carrier to redirect your package from Denver to Austin. Fair warning — it's a long shot at this stage of transit, but worth trying. In the meantime, I've added a CARE20 discount (20% off) to your account. I'll let you know as soon as I hear back!",
+      "A carrier intercept request has been submitted for your Denver package, Marcus. The chances of a successful redirect are low given how far along the package is, but we're on it. I've also applied a 20% goodwill discount (CARE20) to your account. I'll follow up with an update!",
+    ],
+    withoutGoodwill: [
+      "Marcus, I've submitted a carrier intercept request to try to redirect the Denver package to your Austin address. I should note this has a low probability of success at this transit stage, but we're giving it a shot. I'll keep you updated on the status!",
+      "I've filed an intercept request with the carrier to redirect your package from Denver to Austin. Fair warning — it's a long shot at this stage of transit, but worth trying. I'll let you know as soon as I hear back!",
+      "A carrier intercept request has been submitted for your Denver package, Marcus. The chances of a successful redirect are low given how far along the package is, but we're on it. I'll follow up with an update!",
+    ],
+    completionNote: "Resolution actioned for order #WB-88214: Carrier intercept submitted for Denver package.",
+    completionNoteWithGoodwill: "Resolution actioned for order #WB-88214: Carrier intercept submitted for Denver package. Goodwill discount code CARE20 (20%) applied to account.",
+  },
+};

@@ -14981,6 +14981,77 @@ export function createConversationState(customerId: string, channel: CustomerCha
   };
 }
 
+/**
+ * Build a complete takeover conversation for any customer.
+ * This is the SINGLE source of truth — every takeover path (home tab alert,
+ * TakeoverButton/review modal, and escalated toast) must call this function
+ * so the agent always sees the same handoff card, draft, and snapshot.
+ */
+export function buildTakeoverConversation(params: {
+  customerRecordId: string;
+  customerName: string;
+  botType: string;
+  channel: "chat" | "sms";
+  /** From staticAssignment.aiOverview.whyNeeded — used as context when the seed has no handoff card. */
+  aiWhyNeeded?: string | null;
+}): SharedConversationData {
+  const { customerRecordId, customerName, botType, channel, aiWhyNeeded } = params;
+
+  const seed = createConversationState(customerRecordId, channel, botType);
+  const customerRecord = getCustomerRecord(customerRecordId);
+
+  // 1. Build context summary — prefer existing handoff card, fall back to AI overview
+  const existingHandoff = seed.messages.find((msg) => msg.isHandoffCard);
+  const contextSummary = existingHandoff?.content ?? aiWhyNeeded ?? null;
+
+  // 2. Append customer snapshot if not already present
+  const snapshotLines = customerRecord?.customerSnapshot;
+  const alreadyHasSnapshot = contextSummary?.includes("Customer Snapshot:");
+  const snapshotBlock = snapshotLines?.length && !alreadyHasSnapshot
+    ? `\n\nCustomer Snapshot:\n${snapshotLines.map((s: string) => `• ${s}`).join("\n")}`
+    : "";
+
+  // 3. Combined handoff card content
+  const combinedHandoff = contextSummary
+    ? `${contextSummary}${snapshotBlock}\n\nI have transferred the assignment. You are now live with customer ${customerName}.`
+    : `I have transferred the assignment. You are now live with customer ${customerName}.${snapshotBlock}`;
+
+  // 4. Skip duplicate transfer message if seed already contains one
+  const skipTransferMessage = customerRecord?.seedHasTransferMessage === true;
+  const lastId = seed.messages[seed.messages.length - 1]?.id ?? 0;
+  const time = new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+
+  return {
+    ...seed,
+    // Apply pre-populated draft from customer database
+    ...(customerRecord?.takeoverDraft ? { draft: customerRecord.takeoverDraft } : {}),
+    messages: [
+      // Keep all seed messages except the original handoff card (re-added below)
+      ...seed.messages
+        .filter((msg) => !msg.isHandoffCard)
+        .map((msg) => msg.role === "agent" && !msg.author ? { ...msg, author: botType } : msg),
+      // Customer-facing transfer notice (skip if seed already has one)
+      ...(!skipTransferMessage ? [{
+        id: lastId + 1,
+        role: "agent" as const,
+        author: botType,
+        content: "I'm going to transfer you to a live customer service agent, please hold.",
+        time,
+      }] : []),
+      // Internal handoff card — case overview, customer profile, snapshot
+      {
+        id: lastId + (skipTransferMessage ? 1 : 2),
+        role: "agent" as const,
+        author: botType,
+        content: combinedHandoff,
+        time,
+        isInternal: true,
+        isHandoffCard: true,
+      },
+    ],
+  };
+}
+
 export function getRandomCustomerSeed() {
   return customerDatabase[Math.floor(Math.random() * customerDatabase.length)] ?? customerDatabase[0];
 }

@@ -1856,8 +1856,8 @@ export function EscalatedCaseModal({
                 <AlertTriangle className="h-3.5 w-3.5 text-[#B54708]" />
               </div>
               <div>
-                <p className="text-[12px] font-semibold text-[#B54708] leading-tight">Monitoring this conversation</p>
-                <p className="text-[11px] text-[#92400E]/70 leading-tight">You are monitoring the AI agent in real time</p>
+                <p className="text-[12px] font-semibold text-[#B54708] leading-tight">Guiding this conversation</p>
+                <p className="text-[11px] text-[#92400E]/70 leading-tight">You are guiding the AI agent in real time</p>
               </div>
             </div>
           ) : (
@@ -1887,7 +1887,7 @@ export function EscalatedCaseModal({
                   : "border-border bg-white text-[#344054] hover:bg-[#F2F4F7]",
               )}
             >
-              {showQuickActions ? <><CircleStop className="inline h-3.5 w-3.5 mr-1.5 -mt-px" />Stop Monitoring</> : "Monitor"}
+              {showQuickActions ? <><CircleStop className="inline h-3.5 w-3.5 mr-1.5 -mt-px" />Stop Guiding</> : "Guide Conversation"}
             </button>
             <button
               ref={transferBtnRef}

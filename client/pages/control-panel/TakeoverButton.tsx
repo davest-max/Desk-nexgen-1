@@ -1,8 +1,7 @@
 import { useRef, useState } from "react";
 import type { SharedConversationData } from "@/components/ConversationPanel";
-import { createConversationState, getCustomerRecord } from "@/lib/customer-database";
+import { buildTakeoverConversation } from "@/lib/customer-database";
 import { pendingHandoffConversations } from "@/lib/queue-state";
-import { CURRENT_AGENT_NAME } from "@/lib/control-panel-data";
 import { staticAssignments } from "@/lib/static-assignments";
 import { TakeoverPopover } from "./TakeoverPopover";
 
@@ -29,73 +28,16 @@ export function TakeoverButton({
   const [showPopover, setShowPopover] = useState(false);
   const [triggerRect, setTriggerRect] = useState<DOMRect | null>(null);
 
-  const buildHandoffConversation = (): SharedConversationData => {
-    const convChannel = (channel === "sms" ? "sms" : "chat") as "chat" | "sms";
-    const seed = customerRecordId
-      ? createConversationState(customerRecordId, convChannel)
-      : {
-          customerName,
-          label: botType,
-          timelineLabel: "",
-          status: "open" as const,
-          draft: "",
-          messages: [],
-        };
-    const time = new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-    const firstName = customerName.split(" ")[0];
-    const baseId = Date.now();
-    // Find the existing handoff card from the seed, or build context from the static assignment
-    const existingHandoffCard = seed.messages.find((msg) => msg.isHandoffCard);
-    const sa = staticAssignments.find((s) => s.customerRecordId === customerRecordId);
-    const contextSummary = existingHandoffCard?.content
-      ?? (sa?.aiOverview?.whyNeeded
-        ? sa.aiOverview.whyNeeded
-        : null);
-    const customerRecord = customerRecordId ? getCustomerRecord(customerRecordId) : null;
-    const snapshotLines = customerRecord?.customerSnapshot;
-    // Only append snapshot if contextSummary doesn't already contain one (avoids duplication
-    // when the seed handoff card already has the snapshot baked in).
-    const alreadyHasSnapshot = contextSummary?.includes("Customer Snapshot:");
-    const snapshotBlock = snapshotLines?.length && !alreadyHasSnapshot
-      ? `\n\nCustomer Snapshot:\n${snapshotLines.map((s) => `• ${s}`).join("\n")}`
-      : "";
-    const combinedHandoffContent = contextSummary
-      ? `${contextSummary}${snapshotBlock}\n\nI have transferred the assignment. You are now live with customer ${customerName}.`
-      : `I have transferred the assignment. You are now live with customer ${customerName}.${snapshotBlock}`;
-    return {
-      ...seed,
-      messages: [
-        // Stamp every prior agent message with the bot's name; remove the original handoff card
-        ...seed.messages
-          .filter((msg) => !msg.isHandoffCard)
-          .map((msg) =>
-            msg.role === "agent" && !msg.author ? { ...msg, author: botType } : msg
-          ),
-        // Customer-facing transfer notice authored by the bot
-        {
-          id: baseId,
-          role: "agent" as const,
-          author: botType,
-          content: `${firstName}, I'm transferring you now to ${CURRENT_AGENT_NAME}, a human specialist who will take it from here.`,
-          time,
-        },
-        // Combined internal handoff card — after the transfer message
-        {
-          id: baseId + 1,
-          role: "agent" as const,
-          author: botType,
-          content: combinedHandoffContent,
-          time,
-          isInternal: true,
-          isHandoffCard: true,
-        },
-      ],
-    };
-  };
-
   const handleConfirm = (_reason: string, _alertBot: boolean) => {
     setShowPopover(false);
-    const handoff = buildHandoffConversation();
+    const sa = staticAssignments.find((s) => s.customerRecordId === customerRecordId);
+    const handoff = buildTakeoverConversation({
+      customerRecordId,
+      customerName,
+      botType,
+      channel: (channel === "sms" ? "sms" : "chat") as "chat" | "sms",
+      aiWhyNeeded: sa?.aiOverview?.whyNeeded ?? null,
+    });
     // Write to the module-level store BEFORE calling onTakeover.
     // Layout.tsx reads this in both acceptIssue (new assignment path) and
     // setConversationStateForAssignment (already-open path), so it is applied

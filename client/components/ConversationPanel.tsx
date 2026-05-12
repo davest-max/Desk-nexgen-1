@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { getRelevantCustomerTicket, type CustomerTicket } from "@/components/NotesPanel";
 import { VoiceAIGuidanceCard, VoiceGuidancePanel } from "@/components/VoiceGuidanceContent";
 import { getCustomerRecord, type CustomerChannel } from "@/lib/customer-database";
-import { getCustomerAssignmentEntry } from "@/lib/customer-assignment-tasks";
+import { getCustomerAssignmentEntry, resolveResponseVariantsByTaskId } from "@/lib/customer-assignment-tasks";
 import { cn } from "@/lib/utils";
 import {
   type ConversationMessage,
@@ -252,6 +252,7 @@ export default function ConversationPanel({
   const [taskProgress, setTaskProgress] = useState<Record<string, { stepIndex: number; paused: boolean }>>({});
   const [hoveredProgressStep, setHoveredProgressStep] = useState<string | null>(null);
   const [postActionSuggestion, setPostActionSuggestion] = useState<string | null>(null);
+  const [postResolveVariants, setPostResolveVariants] = useState<InlineSuggestion[] | null>(null);
   const [postActionAnimKey, setPostActionAnimKey] = useState(0);
   const [aiNewCount, setAiNewCount] = useState(0);
   const [copilotInput, setCopilotInput] = useState("");
@@ -286,6 +287,7 @@ export default function ConversationPanel({
   const conversationRef = useRef(conversation);
   conversationRef.current = conversation;
   const notedTaskIdsRef = useRef<Set<string>>(new Set());
+  const optionsResolveCompletedRef = useRef(false);
   const latestMessage = conversation.messages[conversation.messages.length - 1];
   const latestCustomerMessage = [...conversation.messages].reverse().find((message) => message.role === "customer") ?? null;
   // Internal notes are agent-side records, not real conversation turns — ignore them
@@ -308,7 +310,9 @@ export default function ConversationPanel({
     // Check if there's a human-agent message (no author field = human) after the last customer msg
     return nonInternal.slice(lastCustIdx + 1).some((m) => m.role === "agent" && !m.author);
   })();
-  const suggestionVariants = forcedSuggestionVariants && forcedSuggestionVariants.length > 0
+  const suggestionVariants = postResolveVariants && postResolveVariants.length > 0
+    ? postResolveVariants
+    : forcedSuggestionVariants && forcedSuggestionVariants.length > 0
     ? forcedSuggestionVariants
     : (latestCustomerMessage ? getInlineSuggestionVariants(conversation, latestCustomerMessage) : []);
   const generatedInlineSuggestion = latestCustomerMessage
@@ -317,9 +321,9 @@ export default function ConversationPanel({
   const inlineSuggestion = editedInlineSuggestion ?? generatedInlineSuggestion;
   const conversationOverview = getConversationOverview(conversation);
   const shouldShowSuggestion =
-    (latestMessageIsCustomer || !!postActionSuggestion) &&
+    (latestMessageIsCustomer || !!postActionSuggestion || (postResolveVariants && postResolveVariants.length > 0)) &&
     latestCustomerMessage !== null &&
-    (inlineSuggestion !== null || !!postActionSuggestion) &&
+    (inlineSuggestion !== null || !!postActionSuggestion || (postResolveVariants && postResolveVariants.length > 0)) &&
     !conversation.isCustomerTyping;
   // True when the suggestion tray is actually visible above the input
   const showingSuggestions = shouldShowSuggestion && isDraftFocused;
@@ -446,7 +450,6 @@ export default function ConversationPanel({
   // Reset agent tasks and all related state whenever the conversation changes (new customer/channel).
   useEffect(() => {
     setAgentTasks([]);
-    setNextStepsRequested(false);
     setRevealedTaskIds(new Set());
     setCheckedTaskIds(new Set());
     setTaskProgress({});
@@ -455,6 +458,7 @@ export default function ConversationPanel({
     taskRevealTimersRef.current.forEach(clearTimeout);
     taskRevealTimersRef.current = [];
     notedTaskIdsRef.current = new Set();
+    optionsResolveCompletedRef.current = false;
     setMessageTags({});
     // Cancel any pending copilot thinking animation so it doesn't fire on the new assignment.
     if (copilotThinkingTimerRef.current !== null) {
@@ -465,6 +469,9 @@ export default function ConversationPanel({
     setCopilotThinking(false);
     // Restore the previously-selected event detail note for this conversation (if any).
     setSelectedNoteIdRaw(selectedNoteByDraftKey.get(draftKey) ?? null);
+    // Always auto-request suggested next steps when the conversation loads —
+    // tasks should be visible immediately without requiring a button click.
+    setNextStepsRequested(true);
   }, [conversation.label, draftKey]);
 
   // Auto-expand any newly added handoff cards (e.g. injected after takeover).
@@ -480,19 +487,8 @@ export default function ConversationPanel({
     });
   }, [conversation.messages]);
 
-  // When the human agent sends a reply, clear suggested next steps so they don't persist.
-  // They'll reappear (behind the button) after the next customer response.
-  useEffect(() => {
-    if (agentRepliedSinceLastCustomer) {
-      setNextStepsRequested(false);
-      setAgentTasks([]);
-      setRevealedTaskIds(new Set());
-      setCheckedTaskIds(new Set());
-      setTaskProgress({});
-      taskRevealTimersRef.current.forEach(clearTimeout);
-      taskRevealTimersRef.current = [];
-    }
-  }, [agentRepliedSinceLastCustomer]);
+  // (Agent-reply cleanup removed — suggested next steps now persist across the
+  // entire conversation regardless of agent replies.)
 
   // When "Perform All Actions" is clicked in the summary panel, auto-request + auto-check and start all tasks.
   useEffect(() => {
@@ -521,15 +517,38 @@ export default function ConversationPanel({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasAgentTasks]);
 
-  // Generate and stagger-reveal suggested agent tasks only after the agent clicks
-  // "Suggest Next Steps". The effect watches `nextStepsRequested` so it fires the
-  // moment the button is pressed, and also re-runs if the conversation changes while
-  // the flag is already true.
+  // Generate and stagger-reveal suggested agent tasks. Tasks are auto-requested on
+  // conversation load and persist for the lifetime of the conversation.
   useEffect(() => {
     if (!nextStepsRequested) return;
-    if (!latestCustomerMessage) return;
 
-    const freshTasks = getSuggestedAgentTasks(conversation, latestCustomerMessage);
+    // After the options-resolve flow completes (e.g. Marcus Webb refund) OR
+    // a guided review completes (e.g. Sofia Martinez fraud actions approved in
+    // the escalated modal), don't re-generate the old option/action tasks.
+    // Instead, when the customer responds to the human agent, show a single
+    // "Set Case to Resolved" task so the agent can wrap up.
+    let freshTasks: AgentTask[];
+    const isGuidedReviewDone = conversation.guidedReviewCompleted;
+    if (optionsResolveCompletedRef.current || isGuidedReviewDone) {
+      if (!latestCustomerMessage) return; // wait for the customer to respond
+      // For guided-review cases, only show the resolve task after the customer
+      // responds to the human agent (not to a bot message from the review).
+      // A human agent message has no `author` field (bot messages have one).
+      if (isGuidedReviewDone && !optionsResolveCompletedRef.current) {
+        const lastHumanAgentIdx = conversation.messages.reduce(
+          (idx, m, i) => (m.role === "agent" && !m.author && !m.isInternal ? i : idx), -1);
+        const lastCustomerIdx = conversation.messages.reduce(
+          (idx, m, i) => (m.role === "customer" ? i : idx), -1);
+        // Need: human agent sent at least one message, and customer replied after it
+        if (lastHumanAgentIdx < 0 || lastCustomerIdx <= lastHumanAgentIdx) return;
+      }
+      freshTasks = [{ id: "set-resolved", label: "Set Case to Resolved — Dismiss & Unassign" }];
+      // Clear post-resolve suggestion variants now that the customer has responded
+      // and the agent should focus on closing out the case.
+      setPostResolveVariants(null);
+    } else {
+      freshTasks = getSuggestedAgentTasks(conversation, latestCustomerMessage);
+    }
     if (freshTasks.length === 0) return;
 
     setAgentTasks((prev) => {
@@ -609,6 +628,60 @@ export default function ConversationPanel({
       const isAllDone = progress.stepIndex >= steps.length;
       if (!isAllDone || notedTaskIdsRef.current.has(taskId)) return;
       notedTaskIdsRef.current.add(taskId);
+
+      // ── Options-resolve: dynamic note + suggestion variants ──
+      if (taskId === "options-resolve") {
+        const selectedOptionTask = agentTasks.find((t) => t.optionLabel && checkedTaskIds.has(t.id));
+        const goodwillChecked = agentTasks.some((t) => t.variant === "goodwill" && checkedTaskIds.has(t.id));
+        const variantData = selectedOptionTask ? resolveResponseVariantsByTaskId[selectedOptionTask.id] : null;
+
+        // Pick the right completion note based on selected option + goodwill
+        const dynamicNote = variantData
+          ? (goodwillChecked ? variantData.completionNoteWithGoodwill : variantData.completionNote) ?? TASK_COMPLETION_NOTES[taskId]
+          : TASK_COMPLETION_NOTES[taskId];
+
+        if (dynamicNote && onConversationChange) {
+          const dateStr = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+          const conv = conversationRef.current;
+          onConversationChange({
+            ...conv,
+            messages: [
+              ...conv.messages,
+              {
+                id: Date.now(),
+                role: "agent",
+                content: `${dynamicNote} — ${dateStr}`,
+                time: formatConversationTimestamp(new Date()),
+                isInternal: true,
+              },
+            ],
+          });
+        }
+
+        // Generate suggested response variants for the card carousel
+        if (variantData) {
+          const replies = goodwillChecked ? variantData.withGoodwill : variantData.withoutGoodwill;
+          setPostResolveVariants(replies.map((r) => ({ summary: "Suggested response", suggestedReply: r })));
+        }
+
+        // Mark options flow as completed so the task generation effect knows
+        // not to regenerate the old option tasks from the database.
+        optionsResolveCompletedRef.current = true;
+
+        // Also set post-action suggestion for the accordion panel
+        const completionReply = TASK_COMPLETION_REPLIES[taskId];
+        if (completionReply) setPostActionSuggestion(completionReply);
+
+        setTimeout(() => {
+          setAgentTasks((prev) => prev.filter((t) => !t.optionLabel && t.variant !== "goodwill"));
+          setCheckedTaskIds(new Set());
+          setRevealedTaskIds((prev) => { const next = new Set(prev); agentTasks.forEach((t) => { if (t.optionLabel || t.variant === "goodwill") next.delete(t.id); }); return next; });
+          setTaskProgress((prev) => { const { "options-resolve": _, ...rest } = prev; return rest; });
+        }, 1200);
+        return;
+      }
+
+      // ── Standard task completion ──
       const noteLabel = TASK_COMPLETION_NOTES[taskId];
       if (!noteLabel || !onConversationChange) return;
       const dateStr = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
@@ -650,14 +723,29 @@ export default function ConversationPanel({
   }, [taskProgress]);
 
   const handleToggleTaskCheck = (taskId: string) => {
+    const clickedTask = agentTasks.find((t) => t.id === taskId);
+    const clickedGroup = clickedTask?.group;
+    const isOptionsLayout = clickedTask?.optionLabel || clickedTask?.variant === "goodwill";
     setCheckedTaskIds((prev) => {
       const next = new Set(prev);
       if (next.has(taskId)) {
         next.delete(taskId);
-        setTaskProgress((p) => { const { [taskId]: _, ...rest } = p; return rest; });
+        if (!isOptionsLayout) setTaskProgress((p) => { const { [taskId]: _, ...rest } = p; return rest; });
       } else {
+        // For grouped (radio) tasks, uncheck other tasks in the same group first
+        if (clickedGroup) {
+          for (const t of agentTasks) {
+            if (t.group === clickedGroup && t.id !== taskId && next.has(t.id)) {
+              next.delete(t.id);
+              if (!isOptionsLayout) setTaskProgress((p) => { const { [t.id]: _, ...rest } = p; return rest; });
+            }
+          }
+        }
         next.add(taskId);
-        setTaskProgress((p) => ({ ...p, [taskId]: { stepIndex: 0, paused: false } }));
+        // Options-layout tasks don't start progress on check — the "Perform Task" button does.
+        if (!isOptionsLayout) {
+          setTaskProgress((p) => ({ ...p, [taskId]: { stepIndex: 0, paused: false } }));
+        }
         // Auto-accept a pending assignment the moment the agent acts on a suggested next step.
         if (isPendingAcceptance) onAcceptAssignment?.();
         // Always scroll to bottom when checking a task — the card is expanding and the
@@ -666,6 +754,13 @@ export default function ConversationPanel({
       }
       return next;
     });
+  };
+
+  // "Perform Task" handler for options-style layouts — starts a combined resolve progress.
+  const handleOptionsPerformTask = () => {
+    setTaskProgress((p) => ({ ...p, "options-resolve": { stepIndex: 0, paused: false } }));
+    if (isPendingAcceptance) onAcceptAssignment?.();
+    requestAnimationFrame(() => requestAnimationFrame(scrollAiPanelsToBottom));
   };
 
   const handlePerformAllActions = () => {
@@ -937,6 +1032,7 @@ export default function ConversationPanel({
     setIsSuggestionAdded(false);
     setSelectedSuggestionIndex(null);
     setPostActionSuggestion(null);
+    setPostResolveVariants(null);
     setOpenedTicketId(null);
   }, [latestCustomerMessage?.id, draftKey]);
 
@@ -1518,8 +1614,8 @@ export default function ConversationPanel({
                               <span className="text-[10px] text-[#98A2B3]">Customer Rating</span>
                             </div>
                           )}
-                          {/* AI-suggested action card */}
-                          {message.aiAction && (
+                          {/* AI-suggested action card — hidden when options-resolve or guided-review completed (task-based flow takes over) */}
+                          {message.aiAction && !optionsResolveCompletedRef.current && !conversation.guidedReviewCompleted && (
                             <div className="mt-3 animate-in fade-in slide-in-from-bottom-2 duration-500" style={{ animationDelay: "800ms", animationFillMode: "backwards" }}>
                               <button
                                 type="button"
@@ -1556,28 +1652,151 @@ export default function ConversationPanel({
                   return messageEl;
                 })}
 
-                {/* Suggest Next Steps button — shown only after a customer message and before the agent replies */}
-                {!hideInput && !suppressAgentTasks && !nextStepsRequested && agentTasks.length === 0 && latestCustomerMessage && !agentRepliedSinceLastCustomer && (
-                  <div className="flex justify-center py-2">
-                    <button
-                      type="button"
-                      onClick={() => { setNextStepsRequested(true); onNextStepsRequested?.(); }}
-                      className="inline-flex items-center gap-2 rounded-xl border border-[#166CCA]/20 bg-[#EBF4FD] px-4 py-2 text-[12px] font-semibold text-[#166CCA] shadow-sm transition-all duration-200 hover:bg-[#DBEAFE] hover:shadow-md active:scale-[0.97]"
-                    >
-                      <Sparkles className="h-3.5 w-3.5" />
-                      Suggest Next Steps
-                    </button>
-                  </div>
-                )}
+                {/* Suggested Next Steps — always visible when tasks are available */}
+                {!hideInput && agentTasks.length > 0 && (() => {
+                  const hasOptionsLayout = agentTasks.some((t) => t.optionLabel);
 
-                {/* Suggested Next Steps — shown only when agent hasn't replied since last customer message */}
-                {!hideInput && agentTasks.length > 0 && !agentRepliedSinceLastCustomer && (() => {
+                  /* ── Options Layout (Marcus-style resolve flow) ── */
+                  if (hasOptionsLayout) {
+                    const optionTasks = agentTasks.filter((t) => t.optionLabel);
+                    const goodwillTasks = agentTasks.filter((t) => t.variant === "goodwill");
+                    const resolveProgress = taskProgress["options-resolve"];
+                    const resolveSteps = TASK_STEPS["options-resolve"] ?? [];
+                    const hasAnySelection = optionTasks.some((t) => checkedTaskIds.has(t.id));
+
+                    return (
+                      <div className="overflow-hidden rounded-2xl border border-black/10 bg-[#F8F8F9]">
+                        <div className="px-4 pt-3 pb-2">
+                          <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#333333]">Suggested Next Step</span>
+                        </div>
+                        <div className="px-3 pb-2 pt-1 space-y-2">
+                          {/* Radio option cards */}
+                          {optionTasks.map((task) => {
+                            const isChecked = checkedTaskIds.has(task.id);
+                            const isDimmed = !!resolveProgress && !isChecked;
+                            return (
+                              <div
+                                key={task.id}
+                                className={cn(
+                                  "rounded-xl border border-black/[0.06] bg-white overflow-hidden transition-all duration-300",
+                                  isDimmed && "opacity-50",
+                                  revealedTaskIds.has(task.id) ? "opacity-100 translate-y-0" : (!resolveProgress ? "opacity-0 translate-y-2 pointer-events-none" : ""),
+                                )}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => !resolveProgress && handleToggleTaskCheck(task.id)}
+                                  disabled={!!resolveProgress}
+                                  className="w-full flex items-start gap-3 px-4 py-3 text-left"
+                                >
+                                  <div className={cn(
+                                    "shrink-0 mt-0.5 h-[20px] w-[20px] rounded-full border-2 flex items-center justify-center transition-colors",
+                                    isChecked ? "border-[#166CCA] bg-[#166CCA]" : "border-[#D0D5DD] bg-white",
+                                  )}>
+                                    {isChecked && <div className="h-2 w-2 rounded-full bg-white" />}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className={cn("text-[14px] font-semibold text-[#1F2937] transition-colors", isDimmed && "text-[#9CA3AF]")}>{task.optionLabel}</p>
+                                    <p className={cn("mt-0.5 text-[13px] leading-5 text-[#4B5563] transition-colors", isDimmed && "text-[#9CA3AF]")}>{task.label}</p>
+                                  </div>
+                                </button>
+                              </div>
+                            );
+                          })}
+
+                          {/* Goodwill gesture card(s) */}
+                          {goodwillTasks.map((task) => {
+                            const isChecked = checkedTaskIds.has(task.id);
+                            return (
+                              <div
+                                key={task.id}
+                                className={cn(
+                                  "rounded-xl border border-[#BFDBFE] bg-[#EFF6FF] overflow-hidden transition-all duration-300",
+                                  revealedTaskIds.has(task.id) ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none",
+                                )}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => !resolveProgress && handleToggleTaskCheck(task.id)}
+                                  disabled={!!resolveProgress}
+                                  className="w-full flex items-start gap-3 px-4 py-3 text-left"
+                                >
+                                  <div className={cn(
+                                    "shrink-0 mt-0.5 h-[18px] w-[18px] rounded-[5px] border-2 flex items-center justify-center transition-colors",
+                                    isChecked ? "border-[#166CCA] bg-[#166CCA]" : "border-[#D0D5DD] bg-white",
+                                  )}>
+                                    {isChecked && <Check className="h-2.5 w-2.5 text-white" />}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[#166CCA]">Goodwill Gesture</p>
+                                    <p className="mt-0.5 text-[13px] leading-5 text-[#4B5563]">{task.label}</p>
+                                  </div>
+                                </button>
+                              </div>
+                            );
+                          })}
+
+                          {/* Combined resolving progress card */}
+                          {resolveProgress && (
+                            <div className="rounded-xl border border-black/[0.06] bg-white overflow-hidden">
+                              <div className="px-4 py-3">
+                                <p className="mb-2.5 text-[14px] font-semibold text-[#111827]">
+                                  {TASK_ACTION_TITLES["options-resolve"] ?? "Resolving..."}
+                                </p>
+                                <div className="space-y-2.5">
+                                  {resolveSteps.map((step, stepIdx) => {
+                                    const isStepCompleted = stepIdx < resolveProgress.stepIndex;
+                                    const isStepInProgress = stepIdx === resolveProgress.stepIndex;
+                                    return (
+                                      <div key={stepIdx} className="flex items-center gap-2.5">
+                                        <div className="shrink-0 h-6 w-6 flex items-center justify-center">
+                                          {isStepCompleted ? (
+                                            <div className="h-6 w-6 rounded-full bg-[#0B9A8A] flex items-center justify-center">
+                                              <Check className="h-3.5 w-3.5 text-white" />
+                                            </div>
+                                          ) : isStepInProgress ? (
+                                            <div className="h-6 w-6 rounded-full border-2 border-[#E5E7EB] border-t-[#0B9A8A] animate-spin" />
+                                          ) : (
+                                            <div className="h-6 w-6 rounded-full border-2 border-[#E5E7EB]" />
+                                          )}
+                                        </div>
+                                        <span className={cn("text-[13px] leading-5", isStepCompleted ? "text-[#6B7280] line-through" : "text-[#111827]")}>{step}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* "Perform Task" button — visible when a resolution option is selected */}
+                        {hasAnySelection && !resolveProgress && (
+                          <div className="px-3 pb-3 pt-1">
+                            <button
+                              type="button"
+                              onClick={handleOptionsPerformTask}
+                              className="w-full rounded-xl bg-[#166CCA] py-3 text-[14px] font-semibold text-white hover:bg-[#1260B0] transition-colors"
+                            >
+                              Perform Task
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  /* ── Regular Layout (all other customers) ── */
                   const assignmentEntry = getCustomerAssignmentEntry(conversation.customerName);
-                  const taskSummary = assignmentEntry?.summary ?? "I've reviewed the conversation and identified the key actions needed to resolve this case. Here are my suggested next steps, or feel free to ask for more assistance.";
+                  const taskSummary = (optionsResolveCompletedRef.current || conversation.guidedReviewCompleted)
+                    ? "The customer confirmed they're satisfied. Ready to close out this case."
+                    : assignmentEntry?.summary ?? "I've reviewed the conversation and identified the key actions needed to resolve this case. Here are my suggested next steps, or feel free to ask for more assistance.";
                   const nextStepsContent = (
                   <div className="overflow-hidden rounded-2xl border border-black/10 bg-[#F8F8F9]">
                     <div className="px-4 pt-3 pb-2">
-                      <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#333333]">Suggested Next Steps</span>
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#333333]">
+                        {agentTasks.length === 1 ? "Suggested Next Step" : "Suggested Next Steps"}
+                      </span>
                       <p className="mt-1.5 text-[12px] leading-relaxed text-[#667085]">{taskSummary}</p>
                     </div>
                     <div className="px-3 pb-2 pt-1 space-y-1.5" id="inline-task-list-main">
@@ -1600,11 +1819,15 @@ export default function ConversationPanel({
                                 type="button"
                                 onClick={() => handleToggleTaskCheck(task.id)}
                                 className={cn(
-                                  "shrink-0 h-[18px] w-[18px] rounded-[5px] border-2 flex items-center justify-center transition-colors",
+                                  "shrink-0 h-[18px] w-[18px] border-2 flex items-center justify-center transition-colors",
+                                  task.group ? "rounded-full" : "rounded-[5px]",
                                   isChecked ? "border-[#166CCA] bg-[#166CCA]" : "border-[#D0D5DD] bg-white hover:border-[#166CCA]",
                                 )}
                               >
-                                {isChecked && <Check className="h-2.5 w-2.5 text-white" />}
+                                {isChecked && (task.group
+                                  ? <div className="h-2 w-2 rounded-full bg-white" />
+                                  : <Check className="h-2.5 w-2.5 text-white" />
+                                )}
                               </button>
                               <span className={cn(
                                 "flex-1 text-[13px] leading-5 text-[#111827] transition-colors",
@@ -1904,7 +2127,7 @@ export default function ConversationPanel({
                     </Accordion>
                   </div>
                 )}
-                {agentTasks.length > 0 && !suppressAgentTasks && !agentRepliedSinceLastCustomer && (
+                {agentTasks.length > 0 && !suppressAgentTasks && (
                   <div className="overflow-hidden rounded-2xl border border-black/10 bg-[#F8F8F9]">
                     <div className="px-4 pt-3 pb-2">
                       <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#333333]">Suggested Next Steps</span>
@@ -1933,11 +2156,15 @@ export default function ConversationPanel({
                                 onMouseDown={(e) => e.stopPropagation()}
                                 onClick={() => handleToggleTaskCheck(task.id)}
                                 className={cn(
-                                  "shrink-0 h-[18px] w-[18px] rounded-[5px] border-2 flex items-center justify-center transition-colors",
+                                  "shrink-0 h-[18px] w-[18px] border-2 flex items-center justify-center transition-colors",
+                                  task.group ? "rounded-full" : "rounded-[5px]",
                                   isChecked ? "border-[#166CCA] bg-[#166CCA]" : "border-[#D0D5DD] bg-white hover:border-[#166CCA]",
                                 )}
                               >
-                                {isChecked && <Check className="h-2.5 w-2.5 text-white" />}
+                                {isChecked && (task.group
+                                  ? <div className="h-2 w-2 rounded-full bg-white" />
+                                  : <Check className="h-2.5 w-2.5 text-white" />
+                                )}
                               </button>
                               <span className={cn(
                                 "flex-1 text-[13px] leading-5 text-[#111827] transition-colors",

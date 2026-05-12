@@ -48,6 +48,7 @@ export const TASK_COMPLETION_NOTES: Record<string, string> = {
   "upgrade-beverage-package": "Beverage package upgraded",
   "confirm-credit-line": "Credit line confirmed",
   "set-resolved": "Case resolved",
+  "options-resolve": "Resolution actioned for order #WB-88214: Full refund issued — Marcus free to reorder at his convenience. Goodwill discount code CARE20 (20%) applied to account.",
 };
 
 export const TASK_COMPLETION_REPLIES: Record<string, string> = {
@@ -59,6 +60,7 @@ export const TASK_COMPLETION_REPLIES: Record<string, string> = {
   "upgrade-beverage-package": "I've processed the upgrade to your beverage package. You should receive a confirmation email shortly.",
   "confirm-credit-line": "I've confirmed your credit line details. Everything looks good on our end.",
   "set-resolved": "Thank you so much for reaching out! I'm glad we could help. Have a great day!",
+  "options-resolve": "I've processed the resolution for Marcus's order. The refund has been issued and a goodwill discount has been applied. Is there anything else you'd like to do before wrapping up?",
 };
 
 export const TASK_ACTION_TITLES: Record<string, string> = {
@@ -73,6 +75,7 @@ export const TASK_ACTION_TITLES: Record<string, string> = {
   "initiate-dispute": "Initiating Dispute...",
   "issue-temp-credit": "Applying Temporary Credit...",
   "issue-replacement-card": "Issuing Replacement Card...",
+  "options-resolve": "Resolving...",
 };
 
 export const TASK_STEPS: Record<string, string[]> = {
@@ -135,6 +138,12 @@ export const TASK_STEPS: Record<string, string[]> = {
     "Generating replacement card number",
     "Scheduling delivery to address on file",
     "Sending tracking confirmation to customer",
+  ],
+  "options-resolve": [
+    "Confirming resolution with carrier",
+    "Applying goodwill discount code (20% off)",
+    "Updating default shipping address to Austin",
+    "Sending confirmation to Marcus",
   ],
 };
 

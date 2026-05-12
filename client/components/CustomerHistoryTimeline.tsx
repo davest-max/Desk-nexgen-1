@@ -543,23 +543,23 @@ export default function CustomerHistoryTimeline({
               )}
 
               {/* Event row */}
-              <div className="relative pl-8">
+              <div className="relative pl-12">
                 {/* Vertical connector line */}
-                <div className="absolute left-[13px] top-0 bottom-0 w-px bg-[#E4E7EC] dark:bg-[#1B3A52]" />
+                <div className="absolute left-[17px] top-0 bottom-0 w-px bg-[#E4E7EC] dark:bg-[#1B3A52]" />
 
                 {/* Type icon badge */}
                 <div
-                  className="absolute left-[5px] top-2 flex h-[18px] w-[18px] items-center justify-center rounded-full border border-white dark:border-[#0C1A26]"
+                  className="absolute left-[1px] top-1 flex h-[34px] w-[34px] items-center justify-center rounded-full border-2 border-white dark:border-[#0C1A26]"
                   style={{ backgroundColor: cfg?.iconBg ?? "#F2F4F7" }}
                 >
                   {IconComponent ? (
                     <IconComponent
-                      className="h-2.5 w-2.5"
+                      className="h-5 w-5"
                       style={{ color: cfg?.accent ?? "#667085" }}
                     />
                   ) : (
                     <span
-                      className={cn("h-2 w-2 rounded-full", dotColorClass(item.dot))}
+                      className={cn("h-3.5 w-3.5 rounded-full", dotColorClass(item.dot))}
                     />
                   )}
                 </div>
@@ -607,7 +607,7 @@ export default function CustomerHistoryTimeline({
                 {/* Customer message bubble */}
                 {item.customerMessage && (
                   <div className="mt-2 mb-1 ml-2 flex items-start gap-2">
-                    <div className="shrink-0 mt-0.5 h-5 w-5 rounded-full bg-[#C5DEF5] flex items-center justify-center text-[8px] font-bold text-[#1260B0] select-none">
+                    <div className="shrink-0 mt-0.5 h-7 w-7 rounded-full bg-[#C5DEF5] flex items-center justify-center text-[10px] font-bold text-[#1260B0] select-none">
                       C
                     </div>
                     <div className="rounded-xl rounded-tl-sm bg-[#F2F4F7] dark:bg-[#141E2C] border border-[#E4E7EC] dark:border-[#1B3A52] px-3 py-2 max-w-[88%]">
@@ -698,9 +698,9 @@ export default function CustomerHistoryTimeline({
                     const cfg = historyTypeConfig[selectedHistoryItem.type!];
                     const Icon = cfg.icon;
                     return (
-                      <div className="mb-2 flex items-center gap-1.5">
-                        <div className="flex h-5 w-5 items-center justify-center rounded-full" style={{ backgroundColor: cfg.iconBg }}>
-                          <Icon className="h-3 w-3" style={{ color: cfg.accent }} />
+                      <div className="mb-2 flex items-center gap-2">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full" style={{ backgroundColor: cfg.iconBg }}>
+                          <Icon className="h-[18px] w-[18px]" style={{ color: cfg.accent }} />
                         </div>
                         <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: cfg.accent }}>
                           {typeLabel[selectedHistoryItem.type!] ?? selectedHistoryItem.type}

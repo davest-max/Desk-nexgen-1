@@ -26,7 +26,7 @@ import {
   X,
 } from "lucide-react";
 import { useLayoutContext, type QueueAssignmentStatus, type AcceptIssueData, type ResolvedAssignment, type AssignmentChannel } from "@/components/layout-context";
-import { getCustomerRecord, createConversationState } from "@/lib/customer-database";
+import { buildTakeoverConversation, getCustomerRecord, createConversationState } from "@/lib/customer-database";
 import type { SharedConversationData } from "@/components/ConversationPanel";
 import { staticAssignments, type Channel, type Priority, type AiOverview, type StaticAssignment } from "@/lib/static-assignments";
 import { EscalatedCaseModal, type EscalatedCaseModalData } from "@/components/EscalatedCaseModal";
@@ -2394,7 +2394,27 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
                                     if (!row.isAccepted || row.isClosed) {
                                       pushTransferredToast({ id: row.id, name: row.name, customerId: row.customerId, customerRecordId: row.customerRecordId ?? "", channel: row.channel as AssignmentChannel, label: row.botType, priority: row.priority, preview: row.preview });
                                     }
-                                    row.isAccepted ? row.onReopen() : row.onAccept();
+                                    // Use buildTakeoverConversation so the agent sees the handoff
+                                    // card, customer snapshot, and pre-populated draft — same as
+                                    // every other takeover path.
+                                    const botAuthor = row.botType ?? "Aria";
+                                    const sa = staticAssignments.find(
+                                      (s: any) => s.customerRecordId === row.customerRecordId || s.id === row.id,
+                                    );
+                                    const handoff = row.customerRecordId
+                                      ? buildTakeoverConversation({
+                                          customerRecordId: row.customerRecordId,
+                                          customerName: row.name,
+                                          botType: botAuthor,
+                                          channel: (row.channel === "sms" ? "sms" : "chat") as "chat" | "sms",
+                                          aiWhyNeeded: sa?.aiOverview?.whyNeeded ?? null,
+                                        })
+                                      : undefined;
+                                    if (handoff) {
+                                      row.onTakeoverAccept(handoff);
+                                    } else {
+                                      row.isAccepted ? row.onReopen() : row.onAccept();
+                                    }
                                   }
                                 }}
                                 className={cn(
@@ -3268,12 +3288,24 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
       {escalatedModalCase && (
         <EscalatedCaseModal
           caseData={escalatedModalCase}
-          onTakeover={(conversation, localStatus, localPriority) => {
+          onTakeover={(_conversation, localStatus, localPriority) => {
             const a = escalatedModalCase as any;
-            // For Marcus's case, pre-populate the reply draft when the agent takes over
-            const takeoverConversation = a.customerRecordId === "marcus"
-              ? { ...conversation, draft: "Hi Marcus, this is Jeff. I've reviewed everything and I want to help you fix this. I can see the party is Saturday — let's make sure your dad gets his gift in time." }
-              : conversation;
+            // Use the shared buildTakeoverConversation — same function every other
+            // takeover path uses, so the agent always sees identical output.
+            const sa = staticAssignments.find(
+              (s: any) => s.customerRecordId === a.customerRecordId || s.customerId === a.customerId,
+            );
+            const botAuthor = a.botType ?? "Aria";
+            const takeoverConversation = a.customerRecordId
+              ? buildTakeoverConversation({
+                  customerRecordId: a.customerRecordId,
+                  customerName: a.name,
+                  botType: botAuthor,
+                  channel: (a.channel === "sms" ? "sms" : "chat") as "chat" | "sms",
+                  aiWhyNeeded: a.aiOverview?.whyNeeded ?? sa?.aiOverview?.whyNeeded ?? null,
+                })
+              : _conversation;
+            if (a.customerRecordId) pendingHandoffConversations.set(a.customerRecordId, takeoverConversation as SharedConversationData);
             const data: AcceptIssueData = {
               id: a.id,
               name: a.name,

@@ -46,6 +46,11 @@ export type SharedConversationData = {
   draft: string;
   messages: ConversationMessage[];
   isCustomerTyping?: boolean;
+  /** When true, the guided review in the escalated modal already completed the
+   *  primary actions (dispute, credit, card replacement, etc.). The conversation
+   *  panel should skip the regular suggested-actions flow and instead show a
+   *  "Set Case to Resolved — Dismiss & Unassign" task once the customer responds. */
+  guidedReviewCompleted?: boolean;
 };
 
 export type InlineSuggestion = {
@@ -64,4 +69,10 @@ export type SuggestionAction = {
 export type AgentTask = {
   id: string;
   label: string;
+  /** When set, tasks sharing the same group string behave as radio buttons (mutually exclusive). */
+  group?: string;
+  /** Display label above the description (e.g. "Option 1"). Triggers options-style layout. */
+  optionLabel?: string;
+  /** Visual variant for special styling (e.g. goodwill gesture card). */
+  variant?: "goodwill";
 };

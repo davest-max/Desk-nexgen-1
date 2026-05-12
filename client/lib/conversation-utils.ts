@@ -33,9 +33,6 @@ export function matchCopilotInput(input: string): AgentTask | null {
 }
 
 export function getSuggestedAgentTasks(conversation: SharedConversationData, latestCustomerMessage: ConversationMessage | null): AgentTask[] {
-  // Marcus Webb uses a custom resolve box — suppress generic tasks entirely
-  if (conversation.customerName === "Marcus Webb") return [];
-
   // Always use per-customer entry if available
   const entryEarly = latestCustomerMessage ? null : getCustomerAssignmentEntry(conversation.customerName);
   if (entryEarly) return entryEarly.suggestedActions;
@@ -152,44 +149,46 @@ export function getInlineSuggestionVariants(
     normalizedMessage.includes("rent") ||
     normalizedMessage.includes("temporary credit") ||
     normalizedMessage.includes("fraudulent") ||
+    normalizedMessage.includes("robbed") ||
+    normalizedMessage.includes("outrageous") ||
     (normalizedMessage.includes("sorry") && normalizedMessage.includes("upset"))
   ) {
     return [
       {
-        summary: `Introduce yourself warmly as the agent who has been monitoring, and immediately reassure ${customerFirstName} that the situation is being taken seriously at every level.`,
-        suggestedReply: `Hi ${customerFirstName}, this is Jeff — I've been monitoring this conversation and I want you to know we take this extremely seriously. You're in safe hands and we're going to make sure everything is fully resolved for you.`,
+        summary: `Lead with presence — let ${customerFirstName} know you've been here the whole time and she's safe.`,
+        suggestedReply: `Hi ${customerFirstName}, this is Jeff. I've been with you through this entire conversation. You have absolutely nothing to apologize for — your account is safe. We've got you.`,
       },
       {
-        summary: `Acknowledge the distress ${customerFirstName} has been through and personally commit to seeing this through to resolution.`,
-        suggestedReply: `${customerFirstName}, I'm so sorry this happened to you. My name is Jeff and I've been following along this entire conversation. I want to personally make sure this is completely taken care of — you have my full attention right now.`,
+        summary: `Validate her anger, confirm you saw everything, and make her feel protected.`,
+        suggestedReply: `${customerFirstName}, I'm Jeff. I've been following every step of this conversation and I want you to know — your anger is completely justified. Your account is secured, those charges are flagged, and I'm personally making sure this gets resolved.`,
       },
       {
-        summary: `Validate how stressful this must be and confirm that the protective actions already taken are solid.`,
-        suggestedReply: `${customerFirstName}, I can only imagine how stressful this has been, especially with your rent due. I'm Jeff, and I want to reassure you — the credit has been applied, your card is protected, and I'm right here if anything else comes up.`,
+        summary: `Reassure ${customerFirstName} that she's not alone and that everything is already being handled.`,
+        suggestedReply: `Hi ${customerFirstName}, my name is Jeff. I've been right here watching this unfold and I want to be clear: none of this is your fault. Your money is protected, the charges are frozen, and I'm not going anywhere until you feel completely taken care of.`,
       },
       {
-        summary: `Reassure ${customerFirstName} about the case status and offer a direct line of escalation if anything else surfaces.`,
-        suggestedReply: `Hi ${customerFirstName}, this is Jeff. I've reviewed everything Jacob did on your case and it was handled correctly. Your temporary credit is in place and the investigation is underway. I'll be keeping a close eye on this personally.`,
+        summary: `Open with empathy and immediately address the rent concern — her most urgent worry.`,
+        suggestedReply: `${customerFirstName}, this is Jeff — I've been with you since Jacob first flagged the issue. I know rent is due tomorrow and I want to put your mind at ease: the $2,159 credit is already on your account. Your rent payment will go through. You're safe.`,
       },
       {
-        summary: `Empathize with the emotional weight of the situation and confirm that the fraud investigation is moving forward with urgency.`,
-        suggestedReply: `${customerFirstName}, please don't apologize — what happened to your account was serious and your reaction was completely understandable. I'm Jeff, and I want you to know our fraud team is already working on this. You did the right thing by reaching out.`,
+        summary: `Introduce yourself warmly and make it personal — 11 years of loyalty matters.`,
+        suggestedReply: `Hi ${customerFirstName}, I'm Jeff. After 11 years as a customer, you deserve better than this, and I'm sorry it happened. I've been monitoring this conversation from the start and I'm stepping in personally to make sure everything is made right.`,
       },
       {
-        summary: `Acknowledge the transfer, introduce yourself, and give ${customerFirstName} confidence that no details will be lost.`,
-        suggestedReply: `Hi ${customerFirstName}, I'm Jeff. Jacob has transferred you over to me, and I've read through everything — you won't have to repeat yourself. We have the dispute filed, your credit applied, and a replacement card on its way. Is there anything else I can help you with right now?`,
+        summary: `Keep it short and human — let ${customerFirstName} know she's heard and protected.`,
+        suggestedReply: `${customerFirstName}, this is Jeff. I've been here the whole time. What happened to your account is serious and we're treating it that way. You're protected and I'm here for whatever you need.`,
       },
       {
-        summary: `Open with warmth, confirm everything that has been done, and give ${customerFirstName} a clear sense of what happens next.`,
-        suggestedReply: `${customerFirstName}, my name is Jeff and I'll be with you from here. Everything Jacob set up is in place — the dispute is filed under reference #FRD-2159-SM and your balance is protected. You should see the credit reflected shortly. I'll follow up if our investigation team needs anything from you.`,
+        summary: `Acknowledge the handoff, confirm no details are lost, and give ${customerFirstName} confidence.`,
+        suggestedReply: `Hi ${customerFirstName}, I'm Jeff — I've been following your conversation with Jacob and you won't need to repeat a single thing. The fraudulent charges are frozen, your account is protected, and I'm personally overseeing the rest of this. We've got you.`,
       },
       {
-        summary: `Acknowledge the handoff and immediately focus on ${customerFirstName}'s most pressing concern — the rent deadline.`,
-        suggestedReply: `Hi ${customerFirstName}, this is Jeff. I know your rent is due tomorrow and that's exactly why I'm stepping in personally. The $2,159 credit is on your account right now — your payment should go through without any issue. I'm here if you need anything else at all.`,
+        summary: `Lead with action — confirm what's already done and what happens next.`,
+        suggestedReply: `${customerFirstName}, my name is Jeff and I've been with you since the beginning of this conversation. Here's where we stand: both fraudulent charges are flagged, a $2,159 provisional credit is on your account, and a replacement card is being issued. You're in good hands.`,
       },
       {
-        summary: `Close with confidence and warmth, making ${customerFirstName} feel cared for as the handoff wraps up.`,
-        suggestedReply: `${customerFirstName}, you're all set on our end. I'm Jeff and I'll be your point of contact from here on. Please don't hesitate to reach back out if you notice anything unusual on your account — we'll be watching it closely on our side too.`,
+        summary: `Close with warmth and a direct line of support.`,
+        suggestedReply: `Hi ${customerFirstName}, this is Jeff. I want you to know I've seen everything in this conversation and I'm taking personal responsibility for your case. Your account is safe, your money is protected, and I'll be your direct contact from here on out.`,
       },
     ];
   }
