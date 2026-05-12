@@ -14986,6 +14986,16 @@ export function createConversationState(customerId: string, channel: CustomerCha
  * This is the SINGLE source of truth — every takeover path (home tab alert,
  * TakeoverButton/review modal, and escalated toast) must call this function
  * so the agent always sees the same handoff card, draft, and snapshot.
+ *
+ * The seed in customer-database.ts contains the bot conversation as it happened
+ * (what the review modal displays). This function appends the transfer message
+ * and enriched handoff card (with customer snapshot) on top, producing the
+ * post-takeover conversation.
+ *
+ * When `modalConversation` is provided (from the escalated case modal after a
+ * guided review), it replaces the seed as the message source so that any
+ * messages added during the review (approved responses, customer reactions)
+ * are preserved. The same transfer message + handoff card are appended either way.
  */
 export function buildTakeoverConversation(params: {
   customerRecordId: string;
@@ -14994,42 +15004,61 @@ export function buildTakeoverConversation(params: {
   channel: "chat" | "sms";
   /** From staticAssignment.aiOverview.whyNeeded — used as context when the seed has no handoff card. */
   aiWhyNeeded?: string | null;
+  /**
+   * When provided, this conversation is used as the authoritative message history
+   * instead of rebuilding from the seed. Use this when the escalated case modal has
+   * already built a conversation (including injected messages from a guided review)
+   * so that the takeover preserves the full reviewed conversation history.
+   */
+  modalConversation?: SharedConversationData | null;
 }): SharedConversationData {
-  const { customerRecordId, customerName, botType, channel, aiWhyNeeded } = params;
+  const { customerRecordId, customerName, botType, channel, aiWhyNeeded, modalConversation } = params;
 
   const seed = createConversationState(customerRecordId, channel, botType);
   const customerRecord = getCustomerRecord(customerRecordId);
 
-  // 1. Build context summary — prefer existing handoff card, fall back to AI overview
-  const existingHandoff = seed.messages.find((msg) => msg.isHandoffCard);
-  const contextSummary = existingHandoff?.content ?? aiWhyNeeded ?? null;
+  // Use the modal's conversation if provided (preserves injected messages from
+  // guided review), otherwise use the seed.
+  const sourceConversation = modalConversation ?? seed;
+  const hasInjectedMessages = modalConversation
+    ? modalConversation.messages.length > seed.messages.length
+    : false;
 
-  // 2. Append customer snapshot if not already present
+  // 1. Build AI overview block (from staticAssignment.aiOverview.whyNeeded)
+  const overviewBlock = aiWhyNeeded ?? "";
+
+  // 2. Build customer snapshot block
   const snapshotLines = customerRecord?.customerSnapshot;
-  const alreadyHasSnapshot = contextSummary?.includes("Customer Snapshot:");
-  const snapshotBlock = snapshotLines?.length && !alreadyHasSnapshot
-    ? `\n\nCustomer Snapshot:\n${snapshotLines.map((s: string) => `• ${s}`).join("\n")}`
+  const snapshotBlock = snapshotLines?.length
+    ? `Customer Snapshot:\n${snapshotLines.map((s: string) => `• ${s}`).join("\n")}`
     : "";
 
-  // 3. Combined handoff card content
-  const combinedHandoff = contextSummary
-    ? `${contextSummary}${snapshotBlock}\n\nI have transferred the assignment. You are now live with customer ${customerName}.`
-    : `I have transferred the assignment. You are now live with customer ${customerName}.${snapshotBlock}`;
+  // 3. Combined handoff card content — AI overview + snapshot + transfer notice
+  //    (the original bot handoff card text like "Transferring to..." is stripped)
+  const sections = [overviewBlock, snapshotBlock].filter(Boolean).join("\n\n");
+  const combinedHandoff = sections
+    ? `${sections}\n\nI have transferred the assignment. You are now live with customer ${customerName}.`
+    : `I have transferred the assignment. You are now live with customer ${customerName}.`;
 
   // 4. Skip duplicate transfer message if seed already contains one
   const skipTransferMessage = customerRecord?.seedHasTransferMessage === true;
-  const lastId = seed.messages[seed.messages.length - 1]?.id ?? 0;
+
+  // 5. Build message list — strip original handoff card from the source, then
+  //    append the enriched transfer message + handoff card.
+  const sourceMessages = sourceConversation.messages
+    .filter((msg) => !msg.isHandoffCard)
+    .map((msg) => msg.role === "agent" && !msg.author ? { ...msg, author: botType } : msg);
+  const lastId = sourceMessages[sourceMessages.length - 1]?.id ?? 0;
   const time = new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
 
   return {
     ...seed,
     // Apply pre-populated draft from customer database
     ...(customerRecord?.takeoverDraft ? { draft: customerRecord.takeoverDraft } : {}),
+    // Flag that actions were already handled in the guided review
+    ...(hasInjectedMessages ? { guidedReviewCompleted: true } : {}),
     messages: [
-      // Keep all seed messages except the original handoff card (re-added below)
-      ...seed.messages
-        .filter((msg) => !msg.isHandoffCard)
-        .map((msg) => msg.role === "agent" && !msg.author ? { ...msg, author: botType } : msg),
+      ...sourceMessages,
       // Customer-facing transfer notice (skip if seed already has one)
       ...(!skipTransferMessage ? [{
         id: lastId + 1,

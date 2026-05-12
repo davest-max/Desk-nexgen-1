@@ -13709,50 +13709,22 @@ export default function Layout({ children }: LayoutProps) {
                 preview: escalatedToastModal.preview,
               });
             }
-            // Build the takeover conversation. If the modal passed injected messages
-            // (approved responses / actions from the guided review), preserve them
-            // instead of rebuilding from the seed which would lose that history.
+            // Build the takeover conversation. Pass the modal's conversation through
+            // so buildTakeoverConversation uses it as the authoritative message source
+            // (preserving any injected messages from the guided review) rather than
+            // rebuilding from the seed.
             const modalBotAuthor = escalatedToastModal.botType ?? "Aria";
             const customerRecordId = escalatedToastModal.customerRecordId;
-            const baseTakeover = customerRecordId
+            const takeoverConversation = customerRecordId
               ? buildTakeoverConversation({
                   customerRecordId,
                   customerName: escalatedToastModal.name,
                   botType: modalBotAuthor,
                   channel: (escalatedToastModal.channel === "sms" ? "sms" : "chat") as "chat" | "sms",
                   aiWhyNeeded: escalatedToastModal.aiOverview?.whyNeeded ?? sa?.aiOverview?.whyNeeded ?? null,
+                  modalConversation: conversation ?? null,
                 })
               : conversation;
-            // The modal's `conversation` includes seed messages + injectedMessages from
-            // the guided review. Compare against the raw seed to detect injected content.
-            // If the modal has more messages, it means the agent approved responses during
-            // the review — merge them with the handoff card from buildTakeoverConversation.
-            const takeoverConversation = (() => {
-              if (!customerRecordId || !conversation) return baseTakeover;
-              const ch = (escalatedToastModal.channel === "sms" ? "sms" : "chat") as "chat" | "sms";
-              const seed = createConversationState(customerRecordId, ch, modalBotAuthor);
-              const seedCount = seed.messages.length;
-              const modalCount = conversation.messages.length;
-              if (modalCount > seedCount) {
-                // Modal has extra messages from the guided review — keep them all,
-                // strip the original handoff card, then append the enriched handoff
-                // card (with customer snapshot) and transfer message from buildTakeoverConversation.
-                const handoffCard = baseTakeover.messages.find((m: ConversationMessage) => m.isHandoffCard);
-                const transferMsg = baseTakeover.messages.find((m: ConversationMessage) =>
-                  !m.isHandoffCard && !seed.messages.some((s: ConversationMessage) => s.id === m.id));
-                const modalNonHandoff = conversation.messages.filter((m: ConversationMessage) => !m.isHandoffCard);
-                return {
-                  ...baseTakeover,
-                  guidedReviewCompleted: true,
-                  messages: [
-                    ...modalNonHandoff,
-                    ...(transferMsg ? [transferMsg] : []),
-                    ...(handoffCard ? [handoffCard] : []),
-                  ],
-                };
-              }
-              return baseTakeover;
-            })();
             // Write to the module-level store so Layout reads it in acceptIssue / setConversationStateForAssignment
             if (customerRecordId) pendingHandoffConversations.set(customerRecordId, takeoverConversation as SharedConversationData);
             // Call acceptIssue directly — ONE navigation to /activity for a clean fade-in
