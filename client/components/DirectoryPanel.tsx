@@ -424,7 +424,7 @@ export default function DirectoryPanel({
       {/* Content */}
       <div className="min-h-0 flex-1">
         <ScrollArea className="h-full min-h-0">
-          <div className="space-y-2 p-3">
+          <div className="space-y-2 p-3 max-w-[480px]">
 
             {/* ── Customers ── */}
             {activeTab === "Customers" && (
