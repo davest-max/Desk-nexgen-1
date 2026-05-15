@@ -524,23 +524,24 @@ export default function ChatPopoverContent({
 
   // Open or create a thread from an Agent or Team entry
   const handleNewMessage = (source: Agent | Conversation) => {
-    const existing = conversations.find((c) => c.id === source.id)
-      ?? seedTeams.find((t) => t.id === source.id);
-    if (existing) {
-      // Existing thread — no pre-population
-      pendingThreadDraftRef.current = "";
-      setConversations((prev) =>
-        prev.map((c) => (c.id === existing.id ? { ...c, unread: 0 } : c)),
-      );
-      setSelectedId(existing.id);
-      return;
-    }
-    // Fresh thread — pre-populate with a consult summary if context is available
+    // Pre-populate the draft whenever a consult context is active, regardless of
+    // whether the thread is new or existing — the summary is set before setSelectedId
+    // so ThreadView receives it on its fresh mount (key changes null → id).
     if (consultContext) {
       const firstName = source.name.split(" ")[0];
       pendingThreadDraftRef.current = buildConsultSummary(consultContext, firstName);
     } else {
       pendingThreadDraftRef.current = "";
+    }
+
+    const existing = conversations.find((c) => c.id === source.id)
+      ?? seedTeams.find((t) => t.id === source.id);
+    if (existing) {
+      setConversations((prev) =>
+        prev.map((c) => (c.id === existing.id ? { ...c, unread: 0 } : c)),
+      );
+      setSelectedId(existing.id);
+      return;
     }
     const fresh: Conversation = {
       id: source.id,
