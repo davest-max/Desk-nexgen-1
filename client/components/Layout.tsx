@@ -1477,7 +1477,7 @@ function CaseMoreOptionsMenu({ onDismiss, onClose, iconSize = "md", customerInfo
       {showTransfer && (
         <IncomingTransferPopover
           triggerRef={triggerRef}
-          side="left"
+          side="bottom"
           customerInfo={customerInfo}
           onClose={() => setShowTransfer(false)}
           onTransferred={(destination) => { setShowTransfer(false); onDismiss(destination || undefined); }}
@@ -6968,8 +6968,8 @@ function IncomingTransferPopover({
   triggerRef: React.RefObject<HTMLButtonElement>;
   onClose: () => void;
   onTransferred: (destination: string) => void;
-  /** Which side of the trigger to open on. "left" (default) aligns right edge; "right" opens to the right of the trigger. */
-  side?: "left" | "right";
+  /** Which side of the trigger to open on. "left" (default) aligns right edge; "right" opens right of trigger; "bottom" appears below the card with a slight overlap. */
+  side?: "left" | "right" | "bottom";
   customerInfo?: { name: string; customerId: string; preview: string };
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -6984,14 +6984,26 @@ function IncomingTransferPopover({
   const [suggestionUsed, setSuggestionUsed] = useState(false);
 
   useEffect(() => {
-    const rect = triggerRef.current?.getBoundingClientRect();
-    if (rect) {
-      if (side === "right") {
-        // Anchor top edge to trigger top; open downward so card never clips above viewport
-        setPos({ top: rect.top, left: rect.right + 8 });
-      } else {
-        setPos({ bottom: window.innerHeight - rect.top + 8, right: window.innerWidth - rect.right });
+    const triggerRect = triggerRef.current?.getBoundingClientRect();
+    if (!triggerRect) return;
+
+    if (side === "right") {
+      // Anchor top edge to trigger top; open downward so card never clips above viewport
+      setPos({ top: triggerRect.top, left: triggerRect.right + 8 });
+    } else if (side === "bottom") {
+      // Walk up the DOM from the trigger to find the card container (first ancestor ≥80px tall)
+      let anchorEl: HTMLElement | null = triggerRef.current;
+      while (anchorEl?.parentElement) {
+        anchorEl = anchorEl.parentElement;
+        if (anchorEl.getBoundingClientRect().height >= 80) break;
       }
+      const cardRect = anchorEl?.getBoundingClientRect() ?? triggerRect;
+      const OVERLAP = 10;
+      const popoverWidth = 300; // select phase width
+      const left = Math.max(8, Math.min(cardRect.right - popoverWidth, window.innerWidth - popoverWidth - 8));
+      setPos({ top: cardRect.bottom - OVERLAP, left });
+    } else {
+      setPos({ bottom: window.innerHeight - triggerRect.top + 8, right: window.innerWidth - triggerRect.right });
     }
   }, [triggerRef, side]);
 
