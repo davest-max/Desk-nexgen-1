@@ -22,7 +22,6 @@ import ServiceNowPage from "./pages/ServiceNowPage";
 import WemPage from "./pages/WemPage";
 import ReportingPage from "./pages/ReportingPage";
 import DirectoryPage from "./pages/DirectoryPage";
-import ScenarioControllerPage from "./pages/ScenarioControllerPage";
 import ScenarioPanel from "./pages/ScenarioPanel";
 import Layout from "./components/Layout";
 
@@ -68,9 +67,6 @@ const App = () => (
 
           {/* Login page — no sidebar / header chrome */}
           <Route path="/login" element={<LoginPage />} />
-
-          {/* Scenario controller — standalone tab, no Layout chrome */}
-          <Route path="/controller" element={<ScenarioControllerPage />} />
 
           {/* All workspace routes — wrapped in Layout */}
           <Route path="/*" element={<WorkspaceRoutes />} />
