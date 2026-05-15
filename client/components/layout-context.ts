@@ -153,7 +153,7 @@ export interface LayoutContextValue {
   setAssignmentStatus: (assignmentId: string, status: QueueAssignmentStatus) => void;
   openCopilot: () => void;
   openDirectoryPanel: () => void;
-  openChatPopover: () => void;
+  openChatPopover: (anchorRect?: DOMRect | null) => void;
   isBriefingDismissed: boolean;
   incomingNotifications: QueuePreviewItem[];
   /** Lead notifications that persist on the Home tab even after the toast is dismissed. */

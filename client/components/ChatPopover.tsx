@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { GripHorizontal, Send, X } from "lucide-react";
+import { GripHorizontal, Phone, PhoneOff, Send, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -181,16 +181,25 @@ const seedTeams: Conversation[] = [
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
 
-function Avatar({ initials, color, size = "md" }: { initials: string; color: string; size?: "sm" | "md" }) {
+function Avatar({ initials, color, size = "md", status }: { initials: string; color: string; size?: "sm" | "md"; status?: Agent["status"] }) {
   return (
-    <div
-      className={cn(
-        "flex shrink-0 items-center justify-center rounded-full font-semibold text-white",
-        size === "sm" ? "h-7 w-7 text-[10px]" : "h-9 w-9 text-[11px]",
+    <div className="relative shrink-0 inline-flex">
+      <div
+        className={cn(
+          "flex items-center justify-center rounded-full font-semibold text-white",
+          size === "sm" ? "h-7 w-7 text-[10px]" : "h-9 w-9 text-[11px]",
+        )}
+        style={{ backgroundColor: color }}
+      >
+        {initials}
+      </div>
+      {status && (
+        <span className={cn(
+          "absolute rounded-full border-2 border-white dark:border-[#0D1525]",
+          size === "sm" ? "h-2 w-2 -bottom-0.5 -right-0.5" : "h-2.5 w-2.5 bottom-0 right-0",
+          STATUS_DOT[status],
+        )} />
       )}
-      style={{ backgroundColor: color }}
-    >
-      {initials}
     </div>
   );
 }
@@ -305,7 +314,7 @@ function ConversationList({
 
 // ─── Thread view ──────────────────────────────────────────────────────────────
 
-function ThreadView({ conversation }: { conversation: Conversation }) {
+function ThreadView({ conversation, agentStatus }: { conversation: Conversation; agentStatus?: Agent["status"] }) {
   const [messages, setMessages] = useState<ChatMessage[]>(conversation.messages);
   const [draft, setDraft] = useState("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -362,7 +371,7 @@ function ThreadView({ conversation }: { conversation: Conversation }) {
                   className={cn("flex items-end gap-2", msg.isMe ? "flex-row-reverse" : "flex-row")}
                 >
                   {!msg.isMe && (
-                    <Avatar initials={conversation.initials} color={conversation.avatarColor} size="sm" />
+                    <Avatar initials={conversation.initials} color={conversation.avatarColor} size="sm" status={agentStatus} />
                   )}
                   <div className={cn("flex max-w-[75%] flex-col gap-0.5", msg.isMe ? "items-end" : "items-start")}>
                     {!msg.isMe && (
@@ -446,6 +455,7 @@ export default function ChatPopoverContent({
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(initialConversationId ?? null);
   const [conversations, setConversations] = useState<Conversation[]>(seedConversations);
+  const [isCallingAgent, setIsCallingAgent] = useState(false);
   const isDraggingRef = useRef(false);
   const isResizingRef = useRef(false);
   const dragOffsetRef = useRef({ x: 0, y: 0 });
@@ -546,35 +556,73 @@ export default function ChatPopoverContent({
           document.body.style.userSelect = "none";
         }}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <GripHorizontal className="h-4 w-4 shrink-0 text-[#7A7A7A]" />
           {selectedConversation ? (
             <button
               type="button"
               onMouseDown={(e) => e.stopPropagation()}
-              onClick={() => setSelectedId(null)}
+              onClick={() => { setSelectedId(null); setIsCallingAgent(false); }}
               className="flex items-center gap-1 text-sm font-semibold text-[#166CCA] transition-colors hover:text-[#0A5E92]"
               aria-label="Back to messages"
             >
               <svg className="h-4 w-4 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M10 12L6 8l4-4" />
               </svg>
-              {selectedConversation.name}
             </button>
-          ) : (
+          ) : null}
+          {selectedConversation ? (() => {
+            const agent = seedAgents.find((a) => a.id === selectedConversation.id);
+            return (
+              <div className="flex items-center gap-2 min-w-0">
+                <Avatar initials={selectedConversation.initials} color={selectedConversation.avatarColor} size="sm" status={agent?.status} />
+                <div className="min-w-0">
+                  <p className="text-[13px] font-semibold text-[#333333] dark:text-[#E2E8F0] truncate leading-tight">{selectedConversation.name}</p>
+                  {agent && (
+                    <p className={cn("text-[10px] font-medium leading-tight", agent.status === "online" ? "text-[#208337]" : agent.status === "away" ? "text-[#D97706]" : "text-[#98A2B3]")}>
+                      {agent.status === "online" ? "Available" : agent.status === "away" ? "Away" : "Offline"}
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })() : (
             <h3 className="text-sm font-semibold text-[#333333]">Messages</h3>
           )}
         </div>
 
-        <button
-          type="button"
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={onClose}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#7A7A7A] dark:text-[#94A3B8] transition-colors hover:bg-[#F2F4F7] dark:hover:bg-[#1C2536] hover:text-[#333333] dark:hover:text-[#E2E8F0]"
-          aria-label="Close messages"
-        >
-          <X className="h-4 w-4" />
-        </button>
+        <div className="flex shrink-0 items-center gap-1" onMouseDown={(e) => e.stopPropagation()}>
+          {selectedConversation && (() => {
+            const agent = seedAgents.find((a) => a.id === selectedConversation.id);
+            const canCall = agent && agent.status !== "offline";
+            return (
+              <button
+                type="button"
+                disabled={!canCall}
+                onClick={() => setIsCallingAgent((v) => !v)}
+                title={isCallingAgent ? "End call" : canCall ? `Call ${selectedConversation.name}` : "Agent offline"}
+                className={cn(
+                  "flex h-7 w-7 items-center justify-center rounded-full transition-colors",
+                  isCallingAgent
+                    ? "bg-[#E32926] text-white hover:bg-[#C71D1A]"
+                    : canCall
+                      ? "text-[#208337] hover:bg-[#EFFBF1]"
+                      : "text-[#D0D5DD] cursor-not-allowed",
+                )}
+              >
+                {isCallingAgent ? <PhoneOff className="h-3.5 w-3.5" /> : <Phone className="h-3.5 w-3.5" />}
+              </button>
+            );
+          })()}
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#7A7A7A] dark:text-[#94A3B8] transition-colors hover:bg-[#F2F4F7] dark:hover:bg-[#1C2536] hover:text-[#333333] dark:hover:text-[#E2E8F0]"
+            aria-label="Close messages"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {/* Content */}

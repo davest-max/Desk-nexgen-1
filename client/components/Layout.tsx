@@ -1467,7 +1467,17 @@ function CaseMoreOptionsMenu({ onDismiss, onClose, iconSize = "md", customerInfo
           {/* Consult — opens the internal agent chat window */}
           <DropdownMenuItem
             className="gap-2 cursor-pointer"
-            onClick={() => { setDropdownOpen(false); openChatPopover(); }}
+            onClick={() => {
+              // Walk up from the ⋮ button to find the enclosing card element
+              let cardEl: HTMLElement | null = triggerRef.current;
+              while (cardEl?.parentElement) {
+                cardEl = cardEl.parentElement;
+                if (cardEl.getBoundingClientRect().height >= 80) break;
+              }
+              const cardRect = cardEl?.getBoundingClientRect() ?? null;
+              setDropdownOpen(false);
+              openChatPopover(cardRect);
+            }}
           >
             <MessageCircle className="h-4 w-4" />
             Consult
@@ -12140,17 +12150,24 @@ export default function Layout({ children }: LayoutProps) {
     setTranscriptDragActivation(null);
   };
 
-  const openChatPopover = () => {
+  const openChatPopover = (anchorRect?: DOMRect | null) => {
     const margin = 16;
-    const gap = 10;
-    const buttonBounds = chatButtonRef.current?.getBoundingClientRect();
+    const gap = 12;
     const popunderWidth = Math.min(chatPopunderSize.width, window.innerWidth - margin * 2);
-    const x = buttonBounds
-      ? Math.min(Math.max(margin, buttonBounds.right - popunderWidth), window.innerWidth - popunderWidth - margin)
-      : Math.max(window.innerWidth - popunderWidth - margin, margin);
-    const y = buttonBounds
-      ? Math.max(margin, buttonBounds.bottom + gap)
-      : margin + 60;
+    let x: number;
+    let y: number;
+    if (anchorRect) {
+      // Position to the right of the card with a small gap
+      x = Math.min(anchorRect.right + gap, window.innerWidth - popunderWidth - margin);
+      x = Math.max(margin, x);
+      y = Math.max(margin, anchorRect.top);
+    } else {
+      const buttonBounds = chatButtonRef.current?.getBoundingClientRect();
+      x = buttonBounds
+        ? Math.min(Math.max(margin, buttonBounds.right - popunderWidth), window.innerWidth - popunderWidth - margin)
+        : Math.max(window.innerWidth - popunderWidth - margin, margin);
+      y = buttonBounds ? Math.max(margin, buttonBounds.bottom + gap) : margin + 60;
+    }
     const maxHeight = window.innerHeight - y - margin;
     setChatPopunderSize((prev) => ({ ...prev, height: Math.max(420, maxHeight) }));
     bringFloatingPanelToFront("chat");
