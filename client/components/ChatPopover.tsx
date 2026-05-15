@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { GripHorizontal, Phone, PhoneOff, Send, X } from "lucide-react";
+import { ArrowRightLeft, GripHorizontal, Phone, PhoneOff, Send, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -675,22 +675,34 @@ export default function ChatPopoverContent({
             const agent = seedAgents.find((a) => a.id === selectedConversation.id);
             const canCall = agent && agent.status !== "offline";
             return (
-              <button
-                type="button"
-                disabled={!canCall}
-                onClick={() => setIsCallingAgent((v) => !v)}
-                title={isCallingAgent ? "End call" : canCall ? `Call ${selectedConversation.name}` : "Agent offline"}
-                className={cn(
-                  "flex h-7 w-7 items-center justify-center rounded-full transition-colors",
-                  isCallingAgent
-                    ? "bg-[#E32926] text-white hover:bg-[#C71D1A]"
-                    : canCall
-                      ? "text-[#208337] hover:bg-[#EFFBF1]"
-                      : "text-[#D0D5DD] cursor-not-allowed",
-                )}
-              >
-                {isCallingAgent ? <PhoneOff className="h-3.5 w-3.5" /> : <Phone className="h-3.5 w-3.5" />}
-              </button>
+              <>
+                {/* Transfer */}
+                <button
+                  type="button"
+                  title={`Transfer to ${selectedConversation.name}`}
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-[#667085] transition-colors hover:bg-[#F2F4F7] hover:text-[#333333] dark:text-[#94A3B8] dark:hover:bg-[#1C2536] dark:hover:text-[#E2E8F0]"
+                >
+                  <ArrowRightLeft className="h-3.5 w-3.5" />
+                </button>
+
+                {/* Call / hang up */}
+                <button
+                  type="button"
+                  disabled={!canCall}
+                  onClick={() => setIsCallingAgent((v) => !v)}
+                  title={isCallingAgent ? "End call" : canCall ? `Call ${selectedConversation.name}` : "Agent offline"}
+                  className={cn(
+                    "flex h-7 w-7 items-center justify-center rounded-full transition-colors",
+                    isCallingAgent
+                      ? "bg-[#E32926] text-white hover:bg-[#C71D1A]"
+                      : canCall
+                        ? "text-[#208337] hover:bg-[#EFFBF1]"
+                        : "text-[#D0D5DD] cursor-not-allowed",
+                  )}
+                >
+                  {isCallingAgent ? <PhoneOff className="h-3.5 w-3.5" /> : <Phone className="h-3.5 w-3.5" />}
+                </button>
+              </>
             );
           })()}
           <button
