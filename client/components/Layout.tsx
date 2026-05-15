@@ -6985,6 +6985,7 @@ function IncomingTransferPopover({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [tab, setTab] = useState<"Favorites" | "Department" | "Agent" | "Supervisor">("Favorites");
+  const [search, setSearch] = useState("");
   const [assigned, setAssigned] = useState<string | null>(null);
   const [pos, setPos] = useState<{ top?: number; bottom?: number; right?: number; left?: number }>({ bottom: 0, right: 0 });
   const [phase, setPhase] = useState<"select" | "handoff">("select");
@@ -7114,7 +7115,7 @@ function IncomingTransferPopover({
               <button
                 key={t}
                 type="button"
-                onClick={() => { setTab(t); setAssigned(null); }}
+                onClick={() => { setTab(t); setAssigned(null); setSearch(""); }}
                 className={cn("relative flex-1 py-2.5 text-[11px] font-medium transition-colors",
                   tab === t ? "text-[#166CCA]" : "text-[#667085] hover:text-[#344054]")}
               >
@@ -7127,7 +7128,26 @@ function IncomingTransferPopover({
               </button>
             ))}
           </div>
-          <div className="max-h-[260px] overflow-y-auto divide-y divide-border">
+          {/* Search */}
+          <div className="px-3 py-2 border-b border-border">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-[#98A2B3]" />
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={
+                  tab === "Favorites" ? "Search favorites…"
+                  : tab === "Department" ? "Search departments…"
+                  : tab === "Agent" ? "Search agents…"
+                  : "Search supervisors…"
+                }
+                className="w-full rounded-lg border border-black/10 bg-[#F8F8F9] py-1.5 pl-7 pr-3 text-[11px] text-[#1D2939] placeholder:text-[#98A2B3] focus:border-[#166CCA] focus:outline-none focus:ring-1 focus:ring-[#166CCA]"
+              />
+            </div>
+          </div>
+
+          <div className="max-h-[220px] overflow-y-auto divide-y divide-border">
             {tab === "Favorites" ? (
               favorites.size === 0 ? (
                 <div className="flex flex-col items-center justify-center gap-2 py-8 px-4 text-center">
@@ -7137,9 +7157,18 @@ function IncomingTransferPopover({
                 </div>
               ) : (
                 (() => {
-                  const favDepts = notifDepartmentRoster.filter((d) => favorites.has(d.id));
-                  const favAgents = notifAgentRoster.filter((a) => favorites.has(a.id));
-                  const favSups = notifSupervisorRoster.filter((s) => favorites.has(s.id));
+                  const q = search.trim().toLowerCase();
+                  const favDepts = notifDepartmentRoster.filter((d) => favorites.has(d.id) && (!q || d.name.toLowerCase().includes(q) || d.description.toLowerCase().includes(q)));
+                  const favAgents = notifAgentRoster.filter((a) => favorites.has(a.id) && (!q || a.name.toLowerCase().includes(q) || a.skills.join(" ").toLowerCase().includes(q)));
+                  const favSups = notifSupervisorRoster.filter((s) => favorites.has(s.id) && (!q || s.name.toLowerCase().includes(q) || s.skills.join(" ").toLowerCase().includes(q)));
+                  const hasResults = favDepts.length + favAgents.length + favSups.length > 0;
+                  if (!hasResults) {
+                    return (
+                      <div className="flex flex-col items-center justify-center gap-1 py-8 px-4 text-center">
+                        <p className="text-[12px] font-medium text-[#667085]">No results for "{search}"</p>
+                      </div>
+                    );
+                  }
                   return (
                     <>
                       {favDepts.map((dept) => {
@@ -7207,7 +7236,15 @@ function IncomingTransferPopover({
                 })()
               )
             ) : tab === "Department" ? (
-              notifDepartmentRoster.map((dept) => {
+              (() => {
+                const q = search.trim().toLowerCase();
+                const filtered = notifDepartmentRoster.filter((d) => !q || d.name.toLowerCase().includes(q) || d.description.toLowerCase().includes(q));
+                if (filtered.length === 0) return (
+                  <div className="flex flex-col items-center justify-center gap-1 py-8 px-4 text-center">
+                    <p className="text-[12px] font-medium text-[#667085]">No results for "{search}"</p>
+                  </div>
+                );
+                return filtered.map((dept) => {
                 const isAssigned = assigned === dept.id;
                 const isFav = favorites.has(dept.id);
                 return (
@@ -7225,9 +7262,18 @@ function IncomingTransferPopover({
                     </button>
                   </div>
                 );
-              })
+              });
+              })()
             ) : (
-              sortedAgents.map((agent) => {
+              (() => {
+                const q = search.trim().toLowerCase();
+                const filtered = sortedAgents.filter((a) => !q || a.name.toLowerCase().includes(q) || a.skills.join(" ").toLowerCase().includes(q));
+                if (filtered.length === 0) return (
+                  <div className="flex flex-col items-center justify-center gap-1 py-8 px-4 text-center">
+                    <p className="text-[12px] font-medium text-[#667085]">No results for "{search}"</p>
+                  </div>
+                );
+                return filtered.map((agent) => {
                 const isAssigned = assigned === agent.id;
                 const isDisabled = agent.availability === "Offline" || (assigned !== null && !isAssigned);
                 const isFav = favorites.has(agent.id);
@@ -7249,7 +7295,8 @@ function IncomingTransferPopover({
                     </button>
                   </div>
                 );
-              })
+              });
+              })()
             )}
           </div>
         </>
