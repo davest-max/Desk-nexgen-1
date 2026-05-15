@@ -314,15 +314,24 @@ function ConversationList({
 
 // ─── Thread view ──────────────────────────────────────────────────────────────
 
-function ThreadView({ conversation, agentStatus }: { conversation: Conversation; agentStatus?: Agent["status"] }) {
+function ThreadView({ conversation, agentStatus, initialDraft = "" }: { conversation: Conversation; agentStatus?: Agent["status"]; initialDraft?: string }) {
   const [messages, setMessages] = useState<ChatMessage[]>(conversation.messages);
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(initialDraft);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Auto-size the textarea when an initial draft is pre-populated
+  useEffect(() => {
+    if (!initialDraft || !textareaRef.current) return;
+    const el = textareaRef.current;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSend = () => {
     const text = draft.trim();
@@ -439,6 +448,21 @@ export type PendingChatAgent = {
   status?: Agent["status"];
 };
 
+export type ConsultContext = {
+  customerName: string;
+  customerId: string;
+  channel: string;
+  preview: string;
+  priority: string;
+};
+
+function buildConsultSummary(ctx: ConsultContext, agentFirstName: string): string {
+  const channel = ctx.channel.charAt(0).toUpperCase() + ctx.channel.slice(1);
+  const priority = ctx.priority ? ` ${ctx.priority.toLowerCase()} priority` : "";
+  const preview = ctx.preview ? ` — "${ctx.preview}"` : "";
+  return `Hi ${agentFirstName}, quick consult needed. I have ${ctx.customerName} (${ctx.customerId}) on a live ${channel} case${preview}.${priority ? ` It's${priority}.` : ""} Can you assist?`;
+}
+
 export default function ChatPopoverContent({
   visible,
   position,
@@ -453,6 +477,7 @@ export default function ChatPopoverContent({
   pendingAgent,
   autoStartCall,
   onPendingAgentConsumed,
+  consultContext,
 }: {
   visible?: boolean;
   position: { x: number; y: number };
@@ -467,6 +492,7 @@ export default function ChatPopoverContent({
   pendingAgent?: PendingChatAgent | null;
   autoStartCall?: boolean;
   onPendingAgentConsumed?: () => void;
+  consultContext?: ConsultContext | null;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(initialConversationId ?? null);
   const [conversations, setConversations] = useState<Conversation[]>(seedConversations);
@@ -475,6 +501,8 @@ export default function ChatPopoverContent({
   const isResizingRef = useRef(false);
   const dragOffsetRef = useRef({ x: 0, y: 0 });
   const resizeStartRef = useRef({ mouseX: 0, mouseY: 0, width: size.width, height: size.height });
+  // Draft to pre-populate for the next fresh thread opened during a consult
+  const pendingThreadDraftRef = useRef<string>("");
 
   // Bubble total unread count up to parent whenever it changes
   useEffect(() => {
@@ -499,13 +527,21 @@ export default function ChatPopoverContent({
     const existing = conversations.find((c) => c.id === source.id)
       ?? seedTeams.find((t) => t.id === source.id);
     if (existing) {
+      // Existing thread — no pre-population
+      pendingThreadDraftRef.current = "";
       setConversations((prev) =>
         prev.map((c) => (c.id === existing.id ? { ...c, unread: 0 } : c)),
       );
       setSelectedId(existing.id);
       return;
     }
-    // Create a fresh conversation and add to recents
+    // Fresh thread — pre-populate with a consult summary if context is available
+    if (consultContext) {
+      const firstName = source.name.split(" ")[0];
+      pendingThreadDraftRef.current = buildConsultSummary(consultContext, firstName);
+    } else {
+      pendingThreadDraftRef.current = "";
+    }
     const fresh: Conversation = {
       id: source.id,
       name: source.name,
@@ -521,7 +557,7 @@ export default function ChatPopoverContent({
     setSelectedId(fresh.id);
   };
 
-  // When a pending agent is passed (e.g. from Directory), open/create their thread
+  // When a pending agent is passed (e.g. from Directory or Consult menu), open/create their thread
   useEffect(() => {
     if (!pendingAgent) return;
     const agentSource: Agent = {
@@ -660,7 +696,12 @@ export default function ChatPopoverContent({
       {/* Content */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {selectedConversation ? (
-          <ThreadView key={selectedConversation.id} conversation={selectedConversation} />
+          <ThreadView
+            key={selectedConversation.id}
+            conversation={selectedConversation}
+            agentStatus={seedAgents.find((a) => a.id === selectedConversation.id)?.status}
+            initialDraft={(() => { const d = pendingThreadDraftRef.current; pendingThreadDraftRef.current = ""; return d; })()}
+          />
         ) : (
           <ConversationList
             conversations={conversations}

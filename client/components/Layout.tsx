@@ -14417,6 +14417,13 @@ export default function Layout({ children }: LayoutProps) {
           pendingAgent={chatPendingAgent}
           autoStartCall={chatAutoStartCall}
           onPendingAgentConsumed={() => { setChatPendingAgent(null); setChatAutoStartCall(false); }}
+          consultContext={selectedAssignment.name ? {
+            customerName: selectedAssignment.name,
+            customerId: selectedAssignment.customerId,
+            channel: selectedAssignment.channel,
+            preview: selectedAssignment.preview,
+            priority: selectedAssignment.priority,
+          } : null}
         />
       )}
 
