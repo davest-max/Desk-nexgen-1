@@ -71,6 +71,7 @@ import {
   FlaskConical,
   ScrollText,
   Layers2,
+  Star,
 } from "lucide-react";
 
 import {
@@ -6973,7 +6974,7 @@ function IncomingTransferPopover({
   customerInfo?: { name: string; customerId: string; preview: string };
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [tab, setTab] = useState<"Department" | "Agent" | "Supervisor">("Department");
+  const [tab, setTab] = useState<"Favorites" | "Department" | "Agent" | "Supervisor">("Favorites");
   const [assigned, setAssigned] = useState<string | null>(null);
   const [pos, setPos] = useState<{ top?: number; bottom?: number; right?: number; left?: number }>({ bottom: 0, right: 0 });
   const [phase, setPhase] = useState<"select" | "handoff">("select");
@@ -6981,6 +6982,22 @@ function IncomingTransferPopover({
   const [note, setNote] = useState("");
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [favorites, setFavorites] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem("transfer-favorites");
+      return new Set(stored ? JSON.parse(stored) : []);
+    } catch { return new Set<string>(); }
+  });
+
+  const toggleFavorite = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setFavorites((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      try { localStorage.setItem("transfer-favorites", JSON.stringify([...next])); } catch { /* noop */ }
+      return next;
+    });
+  };
   const [suggestionUsed, setSuggestionUsed] = useState(false);
 
   useEffect(() => {
@@ -7083,7 +7100,7 @@ function IncomingTransferPopover({
           </div>
           {/* Tabs */}
           <div className="flex border-b border-border">
-            {(["Department", "Agent", "Supervisor"] as const).map((t) => (
+            {(["Favorites", "Department", "Agent", "Supervisor"] as const).map((t) => (
               <button
                 key={t}
                 type="button"
@@ -7091,64 +7108,136 @@ function IncomingTransferPopover({
                 className={cn("relative flex-1 py-2.5 text-[11px] font-medium transition-colors",
                   tab === t ? "text-[#166CCA]" : "text-[#667085] hover:text-[#344054]")}
               >
-                {t}
+                {t === "Favorites" ? (
+                  <span className="flex items-center justify-center gap-1">
+                    <Star className={cn("h-3 w-3", favorites.size > 0 ? "fill-[#FFB800] text-[#FFB800]" : "")} />
+                  </span>
+                ) : t}
                 {tab === t && <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-t-full bg-[#166CCA]" />}
               </button>
             ))}
           </div>
-          <div className="max-h-[240px] overflow-y-auto divide-y divide-border">
-            {tab === "Department" ? (
+          <div className="max-h-[260px] overflow-y-auto divide-y divide-border">
+            {tab === "Favorites" ? (
+              favorites.size === 0 ? (
+                <div className="flex flex-col items-center justify-center gap-2 py-8 px-4 text-center">
+                  <Star className="h-6 w-6 text-[#D0D5DD]" />
+                  <p className="text-[12px] font-medium text-[#667085]">No favorites yet</p>
+                  <p className="text-[11px] text-[#98A2B3]">Star any department, agent, or supervisor to pin them here.</p>
+                </div>
+              ) : (
+                (() => {
+                  const favDepts = notifDepartmentRoster.filter((d) => favorites.has(d.id));
+                  const favAgents = notifAgentRoster.filter((a) => favorites.has(a.id));
+                  const favSups = notifSupervisorRoster.filter((s) => favorites.has(s.id));
+                  return (
+                    <>
+                      {favDepts.map((dept) => {
+                        const isAssigned = assigned === dept.id;
+                        return (
+                          <div key={dept.id} className={cn("flex items-center gap-3 px-4 py-3 transition-colors", isAssigned ? "bg-[#EBF4FD]" : "hover:bg-[#F9FAFB]")}>
+                            <button type="button" className="flex flex-1 items-center gap-3 text-left min-w-0" onClick={() => handleAssignDept(dept)}>
+                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EBF4FD] text-[15px]">{dept.icon}</div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[12px] font-semibold text-[#1D2939] truncate">{dept.name}</p>
+                                <p className="text-[10px] text-[#98A2B3] truncate">{dept.description}</p>
+                              </div>
+                              <span className="shrink-0 rounded-full bg-[#F2F4F7] px-1.5 py-0.5 text-[10px] font-semibold text-[#667085]">{dept.queue}</span>
+                            </button>
+                            <button type="button" onClick={(e) => toggleFavorite(dept.id, e)} className="shrink-0 p-1 text-[#FFB800] hover:text-[#D0A000] transition-colors">
+                              <Star className="h-3.5 w-3.5 fill-current" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                      {favAgents.map((agent) => {
+                        const isAssigned = assigned === agent.id;
+                        const isDisabled = agent.availability === "Offline";
+                        return (
+                          <div key={agent.id} className={cn("flex items-center gap-3 px-4 py-3 transition-colors", isAssigned ? "bg-[#EBF4FD]" : "hover:bg-[#F9FAFB]", isDisabled && "opacity-40")}>
+                            <button type="button" disabled={isDisabled} className="flex flex-1 items-center gap-3 text-left min-w-0" onClick={() => handleAssignAgent(agent)}>
+                              <div className="relative shrink-0">
+                                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#F2F4F7] text-[10px] font-bold text-[#475467]">{agent.initials}</div>
+                                <span className={cn("absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-white", notifAvailabilityDot[agent.availability])} />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[12px] font-semibold text-[#1D2939] truncate">{agent.name}</p>
+                                <p className="text-[10px] text-[#98A2B3] truncate">{agent.skills.join(" · ")}</p>
+                              </div>
+                            </button>
+                            <button type="button" onClick={(e) => toggleFavorite(agent.id, e)} className="shrink-0 p-1 text-[#FFB800] hover:text-[#D0A000] transition-colors">
+                              <Star className="h-3.5 w-3.5 fill-current" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                      {favSups.map((sup) => {
+                        const isAssigned = assigned === sup.id;
+                        const isDisabled = sup.availability === "Offline";
+                        return (
+                          <div key={sup.id} className={cn("flex items-center gap-3 px-4 py-3 transition-colors", isAssigned ? "bg-[#EBF4FD]" : "hover:bg-[#F9FAFB]", isDisabled && "opacity-40")}>
+                            <button type="button" disabled={isDisabled} className="flex flex-1 items-center gap-3 text-left min-w-0" onClick={() => handleAssignAgent(sup)}>
+                              <div className="relative shrink-0">
+                                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#F2F4F7] text-[10px] font-bold text-[#475467]">{sup.initials}</div>
+                                <span className={cn("absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-white", notifAvailabilityDot[sup.availability])} />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[12px] font-semibold text-[#1D2939] truncate">{sup.name}</p>
+                                <p className="text-[10px] text-[#98A2B3] truncate">{sup.skills.join(" · ")}</p>
+                              </div>
+                            </button>
+                            <button type="button" onClick={(e) => toggleFavorite(sup.id, e)} className="shrink-0 p-1 text-[#FFB800] hover:text-[#D0A000] transition-colors">
+                              <Star className="h-3.5 w-3.5 fill-current" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </>
+                  );
+                })()
+              )
+            ) : tab === "Department" ? (
               notifDepartmentRoster.map((dept) => {
                 const isAssigned = assigned === dept.id;
+                const isFav = favorites.has(dept.id);
                 return (
-                  <button
-                    key={dept.id}
-                    type="button"
-                    onClick={() => handleAssignDept(dept)}
-                    className={cn("w-full flex items-center gap-3 px-4 py-3 text-left transition-colors",
-                      isAssigned ? "bg-[#EBF4FD]" : "hover:bg-[#F9FAFB]")}
-                  >
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EBF4FD] text-[15px]">
-                      {dept.icon}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
+                  <div key={dept.id} className={cn("flex items-center gap-3 px-4 py-3 transition-colors", isAssigned ? "bg-[#EBF4FD]" : "hover:bg-[#F9FAFB]")}>
+                    <button type="button" className="flex flex-1 items-center gap-3 text-left min-w-0" onClick={() => handleAssignDept(dept)}>
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EBF4FD] text-[15px]">{dept.icon}</div>
+                      <div className="flex-1 min-w-0">
                         <p className="text-[12px] font-semibold text-[#1D2939] truncate">{dept.name}</p>
+                        <p className="text-[10px] text-[#98A2B3] truncate">{dept.description}</p>
                       </div>
-                      <p className="text-[10px] text-[#98A2B3] truncate">{dept.description}</p>
-                    </div>
-                    <span className="shrink-0 rounded-full bg-[#F2F4F7] px-1.5 py-0.5 text-[10px] font-semibold text-[#667085]">{dept.queue}</span>
-                  </button>
+                      <span className="shrink-0 rounded-full bg-[#F2F4F7] px-1.5 py-0.5 text-[10px] font-semibold text-[#667085]">{dept.queue}</span>
+                    </button>
+                    <button type="button" onClick={(e) => toggleFavorite(dept.id, e)} className={cn("shrink-0 p-1 transition-colors", isFav ? "text-[#FFB800] hover:text-[#D0A000]" : "text-[#D0D5DD] hover:text-[#FFB800]")}>
+                      <Star className={cn("h-3.5 w-3.5", isFav && "fill-current")} />
+                    </button>
+                  </div>
                 );
               })
             ) : (
               sortedAgents.map((agent) => {
                 const isAssigned = assigned === agent.id;
                 const isDisabled = agent.availability === "Offline" || (assigned !== null && !isAssigned);
+                const isFav = favorites.has(agent.id);
                 return (
-                  <button
-                    key={agent.id}
-                    type="button"
-                    disabled={isDisabled}
-                    onClick={() => handleAssignAgent(agent)}
-                    className={cn("w-full flex items-center gap-3 px-4 py-3 text-left transition-colors",
-                      isAssigned ? "bg-[#EBF4FD] dark:bg-[#0C2A4A]" : "hover:bg-[#F9FAFB] dark:hover:bg-[#1C2536]",
-                      isDisabled && "opacity-40 cursor-not-allowed")}
-                  >
-                    <div className="relative shrink-0">
-                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#F2F4F7] dark:bg-[#1C2A3A] text-[10px] font-bold text-[#475467] dark:text-[#94A3B8]">
-                        {agent.initials}
+                  <div key={agent.id} className={cn("flex items-center gap-3 px-4 py-3 transition-colors", isAssigned ? "bg-[#EBF4FD] dark:bg-[#0C2A4A]" : "hover:bg-[#F9FAFB] dark:hover:bg-[#1C2536]", isDisabled && "opacity-40")}>
+                    <button type="button" disabled={isDisabled} className="flex flex-1 items-center gap-3 text-left min-w-0" onClick={() => handleAssignAgent(agent)}>
+                      <div className="relative shrink-0">
+                        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#F2F4F7] dark:bg-[#1C2A3A] text-[10px] font-bold text-[#475467] dark:text-[#94A3B8]">{agent.initials}</div>
+                        <span className={cn("absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-white dark:border-[#0F1629]", notifAvailabilityDot[agent.availability])} />
                       </div>
-                      <span className={cn("absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-white dark:border-[#0F1629]", notifAvailabilityDot[agent.availability])} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex-1 min-w-0">
                         <p className="text-[12px] font-semibold text-[#1D2939] dark:text-[#E2E8F0] truncate">{agent.name}</p>
+                        <p className="text-[10px] text-[#98A2B3] truncate">{agent.skills.join(" · ")}</p>
                       </div>
-                      <p className="text-[10px] text-[#98A2B3] truncate">{agent.skills.join(" · ")}</p>
-                    </div>
-                    <span className="shrink-0 text-[10px] text-[#667085]">{agent.activeCount}</span>
-                  </button>
+                      <span className="shrink-0 text-[10px] text-[#667085]">{agent.activeCount}</span>
+                    </button>
+                    <button type="button" onClick={(e) => toggleFavorite(agent.id, e)} className={cn("shrink-0 p-1 transition-colors", isFav ? "text-[#FFB800] hover:text-[#D0A000]" : "text-[#D0D5DD] hover:text-[#FFB800]")}>
+                      <Star className={cn("h-3.5 w-3.5", isFav && "fill-current")} />
+                    </button>
+                  </div>
                 );
               })
             )}
