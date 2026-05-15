@@ -516,6 +516,16 @@ export default function ChatPopoverContent({
     allConversations.find((c) => c.id === selectedId) ?? null;
 
   const handleSelect = (id: string) => {
+    // Pre-populate draft when a consult is active (same logic as handleNewMessage)
+    if (consultContext) {
+      const conv = [...conversations, ...seedTeams].find((c) => c.id === id);
+      if (conv) {
+        const firstName = conv.name.split(" ")[0];
+        pendingThreadDraftRef.current = buildConsultSummary(consultContext, firstName);
+      }
+    } else {
+      pendingThreadDraftRef.current = "";
+    }
     setConversations((prev) =>
       prev.map((c) => (c.id === id ? { ...c, unread: 0 } : c)),
     );
