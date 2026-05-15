@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronDown, Mail, MessageSquare, Phone, Search, SlidersHorizontal, Users, X } from "lucide-react";
+import { ChevronDown, Mail, MessageCircle, MessageSquare, Phone, Search, SlidersHorizontal, Users, X } from "lucide-react";
 
 import { useLayoutContext } from "@/components/layout-context";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,7 @@ type DirectoryAgent = {
   availability: AgentAvailability;
   skills: string[];
   activeCount: number;
+  avatarColor: string;
 };
 
 type AgentTeam = {
@@ -42,18 +43,18 @@ type AgentTeam = {
 // ─── Seed data ────────────────────────────────────────────────────────────────
 
 export const directoryAgents: DirectoryAgent[] = [
-  { id: "agent-1", name: "Jeff Comstock",   initials: "JC", role: "Agent",      team: "Billing Support",    availability: "Available",  skills: ["Billing", "Account Management", "Escalations"],       activeCount: 2 },
-  { id: "agent-2", name: "Priya Mehra",     initials: "PM", role: "Agent",      team: "Digital Care",       availability: "Available",  skills: ["Technical Support", "API Integration", "Security"],   activeCount: 1 },
-  { id: "agent-3", name: "Sam Torres",      initials: "ST", role: "Agent",      team: "Compliance Team",    availability: "Available",  skills: ["Compliance", "Data Exports", "Contract Renewals"],    activeCount: 3 },
-  { id: "agent-4", name: "Kenji Watanabe",  initials: "KW", role: "Agent",      team: "Risk Response",      availability: "In a Call",  skills: ["Payments", "Fraud", "Wire Transfers"],                activeCount: 4 },
-  { id: "agent-5", name: "Amara Osei",      initials: "AO", role: "Agent",      team: "Enterprise Billing", availability: "Available",  skills: ["Enterprise Accounts", "Licensing", "Escalations"],    activeCount: 2 },
-  { id: "agent-6", name: "Lena Fischer",    initials: "LF", role: "Agent",      team: "Billing Support",    availability: "Away",       skills: ["Billing", "Refunds", "Account Management"],           activeCount: 1 },
-  { id: "agent-7", name: "Marcus Webb",     initials: "MW", role: "Agent",      team: "Authentication Ops", availability: "Available",  skills: ["Security", "Identity Management", "SSO"],             activeCount: 2 },
-  { id: "agent-8", name: "Chloe Nguyen",    initials: "CN", role: "Agent",      team: "Document Review",    availability: "Offline",    skills: ["Technical Support", "Logistics", "Customs"],          activeCount: 0 },
-  { id: "sup-1",   name: "Rachel Kim",      initials: "RK", role: "Supervisor", team: "Enterprise Billing", availability: "Available",  skills: ["Escalations", "Enterprise Accounts", "Compliance"],   activeCount: 3 },
-  { id: "sup-2",   name: "David Okafor",    initials: "DO", role: "Supervisor", team: "Risk Response",      availability: "Available",  skills: ["Fraud", "Risk Management", "Wire Transfers"],         activeCount: 2 },
-  { id: "sup-3",   name: "Sandra Howell",   initials: "SH", role: "Supervisor", team: "Billing Support",    availability: "In a Call",  skills: ["Billing", "Licensing", "Contract Renewals"],          activeCount: 4 },
-  { id: "sup-4",   name: "Tom Ellison",     initials: "TE", role: "Supervisor", team: "Authentication Ops", availability: "Away",       skills: ["Security", "Identity Management", "Escalations"],     activeCount: 1 },
+  { id: "agent-1", name: "Jeff Comstock",   initials: "JC", role: "Agent",      team: "Billing Support",    availability: "Available",  skills: ["Billing", "Account Management", "Escalations"],       activeCount: 2, avatarColor: "#166CCA" },
+  { id: "agent-2", name: "Priya Mehra",     initials: "PM", role: "Agent",      team: "Digital Care",       availability: "Available",  skills: ["Technical Support", "API Integration", "Security"],   activeCount: 1, avatarColor: "#7C3AED" },
+  { id: "agent-3", name: "Sam Torres",      initials: "ST", role: "Agent",      team: "Compliance Team",    availability: "Available",  skills: ["Compliance", "Data Exports", "Contract Renewals"],    activeCount: 3, avatarColor: "#059669" },
+  { id: "agent-4", name: "Kenji Watanabe",  initials: "KW", role: "Agent",      team: "Risk Response",      availability: "In a Call",  skills: ["Payments", "Fraud", "Wire Transfers"],                activeCount: 4, avatarColor: "#BE123C" },
+  { id: "agent-5", name: "Amara Osei",      initials: "AO", role: "Agent",      team: "Enterprise Billing", availability: "Available",  skills: ["Enterprise Accounts", "Licensing", "Escalations"],    activeCount: 2, avatarColor: "#0891B2" },
+  { id: "agent-6", name: "Lena Fischer",    initials: "LF", role: "Agent",      team: "Billing Support",    availability: "Away",       skills: ["Billing", "Refunds", "Account Management"],           activeCount: 1, avatarColor: "#9333EA" },
+  { id: "agent-7", name: "Marcus Webb",     initials: "MW", role: "Agent",      team: "Authentication Ops", availability: "Available",  skills: ["Security", "Identity Management", "SSO"],             activeCount: 2, avatarColor: "#D97706" },
+  { id: "agent-8", name: "Chloe Nguyen",    initials: "CN", role: "Agent",      team: "Document Review",    availability: "Offline",    skills: ["Technical Support", "Logistics", "Customs"],          activeCount: 0, avatarColor: "#DB2777" },
+  { id: "sup-1",   name: "Rachel Kim",      initials: "RK", role: "Supervisor", team: "Enterprise Billing", availability: "Available",  skills: ["Escalations", "Enterprise Accounts", "Compliance"],   activeCount: 3, avatarColor: "#EA580C" },
+  { id: "sup-2",   name: "David Okafor",    initials: "DO", role: "Supervisor", team: "Risk Response",      availability: "Available",  skills: ["Fraud", "Risk Management", "Wire Transfers"],         activeCount: 2, avatarColor: "#16A34A" },
+  { id: "sup-3",   name: "Sandra Howell",   initials: "SH", role: "Supervisor", team: "Billing Support",    availability: "In a Call",  skills: ["Billing", "Licensing", "Contract Renewals"],          activeCount: 4, avatarColor: "#0E7490" },
+  { id: "sup-4",   name: "Tom Ellison",     initials: "TE", role: "Supervisor", team: "Authentication Ops", availability: "Away",       skills: ["Security", "Identity Management", "Escalations"],     activeCount: 1, avatarColor: "#6D28D9" },
 ];
 
 const agentTeams: AgentTeam[] = [
@@ -87,6 +88,13 @@ const AVAILABILITY_LABEL_COLOR: Record<AgentAvailability, string> = {
   "In a Call": "text-[#A37A00]",
   Away:        "text-[#667085]",
   Offline:     "text-[#98A2B3]",
+};
+
+const AVAILABILITY_TO_STATUS: Record<AgentAvailability, "online" | "away" | "offline"> = {
+  Available:   "online",
+  "In a Call": "online",
+  Away:        "away",
+  Offline:     "offline",
 };
 
 // ─── Filter dropdown ──────────────────────────────────────────────────────────
@@ -190,6 +198,7 @@ export default function DirectoryPanel({
     selectedAssignment,
     toggleCallPopunder,
     openCustomerConversation,
+    openChatPopover,
     isAgentAvailable,
     isAgentInCall,
   } = useLayoutContext();
@@ -491,43 +500,98 @@ export default function DirectoryPanel({
             {/* ── Agents ── */}
             {activeTab === "Agents" && (
               filteredAgents.length === 0 ? <EmptyState message="No agents found." /> :
-              filteredAgents.map((agent) => (
-                <div
-                  key={agent.id}
-                  className="rounded-xl border border-black/10 dark:border-white/8 bg-white dark:bg-[#0F1629] p-3.5 shadow-[0_2px_8px_rgba(15,23,42,0.05)] transition-all hover:-translate-y-px hover:shadow-[0_4px_12px_rgba(15,23,42,0.08)]"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="relative shrink-0">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#F2F4F7] dark:bg-[#1C2A3A] text-[11px] font-bold text-[#475467] dark:text-[#8898AB]">
-                        {agent.initials}
+              filteredAgents.map((agent) => {
+                const canCall = agent.availability === "Available";
+                const isOffline = agent.availability === "Offline";
+                const agentStatus = AVAILABILITY_TO_STATUS[agent.availability];
+                return (
+                  <div
+                    key={agent.id}
+                    className="rounded-xl border border-black/10 dark:border-white/8 bg-white dark:bg-[#0F1629] p-3.5 shadow-[0_2px_8px_rgba(15,23,42,0.05)] transition-all hover:-translate-y-px hover:shadow-[0_4px_12px_rgba(15,23,42,0.08)]"
+                  >
+                    <div className="flex items-start gap-3">
+                      {/* Avatar with status dot */}
+                      <div className="relative shrink-0">
+                        <div
+                          className="flex h-9 w-9 items-center justify-center rounded-full text-[11px] font-bold text-white"
+                          style={{ backgroundColor: agent.avatarColor }}
+                        >
+                          {agent.initials}
+                        </div>
+                        <span className={cn("absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white dark:border-[#0F1629]", AVAILABILITY_DOT[agent.availability])} />
                       </div>
-                      <span className={cn("absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white dark:border-[#0F1629]", AVAILABILITY_DOT[agent.availability])} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="text-[13px] font-semibold text-[#1D2939] dark:text-[#E2E8F0]">{agent.name}</p>
-                        <span className={cn("text-[11px] font-medium", AVAILABILITY_LABEL_COLOR[agent.availability])}>
-                          · {AVAILABILITY_LABEL[agent.availability]}
-                        </span>
-                      </div>
-                      <p className="mt-0.5 text-[11px] text-[#667085] dark:text-[#6B7FA0]">
-                        {agent.role} · {agent.team}
-                      </p>
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {agent.skills.map((skill) => (
-                          <span
-                            key={skill}
-                            className="rounded-full bg-[#F2F4F7] dark:bg-[#1C2A3A] px-2 py-0.5 text-[10px] font-medium text-[#475467] dark:text-[#8898AB]"
-                          >
-                            {skill}
+
+                      {/* Name / role / skills */}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="text-[13px] font-semibold text-[#1D2939] dark:text-[#E2E8F0]">{agent.name}</p>
+                          <span className={cn("text-[11px] font-medium", AVAILABILITY_LABEL_COLOR[agent.availability])}>
+                            · {AVAILABILITY_LABEL[agent.availability]}
                           </span>
-                        ))}
+                        </div>
+                        <p className="mt-0.5 text-[11px] text-[#667085] dark:text-[#6B7FA0]">
+                          {agent.role} · {agent.team}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {agent.skills.map((skill) => (
+                            <span
+                              key={skill}
+                              className="rounded-full bg-[#F2F4F7] dark:bg-[#1C2A3A] px-2 py-0.5 text-[10px] font-medium text-[#475467] dark:text-[#8898AB]"
+                            >
+                              {skill}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        {/* Voice call */}
+                        <button
+                          type="button"
+                          title={canCall ? `Call ${agent.name}` : agent.availability === "In a Call" ? "Agent is in a call" : `${agent.name} is ${agent.availability.toLowerCase()}`}
+                          disabled={!canCall}
+                          onClick={(e) => {
+                            const cardEl = (e.currentTarget as HTMLElement).closest(".rounded-xl");
+                            const rect = cardEl?.getBoundingClientRect() ?? null;
+                            openChatPopover(rect, { id: agent.id, name: agent.name, initials: agent.initials, role: `${agent.role} · ${agent.team}`, avatarColor: agent.avatarColor, status: agentStatus }, true);
+                          }}
+                          className={cn(
+                            "flex h-7 w-7 items-center justify-center rounded-full transition-colors",
+                            canCall
+                              ? "bg-[#EFFBF1] text-[#208337] hover:bg-[#D1FAD7]"
+                              : isOffline
+                              ? "bg-[#F2F4F7] text-[#D0D5DD] cursor-not-allowed dark:bg-[#1C2A3A]"
+                              : "bg-[#FFF8E1] text-[#A37A00] cursor-not-allowed",
+                          )}
+                        >
+                          <Phone className="h-3.5 w-3.5" />
+                        </button>
+
+                        {/* Chat / message */}
+                        <button
+                          type="button"
+                          title={isOffline ? `${agent.name} is offline` : `Message ${agent.name}`}
+                          disabled={isOffline}
+                          onClick={(e) => {
+                            const cardEl = (e.currentTarget as HTMLElement).closest(".rounded-xl");
+                            const rect = cardEl?.getBoundingClientRect() ?? null;
+                            openChatPopover(rect, { id: agent.id, name: agent.name, initials: agent.initials, role: `${agent.role} · ${agent.team}`, avatarColor: agent.avatarColor, status: agentStatus });
+                          }}
+                          className={cn(
+                            "flex h-7 w-7 items-center justify-center rounded-full transition-colors",
+                            isOffline
+                              ? "bg-[#F2F4F7] text-[#D0D5DD] cursor-not-allowed dark:bg-[#1C2A3A]"
+                              : "bg-[#EBF4FD] text-[#166CCA] hover:bg-[#D6EBFB]",
+                          )}
+                        >
+                          <MessageCircle className="h-3.5 w-3.5" />
+                        </button>
                       </div>
                     </div>
-                    <span className="shrink-0 text-[11px] text-[#98A2B3] dark:text-[#4E6A85]">{agent.activeCount} active</span>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
 
             {/* ── Agent Teams ── */}

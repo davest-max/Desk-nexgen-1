@@ -430,6 +430,15 @@ const MARGIN = 16;
 const MIN_WIDTH = 280;
 const MIN_HEIGHT = 400;
 
+export type PendingChatAgent = {
+  id: string;
+  name: string;
+  initials: string;
+  role: string;
+  avatarColor?: string;
+  status?: Agent["status"];
+};
+
 export default function ChatPopoverContent({
   visible,
   position,
@@ -441,6 +450,9 @@ export default function ChatPopoverContent({
   onInteractStart,
   onUnreadCountChange,
   initialConversationId,
+  pendingAgent,
+  autoStartCall,
+  onPendingAgentConsumed,
 }: {
   visible?: boolean;
   position: { x: number; y: number };
@@ -452,6 +464,9 @@ export default function ChatPopoverContent({
   onInteractStart?: () => void;
   onUnreadCountChange?: (count: number) => void;
   initialConversationId?: string;
+  pendingAgent?: PendingChatAgent | null;
+  autoStartCall?: boolean;
+  onPendingAgentConsumed?: () => void;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(initialConversationId ?? null);
   const [conversations, setConversations] = useState<Conversation[]>(seedConversations);
@@ -505,6 +520,23 @@ export default function ChatPopoverContent({
     setConversations((prev) => [fresh, ...prev]);
     setSelectedId(fresh.id);
   };
+
+  // When a pending agent is passed (e.g. from Directory), open/create their thread
+  useEffect(() => {
+    if (!pendingAgent) return;
+    const agentSource: Agent = {
+      id: pendingAgent.id,
+      name: pendingAgent.name,
+      initials: pendingAgent.initials,
+      role: pendingAgent.role,
+      avatarColor: pendingAgent.avatarColor ?? "#475467",
+      status: pendingAgent.status ?? "offline",
+    };
+    handleNewMessage(agentSource);
+    if (autoStartCall) setIsCallingAgent(true);
+    onPendingAgentConsumed?.();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingAgent]);
 
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {

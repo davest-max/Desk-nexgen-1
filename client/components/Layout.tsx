@@ -9505,6 +9505,8 @@ export default function Layout({ children }: LayoutProps) {
 
   const [incomingChatNotifications, setIncomingChatNotifications] = useState<AgentChatNotification[]>([]);
   const [chatInitialConversationId, setChatInitialConversationId] = useState<string | undefined>(undefined);
+  const [chatPendingAgent, setChatPendingAgent] = useState<{ id: string; name: string; initials: string; role: string; avatarColor?: string; status?: "online" | "away" | "offline" } | null>(null);
+  const [chatAutoStartCall, setChatAutoStartCall] = useState(false);
   const [activeRightPanel, setActiveRightPanel] = useState<RightPanelView>(null);
   const [deskPanelSelection, setDeskPanelSelection] = useState<DeskPanelSelection>(null);
   const [isChatPopoverOpen, setIsChatPopoverOpen] = useState(false);
@@ -12150,7 +12152,11 @@ export default function Layout({ children }: LayoutProps) {
     setTranscriptDragActivation(null);
   };
 
-  const openChatPopover = (anchorRect?: DOMRect | null) => {
+  const openChatPopover = (
+    anchorRect?: DOMRect | null,
+    agent?: { id: string; name: string; initials: string; role: string; avatarColor?: string; status?: "online" | "away" | "offline" },
+    autoCall?: boolean,
+  ) => {
     const margin = 16;
     const gap = 12;
     const popunderWidth = Math.min(chatPopunderSize.width, window.innerWidth - margin * 2);
@@ -12172,6 +12178,10 @@ export default function Layout({ children }: LayoutProps) {
     setChatPopunderSize((prev) => ({ ...prev, height: Math.max(420, maxHeight) }));
     bringFloatingPanelToFront("chat");
     setChatPopunderPosition({ x, y });
+    if (agent) {
+      setChatPendingAgent(agent);
+      setChatAutoStartCall(autoCall ?? false);
+    }
     setIsChatPopoverOpen(true);
   };
 
@@ -14353,10 +14363,13 @@ export default function Layout({ children }: LayoutProps) {
           zIndex={getFloatingPanelZIndex("chat")}
           onPositionChange={setChatPopunderPosition}
           onSizeChange={setChatPopunderSize}
-          onClose={() => { setIsChatPopoverOpen(false); setChatInitialConversationId(undefined); }}
+          onClose={() => { setIsChatPopoverOpen(false); setChatInitialConversationId(undefined); setChatPendingAgent(null); setChatAutoStartCall(false); }}
           onInteractStart={() => bringFloatingPanelToFront("chat")}
           onUnreadCountChange={setChatUnreadCount}
           initialConversationId={chatInitialConversationId}
+          pendingAgent={chatPendingAgent}
+          autoStartCall={chatAutoStartCall}
+          onPendingAgentConsumed={() => { setChatPendingAgent(null); setChatAutoStartCall(false); }}
         />
       )}
 
