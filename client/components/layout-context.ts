@@ -152,6 +152,7 @@ export interface LayoutContextValue {
   liveLastCustomerCommentByAssignmentId: Record<string, string>;
   setAssignmentStatus: (assignmentId: string, status: QueueAssignmentStatus) => void;
   openCopilot: () => void;
+  openDirectoryPanel: () => void;
   openChatPopover: () => void;
   isBriefingDismissed: boolean;
   incomingNotifications: QueuePreviewItem[];
@@ -190,6 +191,10 @@ export interface LayoutContextValue {
     priority?: string;
     preview?: string;
   }) => void;
+  /** Fire a named scenario escalation directly (no BroadcastChannel required). */
+  triggerScenario: (key: "jordan" | "sofia" | "marcus" | "terry") => void;
+  /** Live status of each scenario case — updated as escalations fire and resolve. */
+  scenarioCaseStatuses: Record<"jordan" | "sofia" | "marcus" | "terry", "idle" | "active" | "resolved">;
 }
 
 // ─── Context + hook ───────────────────────────────────────────────────────────

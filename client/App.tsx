@@ -23,6 +23,7 @@ import WemPage from "./pages/WemPage";
 import ReportingPage from "./pages/ReportingPage";
 import DirectoryPage from "./pages/DirectoryPage";
 import ScenarioControllerPage from "./pages/ScenarioControllerPage";
+import ScenarioPanel from "./pages/ScenarioPanel";
 import Layout from "./components/Layout";
 
 const queryClient = new QueryClient();
@@ -40,6 +41,7 @@ function WorkspaceRoutes() {
         <Route path="/directory"    element={<DirectoryPage />} />
         <Route path="/schedule"     element={<Schedule />} />
         <Route path="/settings"     element={<SettingsPage />} />
+        <Route path="/scenarios"    element={<ScenarioPanel />} />
         <Route path="/reporting"    element={<ReportingPage />} />
         <Route path="/salesforce"   element={<SalesforcePage />} />
         <Route path="/service-now"  element={<ServiceNowPage />} />

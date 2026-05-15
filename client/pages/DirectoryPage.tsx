@@ -2,7 +2,8 @@ import { useState } from "react";
 import DirectoryPanel from "@/components/DirectoryPanel";
 import AddPanelContent from "@/components/AddPanelContent";
 import NotesPanel from "@/components/NotesPanel";
-import { ChevronLeft, Plus } from "lucide-react";
+import { ChevronLeft, Plus, PanelRight } from "lucide-react";
+import { useLayoutContext } from "@/components/layout-context";
 
 /**
  * Full-page wrapper for the Directory.
@@ -15,6 +16,7 @@ import { ChevronLeft, Plus } from "lucide-react";
 export default function DirectoryPage() {
   const [inlineCustomerId, setInlineCustomerId] = useState<string | null>(null);
   const [inlineAddOpen, setInlineAddOpen] = useState(false);
+  const { openDirectoryPanel } = useLayoutContext();
 
   const showingInlineAdd = inlineAddOpen && !inlineCustomerId;
   const showingInlineCustomer = !!inlineCustomerId && !inlineAddOpen;
@@ -46,14 +48,25 @@ export default function DirectoryPage() {
         </div>
 
         {!showingInlineCustomer && !showingInlineAdd && (
-          <button
-            type="button"
-            onClick={() => setInlineAddOpen(true)}
-            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[#7A7A7A] transition-colors hover:bg-[#F2F4F7] dark:hover:bg-[#1C2536] hover:text-[#333333] dark:hover:text-[#CBD5E1]"
-            aria-label="Add new"
-          >
-            <Plus className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={openDirectoryPanel}
+              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[#7A7A7A] transition-colors hover:bg-[#F2F4F7] dark:hover:bg-[#1C2536] hover:text-[#333333] dark:hover:text-[#CBD5E1]"
+              aria-label="Pop out as floating panel"
+              title="Pop out as floating panel"
+            >
+              <PanelRight className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setInlineAddOpen(true)}
+              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[#7A7A7A] transition-colors hover:bg-[#F2F4F7] dark:hover:bg-[#1C2536] hover:text-[#333333] dark:hover:text-[#CBD5E1]"
+              aria-label="Add new"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          </div>
         )}
       </div>
 

@@ -67,7 +67,10 @@ import {
   CheckCircle2,
   Building2,
   ExternalLink,
+  FileSearch,
+  FlaskConical,
   ScrollText,
+  Layers2,
 } from "lucide-react";
 
 import {
@@ -1408,12 +1411,10 @@ function DispositionPopover({
 
 // ─── More-options dropdown for the active-case panel header ──────────────────
 
-function CaseMoreOptionsMenu({ onDismiss, onClose, iconSize = "md" }: { onDismiss: (transferRecipient?: string | null) => void; onClose?: () => void; iconSize?: "sm" | "md" }) {
+function CaseMoreOptionsMenu({ onDismiss, onClose, iconSize = "md", customerInfo }: { onDismiss: (transferRecipient?: string | null) => void; onClose?: () => void; iconSize?: "sm" | "md"; customerInfo?: { name: string; customerId: string; preview: string } }) {
   const { openChatPopover } = useLayoutContext();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
-  const [transferTarget, setTransferTarget] = useState<string | null>(null);
-  const [showDisposition, setShowDisposition] = useState<"transfer" | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   return (
@@ -1473,32 +1474,13 @@ function CaseMoreOptionsMenu({ onDismiss, onClose, iconSize = "md" }: { onDismis
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {/* Step 1 for transfer: pick an agent / team / dept */}
       {showTransfer && (
-        <CaseTransferPopover
+        <IncomingTransferPopover
           triggerRef={triggerRef}
+          side="left"
+          customerInfo={customerInfo}
           onClose={() => setShowTransfer(false)}
-          onSelect={(targetName) => {
-            setShowTransfer(false);
-            setTransferTarget(targetName);
-            setShowDisposition("transfer");
-          }}
-        />
-      )}
-
-      {/* Step 2: disposition — only for transfer */}
-      {showDisposition === "transfer" && (
-        <DispositionPopover
-          triggerRef={triggerRef}
-          mode="transfer"
-          targetName={transferTarget ?? undefined}
-          onConfirm={() => {
-            const recipient = transferTarget ?? undefined;
-            setShowDisposition(null);
-            setTransferTarget(null);
-            onDismiss(recipient);
-          }}
-          onCancel={() => { setShowDisposition(null); setTransferTarget(null); }}
+          onTransferred={(destination) => { setShowTransfer(false); onDismiss(destination || undefined); }}
         />
       )}
     </>
@@ -2736,6 +2718,7 @@ function DockedConversationPanel({
                     <CaseMoreOptionsMenu
                       onDismiss={(recipient) => onRemoveAssignment(recipient)}
                       onClose={onClose}
+                      customerInfo={customerRecord ? { name: customerRecord.name, customerId: customerRecord.customerId, preview: casePreview ?? customerRecord.queue?.preview ?? "" } : undefined}
                     />
                   )}
                 </div>
@@ -5784,22 +5767,37 @@ function HeaderIconButton({
 
 function ActiveVoiceAssignmentControls({
   onOpenDisposition,
+  customerInfo,
 }: {
   onOpenDisposition: (anchorRect?: DOMRect | null) => void;
+  customerInfo?: { name: string; customerId: string; preview: string };
 }) {
+  const [showTransfer, setShowTransfer] = useState(false);
+  const transferBtnRef = useRef<HTMLButtonElement>(null);
+
   return (
     <div className="mt-3 flex items-stretch gap-2">
       <Button
+        ref={transferBtnRef}
         type="button"
         variant="outline"
         size="sm"
-        onClick={(event) => event.stopPropagation()}
+        onClick={(event) => { event.stopPropagation(); setShowTransfer(true); }}
         onMouseDown={(event) => event.stopPropagation()}
         className="h-auto flex-1 flex-col gap-1 border-black/10 px-2 py-2 text-[11px] text-[#333333]"
       >
         <ArrowRightLeft className="h-4 w-4" />
         Transfer
       </Button>
+      {showTransfer && (
+        <IncomingTransferPopover
+          triggerRef={transferBtnRef}
+          side="right"
+          customerInfo={customerInfo}
+          onClose={() => setShowTransfer(false)}
+          onTransferred={(_destination) => { setShowTransfer(false); onOpenDisposition(); }}
+        />
+      )}
       <Button
         type="button"
         variant="outline"
@@ -5908,7 +5906,7 @@ function QueueAssignmentCard({
         </div>
 
         <div className="mt-2 text-[13px] leading-5 text-[#5B5B5B]">{item.preview}</div>
-        {showActiveVoiceControls ? <ActiveVoiceAssignmentControls onOpenDisposition={openCallDisposition} /> : null}
+        {showActiveVoiceControls ? <ActiveVoiceAssignmentControls onOpenDisposition={openCallDisposition} customerInfo={{ name: item.name, customerId: item.customerId, preview: item.preview }} /> : null}
       </div>
     </div>
   );
@@ -6660,7 +6658,29 @@ function GroupedQueueCard({
       {/* Card header — name + task-level status + close */}
       <div className="px-4 pb-2 pt-3">
         <div className="flex items-center gap-2">
-          <span className="flex-1 text-[14px] font-semibold leading-5 text-[#333333]">{group.name}</span>
+          <div className="flex-1 min-w-0">
+            <span className="text-[14px] font-semibold leading-5 text-[#333333]">{group.name}</span>
+            {(() => {
+              const botLabel =
+                group.lastActiveChannel.label ??
+                group.channels.find(c => c.label)?.label ??
+                queuePreviewItemsByCustomerRecordId[group.customerRecordId]?.label ??
+                staticAssignments.find(s => s.customerRecordId === group.customerRecordId)?.botType;
+              if (!botLabel) return null;
+              const colors: Record<string, string> = {
+                Aria:  "bg-[#EBF4FD] text-[#1260B0]",
+                Jacob: "bg-[#EFFBF1] text-[#208337]",
+                Emily: "bg-[#F5F3FF] text-[#7C3AED]",
+              };
+              const cls = colors[botLabel] ?? "bg-[#F2F4F7] text-[#475467]";
+              return (
+                <span className={cn("mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold", cls)}>
+                  <Sparkles className="h-2.5 w-2.5 shrink-0" />
+                  {botLabel}
+                </span>
+              );
+            })()}
+          </div>
           <div
             className="flex shrink-0 items-center gap-1"
             onClick={(e) => e.stopPropagation()}
@@ -6682,6 +6702,14 @@ function GroupedQueueCard({
                 }
               }}
               iconSize="sm"
+              customerInfo={(() => {
+                const isPlaceholder = (p: string) => p.startsWith("New ") || p === "Live call in progress.";
+                const preview =
+                  group.channels.find((ch) => !isPlaceholder(ch.preview))?.preview ??
+                  queuePreviewItemsByCustomerRecordId[group.customerRecordId]?.preview ??
+                  group.lastActiveChannel.preview ?? "";
+                return { name: group.name, customerId: group.lastActiveChannel.customerId, preview };
+              })()}
             />
           </div>
         </div>
@@ -6793,7 +6821,7 @@ function GroupedQueueCard({
                 </div>
               )}
               {showActiveVoiceControls ? (
-                <ActiveVoiceAssignmentControls onOpenDisposition={openCallDisposition} />
+                <ActiveVoiceAssignmentControls onOpenDisposition={openCallDisposition} customerInfo={{ name: group.name, customerId: item.customerId, preview: item.preview }} />
               ) : null}
 
               {/* Pending action buttons — Reject / Accept / Review */}
@@ -6934,22 +6962,38 @@ function IncomingTransferPopover({
   triggerRef,
   onClose,
   onTransferred,
+  side = "left",
+  customerInfo,
 }: {
   triggerRef: React.RefObject<HTMLButtonElement>;
   onClose: () => void;
-  onTransferred: () => void;
+  onTransferred: (destination: string) => void;
+  /** Which side of the trigger to open on. "left" (default) aligns right edge; "right" opens to the right of the trigger. */
+  side?: "left" | "right";
+  customerInfo?: { name: string; customerId: string; preview: string };
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [tab, setTab] = useState<"Department" | "Agent" | "Supervisor">("Department");
   const [assigned, setAssigned] = useState<string | null>(null);
-  const [pos, setPos] = useState({ top: 0, right: 0 });
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; right?: number; left?: number }>({ bottom: 0, right: 0 });
+  const [phase, setPhase] = useState<"select" | "handoff">("select");
+  const [selectedDestination, setSelectedDestination] = useState<string>("");
+  const [note, setNote] = useState("");
+  const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [suggestionUsed, setSuggestionUsed] = useState(false);
 
   useEffect(() => {
     const rect = triggerRef.current?.getBoundingClientRect();
     if (rect) {
-      setPos({ top: rect.top - 8, right: window.innerWidth - rect.right });
+      if (side === "right") {
+        // Anchor top edge to trigger top; open downward so card never clips above viewport
+        setPos({ top: rect.top, left: rect.right + 8 });
+      } else {
+        setPos({ bottom: window.innerHeight - rect.top + 8, right: window.innerWidth - rect.right });
+      }
     }
-  }, [triggerRef]);
+  }, [triggerRef, side]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -6959,13 +7003,46 @@ function IncomingTransferPopover({
     return () => document.removeEventListener("mousedown", handler);
   }, [onClose]);
 
+  // Generate AI suggestion when entering handoff phase
+  useEffect(() => {
+    if (phase !== "handoff" || !customerInfo) return;
+    setAiLoading(true);
+    setAiSuggestion(null);
+    setSuggestionUsed(false);
+    const preview = customerInfo.preview ?? "";
+    const name = customerInfo.name ?? "the customer";
+    let suggestion = "";
+    if (/fraud|unauthorized|transaction/i.test(preview)) {
+      suggestion = `${name} is reporting 2 unauthorized transactions totaling $2,159. Account has been flagged, dispute process initiated. Customer verified identity and is distressed — requesting immediate specialist support to authorize dispute resolution and review account security.`;
+    } else if (/router|connection|factory reset|port forward/i.test(preview)) {
+      suggestion = `${name} is experiencing complete connectivity loss due to a port forwarding misconfiguration blocking the factory reset process. Basic troubleshooting exhausted. Escalating for advanced network configuration support.`;
+    } else if (/wrong address|shipped|order/i.test(preview)) {
+      suggestion = `${name}'s order was shipped to an incorrect address. Customer is requesting human intervention to reroute the shipment or issue a replacement. Order details have been pulled — ready for fulfillment team action.`;
+    } else if (/callback|VP|freight|TMS|evaluating/i.test(preview)) {
+      suggestion = `${name} is a VP of Operations at Nexus Freight evaluating a TMS replacement for a 200-person team. High-value inbound sales lead. Customer has specific questions about enterprise integrations and pricing — route to senior sales specialist.`;
+    } else if (/live call/i.test(preview)) {
+      suggestion = `${name} is currently on a live call. Transferring with full context. Please review call transcript for background before joining.`;
+    } else {
+      suggestion = `Transferring ${name} (${customerInfo.customerId}). Reason: ${preview || "customer-initiated contact"}. Please review prior interaction history before responding.`;
+    }
+    const t = setTimeout(() => {
+      setAiSuggestion(suggestion);
+      setNote(suggestion);
+      setAiLoading(false);
+    }, 800);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+
   const handleAssignAgent = (agent: NotifAgent) => {
     setAssigned(agent.id);
-    setTimeout(() => { onTransferred(); onClose(); }, 800);
+    setSelectedDestination(agent.name);
+    setPhase("handoff");
   };
   const handleAssignDept = (dept: NotifDepartment) => {
     setAssigned(dept.id);
-    setTimeout(() => { onTransferred(); onClose(); }, 800);
+    setSelectedDestination(dept.name);
+    setPhase("handoff");
   };
 
   const agentRoster = tab === "Agent" ? notifAgentRoster : notifSupervisorRoster;
@@ -6974,90 +7051,171 @@ function IncomingTransferPopover({
   return createPortal(
     <div
       ref={ref}
-      className="fixed z-[999999] w-[300px] rounded-xl border border-border bg-white dark:bg-[#0F1629] shadow-[0_8px_24px_rgba(16,24,40,0.14)] overflow-hidden"
-      style={{ bottom: `calc(100vh - ${pos.top}px)`, right: pos.right }}
+      className={cn(
+        "fixed z-[999999] rounded-xl border border-border bg-white dark:bg-[#0F1629] shadow-[0_8px_24px_rgba(16,24,40,0.14)] overflow-hidden",
+        phase === "handoff" ? "w-[340px]" : "w-[300px]",
+      )}
+      style={{
+        ...(pos.top !== undefined ? { top: pos.top } : { bottom: pos.bottom }),
+        ...(pos.left !== undefined ? { left: pos.left } : { right: pos.right }),
+      }}
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-        <p className="text-[12px] font-semibold text-[#333333] dark:text-[#E2E8F0]">Transfer to</p>
-        <button type="button" onClick={onClose} className="text-[#98A2B3] hover:text-[#475467] transition-colors">
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </div>
-      {/* Tabs */}
-      <div className="flex border-b border-border">
-        {(["Department", "Agent", "Supervisor"] as const).map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => { setTab(t); setAssigned(null); }}
-            className={cn("relative flex-1 py-2.5 text-[11px] font-medium transition-colors",
-              tab === t ? "text-[#166CCA]" : "text-[#667085] hover:text-[#344054]")}
-          >
-            {t}
-            {tab === t && <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-t-full bg-[#166CCA]" />}
-          </button>
-        ))}
-      </div>
-      <div className="max-h-[240px] overflow-y-auto divide-y divide-border">
-        {tab === "Department" ? (
-          notifDepartmentRoster.map((dept) => {
-            const isAssigned = assigned === dept.id;
-            return (
+      {phase === "select" ? (
+        <>
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+            <p className="text-[12px] font-semibold text-[#333333] dark:text-[#E2E8F0]">Transfer to</p>
+            <button type="button" onClick={onClose} className="text-[#98A2B3] hover:text-[#475467] transition-colors">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          {/* Tabs */}
+          <div className="flex border-b border-border">
+            {(["Department", "Agent", "Supervisor"] as const).map((t) => (
               <button
-                key={dept.id}
+                key={t}
                 type="button"
-                onClick={() => handleAssignDept(dept)}
-                className={cn("w-full flex items-center gap-3 px-4 py-3 text-left transition-colors",
-                  isAssigned ? "bg-[#EBF4FD]" : "hover:bg-[#F9FAFB]")}
+                onClick={() => { setTab(t); setAssigned(null); }}
+                className={cn("relative flex-1 py-2.5 text-[11px] font-medium transition-colors",
+                  tab === t ? "text-[#166CCA]" : "text-[#667085] hover:text-[#344054]")}
               >
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EBF4FD] text-[15px]">
-                  {dept.icon}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-[12px] font-semibold text-[#1D2939] truncate">{dept.name}</p>
-                    {isAssigned && <span className="text-[10px] font-semibold text-[#166CCA]">Transferred</span>}
-                  </div>
-                  <p className="text-[10px] text-[#98A2B3] truncate">{dept.description}</p>
-                </div>
-                <span className="shrink-0 rounded-full bg-[#F2F4F7] px-1.5 py-0.5 text-[10px] font-semibold text-[#667085]">{dept.queue}</span>
+                {t}
+                {tab === t && <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-t-full bg-[#166CCA]" />}
               </button>
-            );
-          })
-        ) : (
-          sortedAgents.map((agent) => {
-            const isAssigned = assigned === agent.id;
-            const isDisabled = agent.availability === "Offline" || (assigned !== null && !isAssigned);
-            return (
+            ))}
+          </div>
+          <div className="max-h-[240px] overflow-y-auto divide-y divide-border">
+            {tab === "Department" ? (
+              notifDepartmentRoster.map((dept) => {
+                const isAssigned = assigned === dept.id;
+                return (
+                  <button
+                    key={dept.id}
+                    type="button"
+                    onClick={() => handleAssignDept(dept)}
+                    className={cn("w-full flex items-center gap-3 px-4 py-3 text-left transition-colors",
+                      isAssigned ? "bg-[#EBF4FD]" : "hover:bg-[#F9FAFB]")}
+                  >
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EBF4FD] text-[15px]">
+                      {dept.icon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-[12px] font-semibold text-[#1D2939] truncate">{dept.name}</p>
+                      </div>
+                      <p className="text-[10px] text-[#98A2B3] truncate">{dept.description}</p>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-[#F2F4F7] px-1.5 py-0.5 text-[10px] font-semibold text-[#667085]">{dept.queue}</span>
+                  </button>
+                );
+              })
+            ) : (
+              sortedAgents.map((agent) => {
+                const isAssigned = assigned === agent.id;
+                const isDisabled = agent.availability === "Offline" || (assigned !== null && !isAssigned);
+                return (
+                  <button
+                    key={agent.id}
+                    type="button"
+                    disabled={isDisabled}
+                    onClick={() => handleAssignAgent(agent)}
+                    className={cn("w-full flex items-center gap-3 px-4 py-3 text-left transition-colors",
+                      isAssigned ? "bg-[#EBF4FD] dark:bg-[#0C2A4A]" : "hover:bg-[#F9FAFB] dark:hover:bg-[#1C2536]",
+                      isDisabled && "opacity-40 cursor-not-allowed")}
+                  >
+                    <div className="relative shrink-0">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#F2F4F7] dark:bg-[#1C2A3A] text-[10px] font-bold text-[#475467] dark:text-[#94A3B8]">
+                        {agent.initials}
+                      </div>
+                      <span className={cn("absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-white dark:border-[#0F1629]", notifAvailabilityDot[agent.availability])} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-[12px] font-semibold text-[#1D2939] dark:text-[#E2E8F0] truncate">{agent.name}</p>
+                      </div>
+                      <p className="text-[10px] text-[#98A2B3] truncate">{agent.skills.join(" · ")}</p>
+                    </div>
+                    <span className="shrink-0 text-[10px] text-[#667085]">{agent.activeCount}</span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </>
+      ) : (
+        <>
+          {/* Handoff card header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+            <div className="flex items-center gap-2">
               <button
-                key={agent.id}
                 type="button"
-                disabled={isDisabled}
-                onClick={() => handleAssignAgent(agent)}
-                className={cn("w-full flex items-center gap-3 px-4 py-3 text-left transition-colors",
-                  isAssigned ? "bg-[#EBF4FD] dark:bg-[#0C2A4A]" : "hover:bg-[#F9FAFB] dark:hover:bg-[#1C2536]",
-                  isDisabled && "opacity-40 cursor-not-allowed")}
+                onClick={() => { setPhase("select"); setAssigned(null); setNote(""); }}
+                className="text-[#98A2B3] hover:text-[#475467] transition-colors"
               >
-                <div className="relative shrink-0">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#F2F4F7] dark:bg-[#1C2A3A] text-[10px] font-bold text-[#475467] dark:text-[#94A3B8]">
-                    {agent.initials}
-                  </div>
-                  <span className={cn("absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-white dark:border-[#0F1629]", notifAvailabilityDot[agent.availability])} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-[12px] font-semibold text-[#1D2939] dark:text-[#E2E8F0] truncate">{agent.name}</p>
-                    {isAssigned && <span className="text-[10px] font-semibold text-[#166CCA]">Transferred</span>}
-                  </div>
-                  <p className="text-[10px] text-[#98A2B3] truncate">{agent.skills.join(" · ")}</p>
-                </div>
-                <span className="shrink-0 text-[10px] text-[#667085]">{agent.activeCount}</span>
+                <ChevronLeft className="h-4 w-4" />
               </button>
-            );
-          })
-        )}
-      </div>
+              <p className="text-[12px] font-semibold text-[#333333]">Handoff to {selectedDestination}</p>
+            </div>
+            <button type="button" onClick={onClose} className="text-[#98A2B3] hover:text-[#475467] transition-colors">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          <div className="px-4 py-4 space-y-4">
+            {/* Customer info */}
+            <div className="rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] px-3 py-3 space-y-2">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-[#98A2B3]">Customer</p>
+                <p className="mt-0.5 text-[13px] font-semibold text-[#1D2939]">{customerInfo?.name ?? "—"}</p>
+                <p className="text-[11px] text-[#667085]">{customerInfo?.customerId ?? ""}</p>
+              </div>
+              {customerInfo?.preview && (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-[#98A2B3]">Reason for contacting</p>
+                  <p className="mt-0.5 text-[12px] leading-relaxed text-[#344054]">{customerInfo.preview}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Note field */}
+            <div>
+              <div className="flex items-center gap-1.5">
+                <label className="text-[11px] font-semibold text-[#344054]">
+                  Handoff note <span className="text-[#E32926]">*</span>
+                </label>
+                {aiLoading && <span className="flex items-center gap-1 text-[10px] text-[#166CCA]"><Sparkles className="h-3 w-3 animate-pulse" />Generating…</span>}
+                {!aiLoading && aiSuggestion && <span className="flex items-center gap-1 text-[10px] text-[#166CCA]"><Sparkles className="h-3 w-3" />AI drafted</span>}
+              </div>
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder={aiLoading ? "Generating AI summary…" : "Add context for the receiving agent…"}
+                rows={3}
+                className="mt-1.5 w-full resize-none rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-[12px] leading-relaxed text-[#1D2939] placeholder:text-[#98A2B3] focus:border-[#166CCA] focus:outline-none focus:ring-1 focus:ring-[#166CCA]"
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => { setPhase("select"); setAssigned(null); setNote(""); }}
+                className="flex-1 rounded-lg border border-[#D0D5DD] px-3 py-2 text-[12px] font-medium text-[#344054] hover:bg-[#F9FAFB] transition-colors"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                disabled={note.trim().length === 0}
+                onClick={() => { onTransferred(selectedDestination); onClose(); }}
+                className="flex-1 rounded-lg bg-[#166CCA] px-3 py-2 text-[12px] font-semibold text-white hover:bg-[#1260B0] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Complete Transfer
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>,
     document.body,
   );
@@ -7416,18 +7574,7 @@ function IncomingAssignmentCard({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item.statusLabel, isInline]);
 
-  // Auto-dismiss the inline top-left toast after 5 s of inactivity.
-  // The timer is cancelled as soon as the agent opens any accordion.
-  useEffect(() => {
-    if (!isInline) return;
-    const t = setTimeout(() => {
-      autoIdleTimerRef.current = null;
-      handleDismiss();
-    }, 5_000);
-    autoIdleTimerRef.current = t;
-    return () => clearTimeout(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isInline]);
+  // Inline cards persist until the agent takes action — no auto-dismiss timer.
 
   const REASONING_STEPS = [
     "Reviewing case history and prior customer interactions...",
@@ -7604,38 +7751,26 @@ function IncomingAssignmentCard({
       {/* Header */}
       <div className="flex items-start justify-between gap-2 px-4 pt-4 pb-3">
         <div className="flex items-start gap-2.5 flex-1 min-w-0">
-          {isInline ? (
-            // Inline (top-left overlay): show customer initials avatar
-            <div className="h-9 w-9 shrink-0 rounded-full bg-[#1260B0] flex items-center justify-center mt-0.5">
-              <span className="text-[13px] font-semibold text-white leading-none">
-                {item.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
-              </span>
-            </div>
-          ) : (
-            <>
-              {(item.label ?? "Service Bot") === "Aria" && (
-                <img
-                  src="https://cdn.builder.io/api/v1/image/assets%2F9d3d716b4b844ab4bcf3267b33310813%2F054057b71e64441097a4902d7dcea754?format=webp&width=800&height=1200"
-                  alt="Aria avatar"
-                  className="h-9 w-9 shrink-0 rounded-full object-cover mt-0.5"
-                />
-              )}
-              {(item.label ?? "Service Bot") === "Jacob" && (
-                <img
-                  src="https://cdn.builder.io/api/v1/image/assets%2F9d3d716b4b844ab4bcf3267b33310813%2F9f1a8ec85d5f478b9a015a2b7eece268?format=webp&width=800&height=1200"
-                  alt="Jacob avatar"
-                  className="h-9 w-9 shrink-0 rounded-full object-cover mt-0.5"
-                />
-              )}
-              {(item.label ?? "Service Bot") === "Emily" && (
-                <img
-                  src={`${import.meta.env.BASE_URL}emily-avatar.jpg`}
-                  alt="Emily avatar"
-                  className="h-9 w-9 shrink-0 rounded-full object-cover mt-0.5"
-                />
-              )}
-            </>
-          )}
+          {/* Bot avatar — shown for all variants; falls back to customer initials if no known bot */}
+          {(() => {
+            const botName = item.label ?? "Service Bot";
+            if (botName === "Aria") return (
+              <img src="https://cdn.builder.io/api/v1/image/assets%2F9d3d716b4b844ab4bcf3267b33310813%2F054057b71e64441097a4902d7dcea754?format=webp&width=800&height=1200" alt="Aria avatar" className="h-9 w-9 shrink-0 rounded-full object-cover mt-0.5" />
+            );
+            if (botName === "Jacob") return (
+              <img src="https://cdn.builder.io/api/v1/image/assets%2F9d3d716b4b844ab4bcf3267b33310813%2F9f1a8ec85d5f478b9a015a2b7eece268?format=webp&width=800&height=1200" alt="Jacob avatar" className="h-9 w-9 shrink-0 rounded-full object-cover mt-0.5" />
+            );
+            if (botName === "Emily") return (
+              <img src={`${import.meta.env.BASE_URL}emily-avatar.jpg`} alt="Emily avatar" className="h-9 w-9 shrink-0 rounded-full object-cover mt-0.5" />
+            );
+            return (
+              <div className="h-9 w-9 shrink-0 rounded-full bg-[#1260B0] flex items-center justify-center mt-0.5">
+                <span className="text-[13px] font-semibold text-white leading-none">
+                  {item.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
+                </span>
+              </div>
+            );
+          })()}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[13px] font-semibold text-[#1D2939] dark:text-[#E2E8F0]">
@@ -8461,6 +8596,17 @@ function LeftQueueRail({
   completedTodayCount,
   onAddNewAssignment,
   totalQueueCount,
+  incomingItems = [],
+  onIncomingTakeover,
+  onIncomingMonitor,
+  onIncomingTransfer,
+  onIncomingDismiss,
+  onIncomingApprove,
+  onIncomingApproveResolved,
+  onIncomingDismissResolved,
+  onIncomingLaunchCall,
+  onIncomingReviewLead,
+  launchingAssignmentId = null,
 }: {
   visibleAssignments: QueuePreviewItem[];
   queueStatuses: Record<string, QueueAssignmentStatus>;
@@ -8473,6 +8619,17 @@ function LeftQueueRail({
   onAddNewAssignment: (rect: DOMRect) => void;
   totalQueueCount: number;
   escalatedRailCount: number;
+  incomingItems?: QueuePreviewItem[];
+  onIncomingTakeover?: (item: QueuePreviewItem) => void;
+  onIncomingMonitor?: (item: QueuePreviewItem) => void;
+  onIncomingTransfer?: (item: QueuePreviewItem) => void;
+  onIncomingDismiss?: (item: QueuePreviewItem) => void;
+  onIncomingApprove?: (item: QueuePreviewItem) => void;
+  onIncomingApproveResolved?: (item: QueuePreviewItem) => void;
+  onIncomingDismissResolved?: (item: QueuePreviewItem) => void;
+  onIncomingLaunchCall?: (item: QueuePreviewItem) => void;
+  onIncomingReviewLead?: (item: QueuePreviewItem) => void;
+  launchingAssignmentId?: string | null;
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -8581,9 +8738,8 @@ function LeftQueueRail({
           aria-hidden={isOpen}
         >
           <div className="flex h-full w-full flex-col items-center">
-          <div className="flex min-h-0 w-full flex-1 flex-col items-center overflow-y-auto px-1 pt-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-            {/* + New Assignment button — top, mirrors open rail */}
-            <div className="flex w-full shrink-0 flex-col items-center pb-1">
+            {/* + New Assignment button — pinned top */}
+            <div className="flex w-full shrink-0 flex-col items-center pt-2 pb-1 px-1">
               <TooltipProvider delayDuration={300}>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -8601,7 +8757,63 @@ function LeftQueueRail({
               </TooltipProvider>
             </div>
 
-            {/* Collapsed assignment icons — natural flow, no scroll wrapper */}
+          {/* Collapsed nav icons — static, pinned below + button */}
+          <TooltipProvider delayDuration={300}>
+            <div className="flex w-full shrink-0 flex-col items-center gap-1 py-2 border-b border-black/[0.06]">
+              {([
+                { icon: Monitor,       path: "/control-center", label: "Control Center" },
+                { icon: FileSearch,    path: "/queue",         label: "Contacts"       },
+                { icon: FlaskConical,  path: "/scenarios",     label: "Scenarios"      },
+                { icon: BookUser,      path: "/directory",     label: "Directory"      },
+                { icon: CalendarCheck, path: "/schedule",      label: "Schedule"       },
+                { icon: Settings,      path: "/settings",      label: "Settings"       },
+              ] as const).map(({ icon: Icon, path, label }) => {
+                const isActive = location.pathname === path;
+                const showDot = label === "Control Center" && escalatedRailCount > 0;
+                return (
+                  <Tooltip key={label}>
+                    <TooltipTrigger asChild>
+                      <div className="relative">
+                        <button
+                          type="button"
+                          aria-label={label}
+                          onClick={() => navigate(path)}
+                          className={cn(
+                            "flex h-9 w-9 items-center justify-center rounded-lg transition-colors",
+                            isActive
+                              ? "bg-[#166CCA] text-white"
+                              : "text-[#667085] dark:text-[#8898AB] hover:bg-[#EBEBEC] dark:hover:bg-[#1C2536] hover:text-[#1D2939] dark:hover:text-[#CBD5E1]",
+                          )}
+                        >
+                          <Icon className="h-4 w-4 stroke-[1.5]" />
+                        </button>
+                        {showDot && (
+                          <span className="pointer-events-none absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-[#E32926] animate-pulse" />
+                        )}
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      <span>{label}</span>
+                      {label === "Control Center" && escalatedRailCount > 0 && (
+                        <span className="mt-0.5 block text-[11px] font-normal text-[#E53935]">
+                          {escalatedRailCount} escalated
+                        </span>
+                      )}
+                      {label === "Contacts" && totalQueueCount > 0 && (
+                        <span className="mt-0.5 block text-[11px] font-normal opacity-75">
+                          {totalQueueCount} in queue
+                        </span>
+                      )}
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </div>
+          </TooltipProvider>
+
+          {/* Assignments — scrollable area below nav */}
+          <div className="flex min-h-0 w-full flex-1 flex-col items-center overflow-y-auto px-1 pt-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            {/* Collapsed assignment icons */}
             <div
               className={cn(
                 "w-full",
@@ -8740,61 +8952,39 @@ function LeftQueueRail({
                 })}
               </div>
             </div>
-
-            {/* Collapsed nav icons — flow naturally below assignments */}
-            <TooltipProvider delayDuration={300}>
-              <div className="flex w-full flex-col items-center gap-1 pt-2 pb-2">
-                {([
-                  { icon: Monitor,       path: "/control-center", label: "Control Center" },
-                  { icon: Inbox,         path: "/queue",         label: "Queue"          },
-                  { icon: BookUser,      path: "/directory",     label: "Directory"      },
-                  { icon: CalendarCheck, path: "/schedule",      label: "Schedule"       },
-                  { icon: Settings,      path: "/settings",      label: "Settings"       },
-                ] as const).map(({ icon: Icon, path, label }) => {
-                  const isActive = location.pathname === path;
-                  const showDot = label === "Control Center" && escalatedRailCount > 0;
-                  return (
-                    <Tooltip key={label}>
-                      <TooltipTrigger asChild>
-                        {/* Outer wrapper holds `relative` so the badge escapes the button's own stacking context */}
-                        <div className="relative">
-                          <button
-                            type="button"
-                            aria-label={label}
-                            onClick={() => navigate(path)}
-                            className={cn(
-                              "flex h-9 w-9 items-center justify-center rounded-lg transition-colors",
-                              isActive
-                                ? "bg-[#166CCA] text-white"
-                                : "text-[#667085] dark:text-[#8898AB] hover:bg-[#EBEBEC] dark:hover:bg-[#1C2536] hover:text-[#1D2939] dark:hover:text-[#CBD5E1]",
-                            )}
-                          >
-                            <Icon className="h-4 w-4 stroke-[1.5]" />
-                          </button>
-                          {showDot && (
-                            <span className="pointer-events-none absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-[#E32926] animate-pulse" />
-                          )}
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent side="right">
-                        <span>{label}</span>
-                        {label === "Control Center" && escalatedRailCount > 0 && (
-                          <span className="mt-0.5 block text-[11px] font-normal text-[#E53935]">
-                            {escalatedRailCount} escalated
-                          </span>
-                        )}
-                        {label === "Queue" && totalQueueCount > 0 && (
-                          <span className="mt-0.5 block text-[11px] font-normal opacity-75">
-                            {totalQueueCount} in queue
-                          </span>
-                        )}
-                      </TooltipContent>
-                    </Tooltip>
-                  );
-                })}
-              </div>
-            </TooltipProvider>
           </div>
+
+          {/* Incoming assignment chips — collapsed state */}
+          {incomingItems.length > 0 && (
+            <div className="flex w-full flex-col items-center gap-2 pt-2 px-1">
+              {incomingItems.map((item) => (
+                <TooltipProvider key={item.id} delayDuration={300}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label={`Incoming: ${item.name}`}
+                        onClick={onToggle}
+                        className="relative flex h-[50px] w-[52px] flex-col items-center justify-center gap-1 rounded-2xl border border-[rgba(240,68,56,0.25)] bg-white px-1 py-1 text-center shadow-[0_4px_12px_rgba(240,68,56,0.12)] transition-all hover:shadow-[0_6px_16px_rgba(240,68,56,0.18)]"
+                      >
+                        <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-[#E32926] animate-pulse" />
+                        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#FDEAEA] text-[10px] font-bold text-[#C71D1A]">
+                          {item.initials}
+                        </span>
+                        <span className="text-[8px] font-semibold text-[#E32926] truncate w-full text-center px-0.5 uppercase tracking-wide">
+                          New
+                        </span>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      <span className="font-semibold">{item.name}</span>
+                      <span className="mt-0.5 block text-[11px] font-normal opacity-75">{item.preview}</span>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ))}
+            </div>
+          )}
 
           {/* App logo mark — always pinned to bottom of collapsed rail */}
           <div className="flex w-full shrink-0 items-center justify-center pb-3">
@@ -8830,10 +9020,8 @@ function LeftQueueRail({
                 : "opacity 120ms ease-out, transform 120ms ease-out",              /* closing: fade out immediately */
             }}
           >
-            {/* Assignments section */}
+            {/* Assignments section — static at top */}
             <div className="shrink-0 px-3 pb-2 pt-3">
-              <h3 className="text-[13px] font-semibold tracking-tight text-[#333333] dark:text-[#E2E8F0]">Cases</h3>
-              <p className="mt-0.5 text-[11px] text-[#7A7A7A] dark:text-[#8898AB]">{completedTodayCount} completed today</p>
               <button
                 type="button"
                 onClick={(e) => onAddNewAssignment(e.currentTarget.getBoundingClientRect())}
@@ -8844,34 +9032,21 @@ function LeftQueueRail({
               </button>
             </div>
 
-            {groupedQueueItems.length > 0 && (
-              <QueueOverlayList
-                groups={groupedQueueItems}
-                queueStatuses={queueStatuses}
-                onStatusChange={onStatusChange}
-                onRemove={handleRemoveQueueItem}
-                onRemoveAll={handleRemoveGroupedQueueItems}
-                onCloseChannelKeepTask={closeChannelKeepTask}
-                taskSummaryIds={taskSummaryIds}
-                isOpen={isOpen}
-                onSelectAssignment={selectAssignment}
-              />
-            )}
-
             <div className="mx-3 border-t border-black/[0.08]" />
 
             {/* Nav */}
-            <div className="shrink-0 px-3 pb-3 pt-2">
+            <div className="shrink-0 px-3 pb-2 pt-3">
               <nav className="space-y-0.5">
                 {[
                   { label: "Control Center", icon: Monitor, path: "/control-center" },
-                  { label: "Queue",      icon: Inbox,         path: "/queue"         },
+                  { label: "Contacts",   icon: FileSearch,    path: "/queue"         },
+                  { label: "Scenarios",  icon: FlaskConical,  path: "/scenarios"     },
                   { label: "Directory",  icon: BookUser,      path: "/directory"     },
                   { label: "Schedule",   icon: CalendarCheck, path: "/schedule"      },
                   { label: "Settings",   icon: Settings,      path: "/settings"      },
                 ].map(({ label, icon: Icon, path }) => {
                   const isActive = location.pathname === path;
-                  const caseCount = label === "Queue" ? totalQueueCount : 0;
+                  const caseCount = label === "Contacts" ? totalQueueCount : 0;
                   const escalatedCount = label === "Control Center" ? escalatedRailCount : 0;
                   const badgeCount = caseCount || escalatedCount;
                   return (
@@ -8903,6 +9078,54 @@ function LeftQueueRail({
                 })}
               </nav>
             </div>
+
+            {incomingItems.length > 0 && <div className="mx-3 border-t border-black/[0.08]" />}
+
+            {/* Incoming assignments section */}
+            {incomingItems.length > 0 && (
+              <div className="shrink-0 pb-2 pt-3">
+                <div className="flex items-center gap-1.5 px-3 pb-2">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#E32926] animate-pulse" />
+                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-[#E32926]">
+                    Incoming · {incomingItems.length}
+                  </h3>
+                </div>
+                <div className="space-y-2 px-2">
+                  {incomingItems.map((item) => (
+                    <IncomingAssignmentCard
+                      key={item.id}
+                      item={item}
+                      isInline
+                      dismissDirection="left"
+                      onTakeover={onIncomingTakeover ?? (() => {})}
+                      onMonitor={onIncomingMonitor ?? (() => {})}
+                      onTransfer={onIncomingTransfer ?? (() => {})}
+                      onDismiss={onIncomingDismiss ?? (() => {})}
+                      onApprove={onIncomingApprove}
+                      onApproveResolved={onIncomingApproveResolved}
+                      onDismissResolved={onIncomingDismissResolved}
+                      onLaunchCall={onIncomingLaunchCall}
+                      onReviewLead={onIncomingReviewLead}
+                      isLaunching={launchingAssignmentId === item.id}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {groupedQueueItems.length > 0 && (
+              <QueueOverlayList
+                groups={groupedQueueItems}
+                queueStatuses={queueStatuses}
+                onStatusChange={onStatusChange}
+                onRemove={handleRemoveQueueItem}
+                onRemoveAll={handleRemoveGroupedQueueItems}
+                onCloseChannelKeepTask={closeChannelKeepTask}
+                taskSummaryIds={taskSummaryIds}
+                isOpen={isOpen}
+                onSelectAssignment={selectAssignment}
+              />
+            )}
 
             {/* CXone logo — pinned footer of open rail */}
             <div className="mt-auto shrink-0 px-4 py-3">
@@ -9105,6 +9328,14 @@ export default function Layout({ children }: LayoutProps) {
   };
   const [isLeftRailOpen, setIsLeftRailOpen] = useState(false);
   const [incomingNotifications, setIncomingNotifications] = useState<QueuePreviewItem[]>([]);
+  // Auto-open the left rail whenever a new incoming assignment arrives.
+  const prevIncomingCountRef = useRef(0);
+  useEffect(() => {
+    if (incomingNotifications.length > prevIncomingCountRef.current) {
+      setIsLeftRailOpen(true);
+    }
+    prevIncomingCountRef.current = incomingNotifications.length;
+  }, [incomingNotifications.length]);
   /** Notification IDs (by customerRecordId) where the agent has taken an action (monitor, takeover, review, launch call, etc.). */
   const [actedOnNotifications, setActedOnNotifications] = useState<Set<string>>(new Set());
   /** Lead notifications that persist on the Home tab even after the toast is dismissed. */
@@ -9588,7 +9819,6 @@ export default function Layout({ children }: LayoutProps) {
     scenarioChannelRef.current?.postMessage({ type: "CASE_STATUS", case: "jordan", status: "active" } satisfies AppMsg);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
   const fireSofiaEscalation = useCallback(() => {
     if (escalation2Fired) return;
     escalation2Fired = true;
@@ -9710,6 +9940,20 @@ export default function Layout({ children }: LayoutProps) {
       ch.close();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fireJordanEscalation, fireSofiaEscalation, fireMarcusEscalation, fireTerryEscalation]);
+
+  const [scenarioCaseStatuses, setScenarioCaseStatuses] = useState<Record<"jordan" | "sofia" | "marcus" | "terry", "idle" | "active" | "resolved">>({
+    jordan: "idle", sofia: "idle", marcus: "idle", terry: "idle",
+  });
+
+  const triggerScenario = useCallback((key: "jordan" | "sofia" | "marcus" | "terry") => {
+    setScenarioCaseStatuses((prev) => ({ ...prev, [key]: "active" }));
+    switch (key) {
+      case "jordan": { escalationFired = false; fireJordanEscalation(); break; }
+      case "sofia":  { escalation2Fired = false; fireSofiaEscalation(); break; }
+      case "marcus": { escalation3Fired = false; fireMarcusEscalation(); break; }
+      case "terry":  { escalation4Fired = false; fireTerryEscalation(); break; }
+    }
   }, [fireJordanEscalation, fireSofiaEscalation, fireMarcusEscalation, fireTerryEscalation]);
 
   // When the agent transitions to Available while the controller is already connected,
@@ -10770,6 +11014,46 @@ export default function Layout({ children }: LayoutProps) {
 
   const bringFloatingPanelToFront = (panelId: FloatingPanelId) => {
     setFloatingPanelOrder((current) => [...current.filter((id) => id !== panelId), panelId]);
+  };
+
+  // Count of free-floating panels currently open — used to show/hide the snap button.
+  const openFloatingPanelCount = [
+    isChatPopoverOpen,
+    isNotificationsPopoverOpen,
+    isCustomerInfoPopunderOpen,
+    isConversationPopunderOpen,
+    isTranscriptPopunderOpen,
+    isCopilotViewPopunderOpen,
+    isDeskViewPopunderOpen,
+  ].filter(Boolean).length;
+
+  const snapPanelsToRight = () => {
+    type PanelEntry = {
+      setPos: (p: { x: number; y: number }) => void;
+      setSize: (s: { width: number; height: number }) => void;
+    };
+    const panels: PanelEntry[] = [];
+    if (isChatPopoverOpen)           panels.push({ setPos: setChatPopunderPosition,           setSize: setChatPopunderSize });
+    if (isNotificationsPopoverOpen)  panels.push({ setPos: setNotificationsPopunderPosition,  setSize: setNotificationsPopunderSize });
+    if (isCopilotViewPopunderOpen)   panels.push({ setPos: setCopilotViewPopunderPosition,    setSize: setCopilotViewPopunderSize });
+    if (isDeskViewPopunderOpen)      panels.push({ setPos: setDeskViewPopunderPosition,       setSize: setDeskViewPopunderSize });
+    if (isCustomerInfoPopunderOpen)  panels.push({ setPos: setCustomerInfoPopunderPosition,   setSize: setCustomerInfoPopunderSize });
+    if (isConversationPopunderOpen)  panels.push({ setPos: setConversationPopunderPosition,   setSize: setConversationPopunderSize });
+    if (isTranscriptPopunderOpen)    panels.push({ setPos: setTranscriptPopunderPosition,     setSize: setTranscriptPopunderSize });
+    if (panels.length < 2) return;
+
+    const PANEL_W = 360;
+    const MARGIN  = 12;
+    const GAP     = 8;
+    const TOP_Y   = 56 + MARGIN;
+    const totalH  = window.innerHeight - TOP_Y - MARGIN;
+    const panelH  = Math.floor((totalH - GAP * (panels.length - 1)) / panels.length);
+    const x       = window.innerWidth - PANEL_W - MARGIN;
+
+    panels.forEach((panel, i) => {
+      panel.setPos({ x, y: TOP_Y + i * (panelH + GAP) });
+      panel.setSize({ width: PANEL_W, height: panelH });
+    });
   };
 
   const getFloatingPanelZIndex = (panelId: FloatingPanelId) => {
@@ -12180,12 +12464,14 @@ export default function Layout({ children }: LayoutProps) {
       pendingTakeoverCaseId,
       clearPendingTakeoverCaseId,
       decrementEscalatedCount: () => setEscalatedRailCount((n) => Math.max(0, n - 1)),
-      onJordanCaseResolved: () => setIsJordanResolved(true),
-      onSofiaCaseResolved: () => setIsSofiaResolved(true),
-      onMarcusCaseResolved: () => setIsMarcusResolved(true),
+      onJordanCaseResolved: () => { setIsJordanResolved(true); setScenarioCaseStatuses((p) => ({ ...p, jordan: "resolved" })); },
+      onSofiaCaseResolved: () => { setIsSofiaResolved(true); setScenarioCaseStatuses((p) => ({ ...p, sofia: "resolved" })); },
+      onMarcusCaseResolved: () => { setIsMarcusResolved(true); setScenarioCaseStatuses((p) => ({ ...p, marcus: "resolved" })); },
       showDismissalToast: (summary) => setDismissalToast(summary),
       pushTransferredToast,
       historyOnlyAssignmentIds,
+      triggerScenario,
+      scenarioCaseStatuses,
       launchLeadCall,
       isConversationPanelOpen,
       isConversationPopunderOpen,
@@ -12356,6 +12642,13 @@ export default function Layout({ children }: LayoutProps) {
           openHeaderAppPanel("copilot");
         }
       },
+      openDirectoryPanel: () => {
+        if (isDeskViewPopunderOpen) {
+          bringFloatingPanelToFront("deskCanvas");
+        } else {
+          openHeaderAppPanel("desk");
+        }
+      },
       openChatPopover,
     }),
     [
@@ -12413,6 +12706,8 @@ export default function Layout({ children }: LayoutProps) {
       setIncomingNotifications,
       pendingMonitorCaseId,
       pendingTakeoverCaseId,
+      triggerScenario,
+      scenarioCaseStatuses,
     ],
   );
 
@@ -12598,6 +12893,24 @@ export default function Layout({ children }: LayoutProps) {
             </TooltipProvider>
           </div>
 
+          {openFloatingPanelCount >= 2 && (
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Snap panels to right"
+                    onClick={snapPanelsToRight}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#166CCA]/10 text-[#166CCA] transition-colors hover:bg-[#166CCA]/20"
+                  >
+                    <Layers2 className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Snap panels to right</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+
           <div
             className="relative"
             onMouseEnter={openStatusMenu}
@@ -12714,6 +13027,86 @@ export default function Layout({ children }: LayoutProps) {
           }}
           totalQueueCount={staticAssignments.filter((a) => a.channel !== "voice" && a.channel !== "email").length}
           escalatedRailCount={escalatedRailCount}
+          incomingItems={incomingNotifications.filter((n) => n.statusLabel !== "transferred")}
+          onIncomingMonitor={monitorIncomingAssignment}
+          onIncomingTakeover={takeoverIncomingAssignment}
+          onIncomingTransfer={transferIncomingAssignment}
+          onIncomingDismiss={(item) => {
+            removeIncoming(item.id);
+            if (actedOnNotifications.has(item.customerRecordId)) {
+              const sa = staticAssignments.find(
+                (s) => s.customerRecordId === item.customerRecordId || s.customerId === item.customerId,
+              );
+              setDismissalToast({
+                customerName: item.name,
+                customerId: item.customerId ?? "",
+                status: "dismissed",
+                resolvedStatus: "Resolved",
+                actions: sa?.aiOverview?.actions ?? [],
+                preview: item.preview ?? "",
+                botType: item.label ?? "Aria",
+                channel: item.channel,
+              });
+              setActedOnNotifications((prev) => { const next = new Set(prev); next.delete(item.customerRecordId); return next; });
+            }
+          }}
+          onIncomingApprove={approveIncomingAssignment}
+          onIncomingApproveResolved={resolveIncomingByApprove}
+          onIncomingDismissResolved={(item) => {
+            const sa = staticAssignments.find(
+              (s) => s.customerRecordId === item.customerRecordId || s.customerId === item.customerId,
+            );
+            setDismissalToast({
+              customerName: item.name,
+              customerId: item.customerId ?? "",
+              status: "dismissed",
+              resolvedStatus: "Resolved",
+              actions: sa?.aiOverview?.actions ?? [],
+              preview: item.preview ?? "",
+              botType: item.label ?? "Aria",
+              channel: item.channel,
+            });
+          }}
+          onIncomingLaunchCall={(item) => {
+            markActedOn(item.customerRecordId);
+            if (item.statusLabel === "lead") {
+              launchLeadCall(item);
+            } else {
+              layoutContextValue.toggleCallPopunder(null, item.customerRecordId);
+              removeIncoming(item.id);
+            }
+          }}
+          onIncomingReviewLead={(item) => {
+            markActedOn(item.customerRecordId);
+            removeIncoming(item.id);
+            if (item.customerRecordId) layoutContextValue.dismissLeadNotification(item.customerRecordId);
+            layoutContextValue.pushTransferredToast({
+              name: item.name,
+              customerRecordId: item.customerRecordId,
+              customerId: item.customerId,
+              channel: item.channel as AssignmentChannel,
+              label: item.label,
+              priority: item.priority,
+              preview: item.preview,
+            });
+            layoutContextValue.acceptIssue({
+              id: item.id,
+              name: item.name,
+              customerId: item.customerId ?? "",
+              customerRecordId: item.customerRecordId,
+              channel: item.channel as AssignmentChannel,
+              priority: item.priority,
+              preview: item.preview,
+              status: "pending" as QueueAssignmentStatus,
+              waitTime: item.time ?? "0m",
+              openAsHistoryOnly: true,
+              onCreated: (assignmentId) => {
+                const sa = staticAssignments.find((s) => s.customerRecordId === item.customerRecordId);
+                if (sa) acceptedStaticsStore.set(sa.id, assignmentId);
+              },
+            });
+          }}
+          launchingAssignmentId={launchingLeadId}
         />
         {isActivityRoute && visibleAssignments.length === 0 && (
           <div className={cn(
@@ -13399,6 +13792,7 @@ export default function Layout({ children }: LayoutProps) {
       {/* Independent Directory (desk) popunder */}
       {isDeskViewPopunderOpen && (
         <DeskCanvasPopunder
+          visible
           view="desk"
           position={deskViewPopunderPosition}
           size={deskViewPopunderSize}
@@ -13583,7 +13977,7 @@ export default function Layout({ children }: LayoutProps) {
       )}
 
       <NotificationStack
-        assignmentItems={incomingNotifications.filter((n) => n.statusLabel !== "transferred")}
+        assignmentItems={[]}
         chatItems={incomingChatNotifications}
         onMonitor={monitorIncomingAssignment}
         onTakeover={takeoverIncomingAssignment}
