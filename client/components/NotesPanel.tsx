@@ -147,7 +147,7 @@ function TicketRecordView({ ticket }: { ticket: CustomerTicket }) {
   );
 }
 
-function OverviewTabContent({ customerId, customerName, onCopilotSubmit, takeoverCard }: { customerId?: string; customerName?: string; onCopilotSubmit: (query: string) => void; takeoverCard?: TakeoverCardData }) {
+export function OverviewTabContent({ customerId, customerName, onCopilotSubmit, takeoverCard }: { customerId?: string; customerName?: string; onCopilotSubmit: (query: string) => void; takeoverCard?: TakeoverCardData }) {
   const [isProfileOpen, setIsProfileOpen] = useState(true);
   const [isCaseOpen, setIsCaseOpen] = useState(true);
   const [copilotQuery, setCopilotQuery] = useState("");

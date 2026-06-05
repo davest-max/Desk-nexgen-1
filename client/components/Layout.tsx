@@ -108,7 +108,7 @@ import DirectoryPanel from "@/components/DirectoryPanel";
 import AddPanelContent from "@/components/AddPanelContent";
 import ChatPopoverContent from "@/components/ChatPopover";
 import NotificationsPopoverContent, { seedNotifications, type AppNotification } from "@/components/NotificationsPopover";
-import NotesPanel from "@/components/NotesPanel";
+import NotesPanel, { OverviewTabContent } from "@/components/NotesPanel";
 import CustomerInfoPanel, { CustomerOverviewCard } from "@/components/CustomerInfoPanel";
 import CustomerHistoryTimeline from "@/components/CustomerHistoryTimeline";
 import { conversationChannelOptions } from "@/components/ConversationChannelToggleGroup";
@@ -3716,7 +3716,7 @@ function DockedCustomerInfoPanel({
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {/* Expand / minimize — widens the panel in place */}
+                {/* Expand / minimize — widens panel and shows all sections at once */}
                 <button
                   type="button"
                   onMouseDown={(event) => event.stopPropagation()}
@@ -3726,13 +3726,15 @@ function DockedCustomerInfoPanel({
                       setIsExpanded(false);
                     } else {
                       savedWidthRef.current = width;
-                      onWidthChange(maxWidth);
+                      // Request beyond maxWidth — parent clamps to available space,
+                      // pushing conversation to its minimum
+                      onWidthChange(9999);
                       setIsExpanded(true);
                     }
                   }}
                   className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[#7A7A7A] transition-colors hover:bg-white dark:hover:bg-[#1C2536] hover:text-[#333333] dark:hover:text-[#CBD5E1]"
                   aria-label={isExpanded ? "Minimize customer info" : "Expand customer info"}
-                  title={isExpanded ? "Minimize" : "Expand"}
+                  title={isExpanded ? "Minimize" : "Expand all sections"}
                 >
                   {isExpanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
                 </button>
@@ -3748,14 +3750,51 @@ function DockedCustomerInfoPanel({
               </div>
             </div>
 
-            <NotesPanel
-              key={customerRecordId}
-              initialTab={panelSelection?.initialTab ?? "Overview"}
-              initialTicketId={panelSelection?.ticketId}
-              customerId={customerRecordId}
-              customerName={customerName}
-              takeoverCard={takeoverCard ?? undefined}
-            />
+            {isExpanded ? (
+              /* All-sections stacked view */
+              <ScrollArea className="min-h-0 flex-1">
+                {/* Overview */}
+                <div className="border-b border-black/[0.06]">
+                  <p className="px-5 pt-4 pb-2 text-[10px] font-bold uppercase tracking-widest text-[#667085]">Overview</p>
+                  <OverviewTabContent
+                    customerId={customerRecordId}
+                    customerName={customerName}
+                    takeoverCard={takeoverCard ?? undefined}
+                    onCopilotSubmit={() => {}}
+                  />
+                </div>
+                {/* Details */}
+                <div className="border-b border-black/[0.06]">
+                  <p className="px-5 pt-4 pb-2 text-[10px] font-bold uppercase tracking-widest text-[#667085]">Details</p>
+                  <CustomerInfoPanel customerId={customerRecordId} className="" />
+                </div>
+                {/* Accounts */}
+                <div className="border-b border-black/[0.06]">
+                  <p className="px-5 pt-4 pb-2 text-[10px] font-bold uppercase tracking-widest text-[#667085]">Accounts</p>
+                  <CustomerOverviewCard customerId={customerRecordId} customerName={customerName} />
+                </div>
+                {/* Notes */}
+                <div className="pb-4">
+                  <p className="px-5 pt-4 pb-2 text-[10px] font-bold uppercase tracking-widest text-[#667085]">Notes</p>
+                  <NotesPanel
+                    key={`expanded-notes-${customerRecordId}`}
+                    customerId={customerRecordId}
+                    customerName={customerName}
+                    notesOnly
+                    hideTabs
+                  />
+                </div>
+              </ScrollArea>
+            ) : (
+              <NotesPanel
+                key={customerRecordId}
+                initialTab={panelSelection?.initialTab ?? "Overview"}
+                initialTicketId={panelSelection?.ticketId}
+                customerId={customerRecordId}
+                customerName={customerName}
+                takeoverCard={takeoverCard ?? undefined}
+              />
+            )}
 
           </>
         ) : null}
