@@ -70,7 +70,7 @@ import { RejectPopover } from "./control-panel/RejectPopover";
 import { TakeoverButton } from "./control-panel/TakeoverButton";
 
 type DeskPageTab = "queue" | "customers" | "tickets" | "accounts" | "contact-history";
-type IssueTab = "all" | "new" | "open" | "pending" | "escalated" | "closed" | "resolved";
+type StatusFilter = "new" | "open" | "pending" | "escalated" | "closed";
 
 const DESK_PAGE_TABS: Array<{ id: DeskPageTab; label: string }> = [
   { id: "queue",           label: "Queue"            },
@@ -1735,7 +1735,7 @@ function CustomerGroup({
 // ─── Persistent state store (survives navigation away and back) ───────────────
 // Stored at module scope so it outlives component unmount/remount cycles.
 const persistedState = {
-  issueTab: "all" as IssueTab,
+  issueTab: new Set<StatusFilter>(),
   priorityFilters: new Set<Priority>(),
   channelFilters: new Set<ChannelFilterValue>(),
   agentTypeFilter: "all" as "all" | "virtual" | "human",
@@ -1770,7 +1770,7 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
     // Restore the last active tab, defaulting to Home ("monitor")
     return persistedState.controlCenterTab === "queue" ? "monitor" : persistedState.controlCenterTab;
   });
-  const [issueTab, setIssueTab] = useState<IssueTab>(() => persistedState.issueTab);
+  const [issueTab, setIssueTab] = useState<Set<StatusFilter>>(() => new Set(persistedState.issueTab));
   const [priorityFilters, setPriorityFilters] = useState<Set<Priority>>(() => new Set(persistedState.priorityFilters));
   const [channelFilters, setChannelFilters] = useState<Set<ChannelFilterValue>>(() => new Set(persistedState.channelFilters));
   const [agentTypeFilter, setAgentTypeFilter] = useState<"all" | "virtual" | "human">(() => persistedState.agentTypeFilter);
@@ -2196,23 +2196,16 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
   // Status rank for within-group and group-level sorting: escalated first, resolved last
   const statusRank: Record<string, number> = { escalated: 0, open: 1, pending: 2, resolved: 3 };
 
-  const unfilteredRows = [...baseRows, ...resolvedNormalised];
-
-  // Counts for each status tab (used in header badges)
-  const statusCounts = {
-    new:       unfilteredRows.filter((r) => r.status === "open" && !r.isAccepted && !r.isLive).length,
-    open:      unfilteredRows.filter((r) => r.status === "open").length,
-    pending:   unfilteredRows.filter((r) => r.status === "pending").length,
-    escalated: unfilteredRows.filter((r) => r.status === "escalated").length,
-    closed:    unfilteredRows.filter((r) => r.status === "resolved").length,
-  };
-
-  const allRows = unfilteredRows
+  const allRows = [...baseRows, ...resolvedNormalised]
     .filter((a) => {
-      if (issueTab === "all") return true;
-      if (issueTab === "new")    return a.status === "open" && !a.isAccepted && !a.isLive;
-      if (issueTab === "closed") return a.status === "resolved";
-      return a.status === issueTab;
+      if (issueTab.size === 0) return true;
+      return (
+        (issueTab.has("new")       && a.status === "open"     && !a.isAccepted && !a.isLive) ||
+        (issueTab.has("open")      && a.status === "open") ||
+        (issueTab.has("pending")   && a.status === "pending") ||
+        (issueTab.has("escalated") && a.status === "escalated") ||
+        (issueTab.has("closed")    && a.status === "resolved")
+      );
     })
     .sort((a, b) => (priorityRank[a.priority] ?? 99) - (priorityRank[b.priority] ?? 99));
 
@@ -2232,21 +2225,14 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
   const parkedCount = liveNormalised.filter((a) => a.isParkedFromToast).length;
 
   // Per-tab counts for badges
-  const tabCounts: Record<IssueTab, number> = {
-    all: baseRows.length + filteredResolvedAssignments.length,
-    open: baseRows.filter((a) => a.status === "open").length + filteredResolvedAssignments.filter((r) => r.status === "open").length,
-    pending: baseRows.filter((a) => a.status === "pending").length + filteredResolvedAssignments.filter((r) => r.status === "pending").length,
-    resolved: baseRows.filter((a) => a.status === "resolved").length + filteredResolvedAssignments.filter((r) => r.status === "resolved").length,
-    // Uses resolvedNormalised (effectiveStatus) rather than filteredResolvedAssignments (raw r.status)
-    // so the count stays in sync with the escalated banner, which also reads resolvedNormalised.
-    // Without this, a stale-closure bug causes dismissed cases to be stored with r.status="escalated"
-    // even after the status was programmatically set to "resolved" before dismissal, making the
-    // count show 1 while the banner correctly shows 0.
+  const tabCounts: Record<StatusFilter, number> = {
+    new:       baseRows.filter((a) => a.status === "open" && !a.isAccepted && !a.isLive).length,
+    open:      baseRows.filter((a) => a.status === "open").length + filteredResolvedAssignments.filter((r) => r.status === "open").length,
+    pending:   baseRows.filter((a) => a.status === "pending").length + filteredResolvedAssignments.filter((r) => r.status === "pending").length,
     escalated: baseRows.filter((a) => a.status === "escalated").length + resolvedNormalised.filter((r) => r.status === "escalated").length,
-    new:    baseRows.filter((a) => a.status === "open" && !a.isAccepted && !a.isLive).length,
-    closed: baseRows.filter((a) => a.status === "resolved").length + filteredResolvedAssignments.filter((r) => r.status === "resolved").length,
+    closed:    baseRows.filter((a) => a.status === "resolved").length + filteredResolvedAssignments.filter((r) => r.status === "resolved").length,
   };
-  const totalTasks = tabCounts.open + tabCounts.pending + tabCounts.resolved + tabCounts.escalated;
+  const totalTasks = tabCounts.open + tabCounts.pending + tabCounts.closed + tabCounts.escalated;
 
   return (
     <div className="flex h-full flex-col">
@@ -2284,7 +2270,7 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
       {mode !== "inbox" && controlCenterTab === "monitor" && (() => {
         const criticalCount = baseRows.filter((a) => a.priority === "Critical").length;
         const highCount     = baseRows.filter((a) => a.priority === "High").length;
-        const resolvedCount = tabCounts.resolved;
+        const resolvedCount = tabCounts.closed;
         const pendingCount  = tabCounts.pending;
         const openCount     = tabCounts.open;
 
@@ -2444,7 +2430,7 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
                 <button
                   type="button"
                   onClick={() => {
-                    setIssueTab("escalated");
+                    setIssueTab(new Set(["escalated" as StatusFilter]));
                     navigate("/queue");
                   }}
                   className={cn(
@@ -2479,7 +2465,7 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
                 <button
                   type="button"
                   onClick={() => {
-                    setIssueTab("pending");
+                    setIssueTab(new Set(["pending" as StatusFilter]));
                     navigate("/queue");
                   }}
                   className="flex w-full items-center gap-2.5 rounded-lg py-1.5 text-left transition-colors hover:bg-[#FFFAEB]"
@@ -2499,7 +2485,7 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
                 <button
                   type="button"
                   onClick={() => {
-                    setIssueTab("open");
+                    setIssueTab(new Set(["open" as StatusFilter]));
                     navigate("/queue");
                   }}
                   className="flex w-full items-center gap-2.5 rounded-lg py-1.5 text-left transition-colors hover:bg-[#EFFBF1]"
@@ -2727,7 +2713,7 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
                     </div>
                   </div>
                   {/* Active filter chips */}
-                  {(channelFilters.size > 0 || priorityFilters.size > 0 || agentTypeFilter !== "all" || issueTab !== "all") && (
+                  {(channelFilters.size > 0 || priorityFilters.size > 0 || agentTypeFilter !== "all" || issueTab.size > 0) && (
                     <div className="flex flex-wrap gap-1.5 pb-3">
                       {[...channelFilters].map((ch) => (
                         <span key={ch} className="inline-flex items-center gap-1 rounded-full border border-[#BFDBFE] bg-[#EBF4FD] pl-2.5 pr-1.5 py-0.5 text-[11px] font-medium text-[#166CCA]">
@@ -2904,15 +2890,15 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
                     onClick={() => setIsFilterPanelOpen((v) => !v)}
                     className={cn(
                       "flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[12px] font-medium transition-colors",
-                      (channelFilters.size > 0 || priorityFilters.size > 0 || agentTypeFilter !== "all" || issueTab !== "all")
+                      (channelFilters.size > 0 || priorityFilters.size > 0 || agentTypeFilter !== "all" || issueTab.size > 0)
                         ? "border-[#166CCA]/40 bg-[#EBF4FD] text-[#166CCA] hover:bg-[#D8EBF8]"
                         : "border-border bg-white text-[#667085] hover:bg-[#F9FAFB] hover:text-[#333333]",
                     )}
                   >
                     <SlidersHorizontal className="h-3.5 w-3.5" />
-                    {(channelFilters.size + priorityFilters.size > 0 || agentTypeFilter !== "all" || issueTab !== "all") && (
+                    {(channelFilters.size + priorityFilters.size > 0 || agentTypeFilter !== "all" || issueTab.size > 0) && (
                       <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[#166CCA] text-[9px] font-bold text-white">
-                        {channelFilters.size + priorityFilters.size + (agentTypeFilter !== "all" ? 1 : 0) + (issueTab !== "all" ? 1 : 0)}
+                        {channelFilters.size + priorityFilters.size + (agentTypeFilter !== "all" ? 1 : 0) + issueTab.size}
                       </span>
                     )}
                   </button>
@@ -2926,12 +2912,12 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
                         <div className="flex flex-wrap gap-1">
                           {(["new", "open", "pending", "escalated", "closed"] as const).map((tab) => {
                             const labels: Record<typeof tab, string> = { new: "New", open: "Open", pending: "Pending", escalated: "Escalated", closed: "Closed" };
-                            const isSelected = issueTab === tab;
+                            const isSelected = issueTab.has(tab);
                             return (
                               <button
                                 key={tab}
                                 type="button"
-                                onClick={() => { setIssueTab(isSelected ? "all" : tab); setIsFilterPanelOpen(false); }}
+                                onClick={() => setIssueTab((prev) => { const next = new Set(prev); next.has(tab) ? next.delete(tab) : next.add(tab); return next; })}
                                 className={cn(
                                   "rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
                                   isSelected
@@ -3032,11 +3018,11 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
                         </div>
                       </div>
                       {/* Clear all */}
-                      {(channelFilters.size > 0 || priorityFilters.size > 0 || agentTypeFilter !== "all" || issueTab !== "all") && (
+                      {(channelFilters.size > 0 || priorityFilters.size > 0 || agentTypeFilter !== "all" || issueTab.size > 0) && (
                         <div className="border-t border-border px-3 py-2">
                           <button
                             type="button"
-                            onClick={() => { setChannelFilters(new Set()); setPriorityFilters(new Set()); setAgentTypeFilter("all"); setIssueTab("all"); setIsFilterPanelOpen(false); }}
+                            onClick={() => { setChannelFilters(new Set()); setPriorityFilters(new Set()); setAgentTypeFilter("all"); setIssueTab(new Set()); setIsFilterPanelOpen(false); }}
                             className="text-[11px] font-medium text-[#166CCA] hover:underline"
                           >Clear all</button>
                         </div>
@@ -3048,7 +3034,7 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
               </div>
 
               {/* Active filter chips */}
-              {(channelFilters.size > 0 || priorityFilters.size > 0 || agentTypeFilter !== "all" || issueTab !== "all") && (
+              {(channelFilters.size > 0 || priorityFilters.size > 0 || agentTypeFilter !== "all" || issueTab.size > 0) && (
                 <div className="flex flex-wrap gap-1.5 pb-3">
                   {[...channelFilters].map((ch) => (
                     <span key={ch} className="inline-flex items-center gap-1 rounded-full border border-[#BFDBFE] bg-[#EBF4FD] pl-2.5 pr-1.5 py-0.5 text-[11px] font-medium text-[#166CCA]">
@@ -3062,12 +3048,12 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
                       <button type="button" onClick={() => { const n = new Set(priorityFilters); n.delete(p); setPriorityFilters(n); }} className="flex h-3.5 w-3.5 items-center justify-center rounded-full hover:bg-[#BFDBFE] transition-colors"><X className="h-2.5 w-2.5" /></button>
                     </span>
                   ))}
-                  {issueTab !== "all" && (
-                    <span className="inline-flex items-center gap-1 rounded-full border border-[#BFDBFE] bg-[#EBF4FD] pl-2.5 pr-1.5 py-0.5 text-[11px] font-medium text-[#166CCA]">
-                      {{ new: "New", open: "Open", pending: "Pending", escalated: "Escalated", closed: "Closed", resolved: "Resolved", all: "All" }[issueTab] ?? issueTab}
-                      <button type="button" onClick={() => setIssueTab("all")} className="flex h-3.5 w-3.5 items-center justify-center rounded-full hover:bg-[#BFDBFE] transition-colors"><X className="h-2.5 w-2.5" /></button>
+                  {[...issueTab].map((s) => (
+                    <span key={s} className="inline-flex items-center gap-1 rounded-full border border-[#BFDBFE] bg-[#EBF4FD] pl-2.5 pr-1.5 py-0.5 text-[11px] font-medium text-[#166CCA]">
+                      {{ new: "New", open: "Open", pending: "Pending", escalated: "Escalated", closed: "Closed" }[s]}
+                      <button type="button" onClick={() => setIssueTab((prev) => { const next = new Set(prev); next.delete(s); return next; })} className="flex h-3.5 w-3.5 items-center justify-center rounded-full hover:bg-[#BFDBFE] transition-colors"><X className="h-2.5 w-2.5" /></button>
                     </span>
-                  )}
+                  ))}
                   {agentTypeFilter !== "all" && (
                     <span className="inline-flex items-center gap-1 rounded-full border border-[#BFDBFE] bg-[#EBF4FD] pl-2.5 pr-1.5 py-0.5 text-[11px] font-medium text-[#166CCA]">
                       {agentTypeFilter === "virtual" ? "Virtual Agents" : "Human Agents"}
@@ -3148,7 +3134,7 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
                   return (
                     <div className="flex flex-col items-center justify-center py-12 text-center">
                       <CheckCircle className="h-8 w-8 text-[#D0D5DD] mb-3" />
-                      <p className="text-sm font-medium text-[#7A7A7A] capitalize">No {issueTab === "all" ? "" : issueTab} tasks</p>
+                      <p className="text-sm font-medium text-[#7A7A7A] capitalize">No {issueTab.size === 0 ? "" : [...issueTab].join("/") + " "}tasks</p>
                       <p className="text-xs text-[#B0B7C3] mt-1">No tasks match the selected filter.</p>
                     </div>
                   );
