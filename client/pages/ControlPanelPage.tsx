@@ -2811,43 +2811,8 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
       {mode === "inbox" && <div className="min-h-0 flex-1 overflow-hidden flex flex-col">
 
         {/* ── Contacts page header ── */}
-        <div className="shrink-0 border-b border-[#E4E7EC] dark:border-[#1C2536] bg-white dark:bg-[#0F1629] px-5 pt-4 pb-0">
-          <h1 className="text-sm font-semibold tracking-tight text-[#333333] dark:text-white mb-3">Contacts</h1>
-          {/* Status tabs */}
-          <div className="flex">
-            {([
-              { id: "new",       label: "New"       },
-              { id: "open",      label: "Open"      },
-              { id: "pending",   label: "Pending"   },
-              { id: "escalated", label: "Escalated" },
-              { id: "closed",    label: "Closed"    },
-            ] as const).map(({ id, label }) => {
-              const count = statusCounts[id];
-              const isActive = issueTab === id;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setIssueTab(id)}
-                  className={cn(
-                    "relative flex items-center gap-1.5 px-4 py-2.5 text-[12px] font-medium whitespace-nowrap transition-colors",
-                    isActive ? "text-[#166CCA]" : "text-[#7A7A7A] dark:text-[#8898AB] hover:text-[#333333] dark:hover:text-[#CBD5E1]",
-                  )}
-                >
-                  {label}
-                  {count > 0 && (
-                    <span className={cn(
-                      "flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-semibold",
-                      isActive ? "bg-[#166CCA] text-white" : "bg-[#F2F4F7] dark:bg-[#1C2536] text-[#667085] dark:text-[#8898AB]",
-                    )}>
-                      {count}
-                    </span>
-                  )}
-                  {isActive && <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-t-full bg-[#166CCA]" />}
-                </button>
-              );
-            })}
-          </div>
+        <div className="shrink-0 border-b border-[#E4E7EC] dark:border-[#1C2536] bg-white dark:bg-[#0F1629] px-5 py-3">
+          <h1 className="text-sm font-semibold tracking-tight text-[#333333] dark:text-white">Contacts</h1>
         </div>
 
         <div className="flex gap-0 flex-1 min-h-0 overflow-hidden">
@@ -2959,16 +2924,17 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
                       <div className="px-3 pt-3 pb-1">
                         <p className="text-[10px] font-semibold uppercase tracking-widest text-[#98A2B3] mb-1.5">Status</p>
                         <div className="flex flex-wrap gap-1">
-                          {(["all", "escalated", "open", "pending", "resolved"] as const).map((tab) => {
-                            const labels: Record<typeof tab, string> = { all: "All", escalated: "Escalated", open: "Open", pending: "Pending", resolved: "Resolved" };
+                          {(["new", "open", "pending", "escalated", "closed"] as const).map((tab) => {
+                            const labels: Record<typeof tab, string> = { new: "New", open: "Open", pending: "Pending", escalated: "Escalated", closed: "Closed" };
+                            const isSelected = issueTab === tab;
                             return (
                               <button
                                 key={tab}
                                 type="button"
-                                onClick={() => setIssueTab(tab)}
+                                onClick={() => { setIssueTab(isSelected ? "all" : tab); setIsFilterPanelOpen(false); }}
                                 className={cn(
                                   "rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
-                                  issueTab === tab
+                                  isSelected
                                     ? "border-[#166CCA] bg-[#166CCA] text-white"
                                     : "border-[#D0D5DD] bg-white text-[#344054] hover:bg-[#F9FAFB]",
                                 )}
@@ -3098,7 +3064,7 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
                   ))}
                   {issueTab !== "all" && (
                     <span className="inline-flex items-center gap-1 rounded-full border border-[#BFDBFE] bg-[#EBF4FD] pl-2.5 pr-1.5 py-0.5 text-[11px] font-medium text-[#166CCA]">
-                      {issueTab.charAt(0).toUpperCase() + issueTab.slice(1)}
+                      {{ new: "New", open: "Open", pending: "Pending", escalated: "Escalated", closed: "Closed", resolved: "Resolved", all: "All" }[issueTab] ?? issueTab}
                       <button type="button" onClick={() => setIssueTab("all")} className="flex h-3.5 w-3.5 items-center justify-center rounded-full hover:bg-[#BFDBFE] transition-colors"><X className="h-2.5 w-2.5" /></button>
                     </span>
                   )}
