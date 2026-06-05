@@ -1486,6 +1486,15 @@ function CaseMoreOptionsMenu({ onDismiss, onClose, iconSize = "md", customerInfo
             <MessageCircle className="h-4 w-4" />
             Consult
           </DropdownMenuItem>
+
+          {/* Send Transcript */}
+          <DropdownMenuItem
+            className="gap-2 cursor-pointer"
+            onClick={() => setDropdownOpen(false)}
+          >
+            <ScrollText className="h-4 w-4" />
+            Send Transcript
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -5971,13 +5980,14 @@ const REJECT_REASONS = [
 // ─── Add New Assignment two-step flow popover ─────────────────────────────────
 
 type AddNewFlowStep = "channel" | "customer";
-type AddNewFlowChannel = "voice" | "email" | "sms" | "whatsapp";
+type AddNewFlowChannel = "voice" | "email" | "sms" | "whatsapp" | "transcript";
 
 const ADD_NEW_CHANNEL_OPTIONS: Array<{ channel: AddNewFlowChannel; label: string; icon: React.ElementType }> = [
-  { channel: "voice",    label: "Call",     icon: Phone },
-  { channel: "email",    label: "Email",    icon: Mail },
-  { channel: "sms",      label: "SMS",      icon: MessageSquare },
-  { channel: "whatsapp", label: "WhatsApp", icon: WhatsAppIcon },
+  { channel: "voice",      label: "Call",            icon: Phone },
+  { channel: "email",      label: "Email",           icon: Mail },
+  { channel: "sms",        label: "SMS",             icon: MessageSquare },
+  { channel: "whatsapp",   label: "WhatsApp",        icon: WhatsAppIcon },
+  { channel: "transcript", label: "Send Transcript", icon: ScrollText },
 ];
 
 // ─── Connected Applications popover ──────────────────────────────────────────
@@ -6374,6 +6384,7 @@ function AddNewAssignmentFlowPopover({
 
   // One-shot: pick customer + channel without the two-step flow
   const handleDirectSelect = (customerRecordId: string, ch: AddNewFlowChannel) => {
+    if (ch === "transcript") { onClose(); return; }
     if (ch === "voice") {
       onOpenCall(customerRecordId);
     } else {
@@ -6404,6 +6415,7 @@ function AddNewAssignmentFlowPopover({
   }
 
   const handleChannelSelect = (ch: AddNewFlowChannel) => {
+    if (ch === "transcript") { onClose(); return; } // no customer-picker step needed
     setSelectedChannel(ch);
     setStep("customer");
     setSearch("");
@@ -6412,8 +6424,8 @@ function AddNewAssignmentFlowPopover({
   const handleCustomerSelect = (customerRecordId: string) => {
     if (selectedChannel === "voice") {
       onOpenCall(customerRecordId);
-    } else if (selectedChannel) {
-      onOpenCustomerConversation(customerRecordId, selectedChannel);
+    } else if (selectedChannel && selectedChannel !== "transcript") {
+      onOpenCustomerConversation(customerRecordId, selectedChannel as "email" | "sms" | "whatsapp");
     }
     onClose();
   };
