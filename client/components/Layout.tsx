@@ -1718,6 +1718,7 @@ function DockedConversationPanel({
   const contentInitializedRef = useRef(false);
   const panelContainerRef = useRef<HTMLDivElement>(null);
   const [isContentVisible, setIsContentVisible] = useState(isOpen);
+  const { openCallDisposition } = useLayoutContext();
   const [isContentEntered, setIsContentEntered] = useState(isOpen);
   const [isAiPanelVisible, setIsAiPanelVisible] = useState(false);
   const [isNarrowPanel, setIsNarrowPanel] = useState(false);
@@ -2738,6 +2739,14 @@ function DockedConversationPanel({
                   )}
                 </div>
               </div>
+
+              {/* Phone controls — wrapping row, only shown during an active voice call */}
+              {isCallActive && (
+                <ActiveVoiceAssignmentControls
+                  onOpenDisposition={openCallDisposition}
+                  customerInfo={customerRecord ? { name: customerRecord.name, customerId: customerRecord.customerId, preview: casePreview ?? "" } : undefined}
+                />
+              )}
 
             </div>
 
@@ -5795,70 +5804,46 @@ function ActiveVoiceAssignmentControls({
   const [showKeypad,  setShowKeypad]  = useState(false);
   const transferBtnRef = useRef<HTMLButtonElement>(null);
 
-  const stop = (e: React.MouseEvent | React.PointerEvent) => { e.stopPropagation(); (e as React.MouseEvent).preventDefault?.(); };
+  type Btn = { id: string; label: string; icon: React.ReactNode; active?: boolean; danger?: boolean; onClick: (e: React.MouseEvent<HTMLButtonElement>) => void };
+  const buttons: Btn[] = [
+    { id: "hold",     label: "Hold",     icon: <Pause className="h-3.5 w-3.5" />,                                 active: isOnHold,    onClick: (e) => { e.stopPropagation(); setIsOnHold((v) => !v); } },
+    { id: "mute",     label: "Mute",     icon: isMuted ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />, active: isMuted, onClick: (e) => { e.stopPropagation(); setIsMuted((v) => !v); } },
+    { id: "mask",     label: "Mask",     icon: <EyeOff className="h-3.5 w-3.5" />,                                active: isMasked,    onClick: (e) => { e.stopPropagation(); setIsMasked((v) => !v); } },
+    { id: "record",   label: "Record",   icon: <Disc className={cn("h-3.5 w-3.5", isRecording && "animate-pulse")} />, active: isRecording, onClick: (e) => { e.stopPropagation(); setIsRecording((v) => !v); } },
+    { id: "transfer", label: "Transfer", icon: <ArrowRightLeft className="h-3.5 w-3.5" />,                        active: false,       onClick: (e) => { e.stopPropagation(); setShowTransfer(true); } },
+    { id: "keypad",   label: "Keypad",   icon: <Hash className="h-3.5 w-3.5" />,                                  active: showKeypad,  onClick: (e) => { e.stopPropagation(); setShowKeypad((v) => !v); } },
+    { id: "end",      label: "End Call", icon: <PhoneOff className="h-3.5 w-3.5" />,                              danger: true,        onClick: (e) => { e.stopPropagation(); onOpenDisposition(e.currentTarget.getBoundingClientRect()); } },
+  ];
 
   return (
     <div
-      className="flex items-end justify-between gap-0.5 px-3 py-2.5 border-b border-black/[0.06]"
-      onClick={stop}
-      onMouseDown={stop}
-      onPointerDown={stop}
+      className="flex flex-wrap gap-1.5 border-t border-black/[0.06] px-5 py-2.5"
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
     >
-      {/* Hold */}
-      <button type="button" onClick={(e) => { stop(e); setIsOnHold((v) => !v); }}
-        className={cn("flex flex-1 flex-col items-center gap-0.5 rounded-lg border py-1.5 text-[9px] font-semibold transition-colors",
-          isOnHold ? "border-[#D97706]/30 bg-[#FFF8E1] text-[#D97706]" : "border-black/10 text-[#5B5B5B] hover:bg-[#F8F8F9]")}
-        title="Hold">
-        <Pause className="h-3.5 w-3.5" />Hold
-      </button>
-
-      {/* Mute */}
-      <button type="button" onClick={(e) => { stop(e); setIsMuted((v) => !v); }}
-        className={cn("flex flex-1 flex-col items-center gap-0.5 rounded-lg border py-1.5 text-[9px] font-semibold transition-colors",
-          isMuted ? "border-[#D97706]/30 bg-[#FFF8E1] text-[#D97706]" : "border-black/10 text-[#5B5B5B] hover:bg-[#F8F8F9]")}
-        title="Mute">
-        {isMuted ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}Mute
-      </button>
-
-      {/* Mask */}
-      <button type="button" onClick={(e) => { stop(e); setIsMasked((v) => !v); }}
-        className={cn("flex flex-1 flex-col items-center gap-0.5 rounded-lg border py-1.5 text-[9px] font-semibold transition-colors",
-          isMasked ? "border-[#166CCA]/30 bg-[#EBF4FD] text-[#166CCA]" : "border-black/10 text-[#5B5B5B] hover:bg-[#F8F8F9]")}
-        title="Mask sensitive info">
-        <EyeOff className="h-3.5 w-3.5" />Mask
-      </button>
-
-      {/* Record */}
-      <button type="button" onClick={(e) => { stop(e); setIsRecording((v) => !v); }}
-        className={cn("flex flex-1 flex-col items-center gap-0.5 rounded-lg border py-1.5 text-[9px] font-semibold transition-colors",
-          isRecording ? "border-[#E32926]/30 bg-[#FDEAEA] text-[#E32926]" : "border-black/10 text-[#5B5B5B] hover:bg-[#F8F8F9]")}
-        title="Record call">
-        <Disc className={cn("h-3.5 w-3.5", isRecording && "animate-pulse")} />Rec
-      </button>
-
-      {/* Transfer */}
-      <button ref={transferBtnRef} type="button" onClick={(e) => { stop(e); setShowTransfer(true); }}
-        className="flex flex-1 flex-col items-center gap-0.5 rounded-lg border border-black/10 py-1.5 text-[9px] font-semibold text-[#5B5B5B] transition-colors hover:bg-[#F8F8F9]"
-        title="Transfer">
-        <ArrowRightLeft className="h-3.5 w-3.5" />Xfer
-      </button>
-
-      {/* Keypad */}
-      <button type="button" onClick={(e) => { stop(e); setShowKeypad((v) => !v); }}
-        className={cn("flex flex-1 flex-col items-center gap-0.5 rounded-lg border py-1.5 text-[9px] font-semibold transition-colors",
-          showKeypad ? "border-[#7C3AED]/30 bg-[#F5F3FF] text-[#7C3AED]" : "border-black/10 text-[#5B5B5B] hover:bg-[#F8F8F9]")}
-        title="Keypad">
-        <Hash className="h-3.5 w-3.5" />Keys
-      </button>
-
-      {/* End Call */}
-      <button type="button"
-        onClick={(e) => { stop(e); onOpenDisposition(e.currentTarget.getBoundingClientRect()); }}
-        className="flex flex-1 flex-col items-center gap-0.5 rounded-lg border border-[#E32926]/20 py-1.5 text-[9px] font-semibold text-[#E32926] transition-colors hover:bg-[#FDEAEA]"
-        title="End call">
-        <PhoneOff className="h-3.5 w-3.5" />End
-      </button>
-
+      {buttons.map(({ id, label, icon, active, danger, onClick }) => (
+        <button
+          key={id}
+          ref={id === "transfer" ? transferBtnRef as React.Ref<HTMLButtonElement> : undefined}
+          type="button"
+          title={label}
+          onClick={onClick}
+          onMouseDown={(e) => e.stopPropagation()}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-colors",
+            danger
+              ? "border-[#E32926]/20 text-[#E32926] hover:bg-[#FDEAEA]"
+              : active
+                ? id === "mute" || id === "hold" ? "border-[#D97706]/30 bg-[#FFF8E1] text-[#D97706]"
+                  : id === "mask" ? "border-[#166CCA]/30 bg-[#EBF4FD] text-[#166CCA]"
+                  : id === "record" ? "border-[#E32926]/30 bg-[#FDEAEA] text-[#E32926]"
+                  : "border-[#7C3AED]/30 bg-[#F5F3FF] text-[#7C3AED]"
+                : "border-black/10 text-[#5B5B5B] hover:bg-[#F8F8F9]",
+          )}
+        >
+          {icon}{label}
+        </button>
+      ))}
       {showTransfer && (
         <IncomingTransferPopover
           triggerRef={transferBtnRef}
@@ -6712,6 +6697,7 @@ function GroupedQueueCard({
   onCloseChannelKeepTask,
   taskSummaryIds,
   onSelectAssignment,
+  onDeselect,
   onStatusDropdownOpenChange,
   className,
   style,
@@ -6724,6 +6710,7 @@ function GroupedQueueCard({
   onCloseChannelKeepTask?: (assignmentId: string) => void;
   taskSummaryIds?: Set<string>;
   onSelectAssignment: (assignmentId: QueuePreviewItem["id"]) => void;
+  onDeselect?: () => void;
   onStatusDropdownOpenChange?: (open: boolean) => void;
   className?: string;
   style?: React.CSSProperties;
@@ -6742,11 +6729,6 @@ function GroupedQueueCard({
   } = useLayoutContext();
 
   const [isCollapsed, setIsCollapsed] = useState(false);
-
-  // Is there an active voice call on any channel in this group?
-  const activeVoiceChannel = group.channels.find(
-    (ch) => isAgentInCall && ch.id === activeCallAssignmentId,
-  ) ?? null;
 
   // Task-level status — the case owns the status, not individual channels.
   // Use the highest-severity status across all channels so that opening a
@@ -6885,14 +6867,6 @@ function GroupedQueueCard({
         })()}
       </div>
 
-      {/* Phone controls — shown just below the header whenever a voice call is active on this card */}
-      {activeVoiceChannel && (
-        <ActiveVoiceAssignmentControls
-          onOpenDisposition={openCallDisposition}
-          customerInfo={{ name: group.name, customerId: activeVoiceChannel.customerId, preview: activeVoiceChannel.preview }}
-        />
-      )}
-
       {/* Channel rows — hidden when card is collapsed */}
       {!isCollapsed && group.channels.filter((item) => !(taskSummaryIds?.has(item.id)) && !historyOnlyAssignmentIds.has(item.id)).map((item, index) => {
         const ItemIcon = item.icon;
@@ -6927,7 +6901,11 @@ function GroupedQueueCard({
               role="button"
               tabIndex={0}
               onClick={() => {
-                onSelectAssignment(item.id);
+                if (isChannelActive) {
+                  onDeselect?.();
+                } else {
+                  onSelectAssignment(item.id);
+                }
               }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
@@ -7037,6 +7015,7 @@ function QueueOverlayList({
   taskSummaryIds,
   isOpen,
   onSelectAssignment,
+  onDeselect,
 }: {
   groups: GroupedQueueItem[];
   queueStatuses: Record<string, QueueAssignmentStatus>;
@@ -7047,6 +7026,7 @@ function QueueOverlayList({
   taskSummaryIds: Set<string>;
   isOpen: boolean;
   onSelectAssignment: (assignmentId: QueuePreviewItem["id"]) => void;
+  onDeselect?: () => void;
 }) {
   return (
     <div className="space-y-3 bg-transparent p-3">
@@ -7061,6 +7041,7 @@ function QueueOverlayList({
           onCloseChannelKeepTask={onCloseChannelKeepTask}
           taskSummaryIds={taskSummaryIds}
           onSelectAssignment={onSelectAssignment}
+          onDeselect={onDeselect}
           className={cn(isOpen ? "opacity-100" : "-translate-x-6 opacity-0")}
           style={{ transitionDelay: `${index * 35}ms` }}
         />
@@ -8907,6 +8888,7 @@ function LeftQueueRail({
   onIncomingLaunchCall,
   onIncomingReviewLead,
   launchingAssignmentId = null,
+  onDeselect,
 }: {
   visibleAssignments: QueuePreviewItem[];
   queueStatuses: Record<string, QueueAssignmentStatus>;
@@ -8930,6 +8912,7 @@ function LeftQueueRail({
   onIncomingLaunchCall?: (item: QueuePreviewItem) => void;
   onIncomingReviewLead?: (item: QueuePreviewItem) => void;
   launchingAssignmentId?: string | null;
+  onDeselect?: () => void;
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -9424,6 +9407,7 @@ function LeftQueueRail({
                 taskSummaryIds={taskSummaryIds}
                 isOpen={isOpen}
                 onSelectAssignment={selectAssignment}
+                onDeselect={onDeselect}
               />
             )}
 
@@ -13424,6 +13408,7 @@ export default function Layout({ children }: LayoutProps) {
             });
           }}
           launchingAssignmentId={launchingLeadId}
+          onDeselect={closeConversationPanel}
         />
         {isActivityRoute && visibleAssignments.length === 0 && (
           <div className={cn(
