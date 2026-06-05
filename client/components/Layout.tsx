@@ -5979,15 +5979,22 @@ const REJECT_REASONS = [
 
 // ─── Add New Assignment two-step flow popover ─────────────────────────────────
 
-type AddNewFlowStep = "channel" | "customer";
-type AddNewFlowChannel = "voice" | "email" | "sms" | "whatsapp" | "transcript";
+type AddNewFlowStep = "channel" | "form";
+type AddNewFlowChannel = "voice" | "email" | "sms" | "whatsapp";
 
 const ADD_NEW_CHANNEL_OPTIONS: Array<{ channel: AddNewFlowChannel; label: string; icon: React.ElementType }> = [
-  { channel: "voice",      label: "Call",            icon: Phone },
-  { channel: "email",      label: "Email",           icon: Mail },
-  { channel: "sms",        label: "SMS",             icon: MessageSquare },
-  { channel: "whatsapp",   label: "WhatsApp",        icon: WhatsAppIcon },
-  { channel: "transcript", label: "Send Transcript", icon: ScrollText },
+  { channel: "voice",    label: "Call",     icon: Phone },
+  { channel: "email",    label: "Email",    icon: Mail },
+  { channel: "sms",      label: "SMS",      icon: MessageSquare },
+  { channel: "whatsapp", label: "WhatsApp", icon: WhatsAppIcon },
+];
+
+const OUTBOUND_SKILLS = [
+  "Sales Outbound",
+  "Support Callback",
+  "Billing Outreach",
+  "Account Management",
+  "Collections",
 ];
 
 // ─── Connected Applications popover ──────────────────────────────────────────
@@ -6335,8 +6342,6 @@ function ConnectedAppsFlyout({
 function AddNewAssignmentFlowPopover({
   anchorRect,
   onClose,
-  onOpenCustomerConversation,
-  onOpenCall,
 }: {
   anchorRect: DOMRect;
   onClose: () => void;
@@ -6344,12 +6349,11 @@ function AddNewAssignmentFlowPopover({
   onOpenCall: (customerRecordId: string) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
-  const step1SearchRef = useRef<HTMLInputElement>(null);
+  const contactInputRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<AddNewFlowStep>("channel");
   const [selectedChannel, setSelectedChannel] = useState<AddNewFlowChannel | null>(null);
-  const [search, setSearch] = useState("");
-  const [step1Search, setStep1Search] = useState("");
+  const [contactValue, setContactValue] = useState("");
+  const [selectedSkill, setSelectedSkill] = useState<string | null>(null);
 
   // Close on outside click
   useEffect(() => {
@@ -6360,77 +6364,34 @@ function AddNewAssignmentFlowPopover({
     return () => document.removeEventListener("mousedown", handler);
   }, [onClose]);
 
-  // Auto-focus the step-1 search on mount and step-2 search when navigating forward
+  // Auto-focus the contact field when entering the form step
   useEffect(() => {
-    setTimeout(() => step1SearchRef.current?.focus(), 50);
-  }, []);
-  useEffect(() => {
-    if (step === "customer") {
-      setTimeout(() => searchRef.current?.focus(), 50);
-    }
+    if (step === "form") setTimeout(() => contactInputRef.current?.focus(), 50);
   }, [step]);
 
-  const filteredCustomers = customerDatabase.filter((c) => {
-    const q = search.toLowerCase();
-    return !q || c.name.toLowerCase().includes(q) || c.customerId.toLowerCase().includes(q);
-  });
-
-  const step1FilteredCustomers = customerDatabase.filter((c) => {
-    const q = step1Search.trim().toLowerCase();
-    return q && (c.name.toLowerCase().includes(q) || c.customerId.toLowerCase().includes(q));
-  });
-
-  const showStep1Results = step1Search.trim().length > 0;
-
-  // One-shot: pick customer + channel without the two-step flow
-  const handleDirectSelect = (customerRecordId: string, ch: AddNewFlowChannel) => {
-    if (ch === "transcript") { onClose(); return; }
-    if (ch === "voice") {
-      onOpenCall(customerRecordId);
-    } else {
-      onOpenCustomerConversation(customerRecordId, ch as "email" | "sms" | "whatsapp");
-    }
-    onClose();
-  };
-
-  const POPOVER_WIDTH = 288;
-  const estimatedHeight = step === "channel"
-    ? (showStep1Results ? 420 : 230)
-    : 440;
-
-  // Prefer opening to the right of the button (for rail buttons); fall back to smart vertical flip
+  const POPOVER_WIDTH = 300;
+  const estimatedHeight = step === "channel" ? 220 : 300;
   const margin = 8;
   const spaceRight = window.innerWidth - anchorRect.right - margin;
   const useRightSide = spaceRight >= POPOVER_WIDTH + margin;
   let posStyle: React.CSSProperties;
   if (useRightSide) {
-    const top = Math.min(
-      Math.max(margin, anchorRect.top),
-      window.innerHeight - estimatedHeight - margin,
-    );
+    const top = Math.min(Math.max(margin, anchorRect.top), window.innerHeight - estimatedHeight - margin);
     posStyle = { left: anchorRect.right + 8, top, width: POPOVER_WIDTH };
   } else {
     const { left, top, transform } = getSmartPopoverPositionFn(anchorRect, POPOVER_WIDTH, estimatedHeight);
     posStyle = { left, top, width: POPOVER_WIDTH, transform };
   }
 
-  const handleChannelSelect = (ch: AddNewFlowChannel) => {
-    if (ch === "transcript") { onClose(); return; } // no customer-picker step needed
-    setSelectedChannel(ch);
-    setStep("customer");
-    setSearch("");
-  };
-
-  const handleCustomerSelect = (customerRecordId: string) => {
-    if (selectedChannel === "voice") {
-      onOpenCall(customerRecordId);
-    } else if (selectedChannel && selectedChannel !== "transcript") {
-      onOpenCustomerConversation(customerRecordId, selectedChannel as "email" | "sms" | "whatsapp");
-    }
-    onClose();
-  };
-
-  const channelLabel = ADD_NEW_CHANNEL_OPTIONS.find((o) => o.channel === selectedChannel)?.label ?? "";
+  const channelOpt = ADD_NEW_CHANNEL_OPTIONS.find((o) => o.channel === selectedChannel);
+  const isEmailChannel = selectedChannel === "email";
+  const contactLabel = isEmailChannel ? "Email Address" : "Phone Number";
+  const contactPlaceholder = isEmailChannel ? "e.g. name@company.com" : "e.g. +1 555 000 0000";
+  const initiateLabel = selectedChannel === "voice" ? "Start Call"
+    : selectedChannel === "email" ? "Send Email"
+    : selectedChannel === "sms" ? "Send SMS"
+    : "Send WhatsApp";
+  const canInitiate = contactValue.trim().length > 0 && selectedSkill !== null;
 
   return createPortal(
     <div
@@ -6441,152 +6402,97 @@ function AddNewAssignmentFlowPopover({
     >
       {/* Header */}
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-3">
-        {step === "customer" && (
+        {step === "form" && (
           <button
             type="button"
-            onClick={() => { setStep("channel"); setSelectedChannel(null); setStep1Search(""); }}
+            onClick={() => { setStep("channel"); setSelectedChannel(null); setContactValue(""); setSelectedSkill(null); }}
             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[#98A2B3] transition-colors hover:bg-[#F2F4F7] hover:text-[#344054]"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
           </button>
         )}
         <p className="flex-1 text-[12px] font-semibold text-[#333333]">
-          {step === "channel" ? "New Outbound" : `${channelLabel} — Select Customer`}
+          {step === "channel" ? "New Outbound" : `Outbound ${channelOpt?.label ?? ""}`}
         </p>
-        <button
-          type="button"
-          onClick={onClose}
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[#98A2B3] transition-colors hover:bg-[#F2F4F7] hover:text-[#344054]"
-        >
+        <button type="button" onClick={onClose} className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[#98A2B3] transition-colors hover:bg-[#F2F4F7] hover:text-[#344054]">
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
 
       {step === "channel" ? (
-        /* Step 1: search + channel picker */
-        <>
-          {/* Search bar */}
-          <div className="shrink-0 border-b border-border px-3 py-2.5">
-            <div className="flex items-center gap-2 rounded-lg border border-border bg-[#F9FAFB] px-3 py-1.5">
-              <Search className="h-3.5 w-3.5 shrink-0 text-[#98A2B3]" />
-              <input
-                ref={step1SearchRef}
-                type="text"
-                value={step1Search}
-                onChange={(e) => setStep1Search(e.target.value)}
-                placeholder="Search customers…"
-                className="flex-1 bg-transparent text-[12px] text-[#344054] placeholder:text-[#98A2B3] outline-none"
-              />
-              {step1Search && (
-                <button type="button" onClick={() => setStep1Search("")} className="text-[#98A2B3] hover:text-[#475467]">
-                  <X className="h-3 w-3" />
-                </button>
-              )}
-            </div>
+        /* Step 1: channel picker */
+        <div className="py-1.5">
+          {ADD_NEW_CHANNEL_OPTIONS.map(({ channel: ch, label, icon: Icon }) => (
+            <button
+              key={ch}
+              type="button"
+              onClick={() => { setSelectedChannel(ch); setStep("form"); }}
+              className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-[#F9FAFB]"
+            >
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#F2F4F7] text-[#475467]">
+                <Icon className="h-3.5 w-3.5" />
+              </div>
+              <span className="text-[13px] font-medium text-[#344054]">{label}</span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        /* Step 2: outbound contact form */
+        <div className="px-4 py-4 space-y-4">
+          {/* Contact field */}
+          <div>
+            <label className="mb-1.5 block text-[11px] font-semibold text-[#344054]">{contactLabel}</label>
+            <input
+              ref={contactInputRef}
+              type={isEmailChannel ? "email" : "tel"}
+              value={contactValue}
+              onChange={(e) => setContactValue(e.target.value)}
+              placeholder={contactPlaceholder}
+              className="w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-[12px] text-[#1D2939] placeholder:text-[#98A2B3] focus:border-[#166CCA] focus:outline-none focus:ring-1 focus:ring-[#166CCA]"
+            />
           </div>
 
-          {showStep1Results ? (
-            /* Customer results with inline channel buttons */
-            <div className="overflow-y-auto divide-y divide-border" style={{ maxHeight: 300 }}>
-              {step1FilteredCustomers.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-8 text-center">
-                  <p className="text-[12px] text-[#98A2B3]">No customers found</p>
-                </div>
-              ) : (
-                step1FilteredCustomers.map((customer) => (
-                  <div key={customer.id} className="flex items-center gap-2 px-3 py-2.5 hover:bg-[#F9FAFB] transition-colors">
-                    {/* Avatar */}
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EBF4FD] text-[11px] font-bold text-[#166CCA]">
-                      {customer.initials}
-                    </div>
-                    {/* Name + ID */}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[12px] font-semibold text-[#1D2939] truncate">{customer.name}</p>
-                      <p className="text-[11px] text-[#98A2B3]">{customer.customerId}</p>
-                    </div>
-                    {/* Channel icon buttons */}
-                    <div className="flex shrink-0 items-center gap-0.5">
-                      {ADD_NEW_CHANNEL_OPTIONS.map(({ channel: ch, label, icon: Icon }) => (
-                        <button
-                          key={ch}
-                          type="button"
-                          title={label}
-                          onClick={() => handleDirectSelect(customer.id, ch)}
-                          className="flex h-6 w-6 items-center justify-center rounded-md text-[#667085] transition-colors hover:bg-[#EBF4FD] hover:text-[#166CCA]"
-                        >
-                          <Icon className="h-3.5 w-3.5" />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          ) : (
-            /* Default channel list */
-            <div className="py-1.5">
-              {ADD_NEW_CHANNEL_OPTIONS.map(({ channel: ch, label, icon: Icon }) => (
+          {/* Outbound skill */}
+          <div>
+            <label className="mb-1.5 block text-[11px] font-semibold text-[#344054]">Outbound Skill</label>
+            <div className="flex flex-wrap gap-1.5">
+              {OUTBOUND_SKILLS.map((skill) => (
                 <button
-                  key={ch}
+                  key={skill}
                   type="button"
-                  onClick={() => handleChannelSelect(ch)}
-                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-[#F9FAFB]"
+                  onClick={() => setSelectedSkill(skill === selectedSkill ? null : skill)}
+                  className={cn(
+                    "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                    selectedSkill === skill
+                      ? "border-[#166CCA] bg-[#166CCA] text-white"
+                      : "border-[#D0D5DD] bg-white text-[#344054] hover:bg-[#F9FAFB]",
+                  )}
                 >
-                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#F2F4F7] text-[#475467]">
-                    <Icon className="h-3.5 w-3.5" />
-                  </div>
-                  <span className="text-[13px] font-medium text-[#344054]">{label}</span>
+                  {skill}
                 </button>
               ))}
             </div>
-          )}
-        </>
-      ) : (
-        /* Step 2: customer search + list */
-        <>
-          <div className="shrink-0 border-b border-border px-3 py-2.5">
-            <div className="flex items-center gap-2 rounded-lg border border-border bg-[#F9FAFB] px-3 py-1.5">
-              <Search className="h-3.5 w-3.5 shrink-0 text-[#98A2B3]" />
-              <input
-                ref={searchRef}
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by name or ID…"
-                className="flex-1 bg-transparent text-[12px] text-[#344054] placeholder:text-[#98A2B3] outline-none"
-              />
-              {search && (
-                <button type="button" onClick={() => setSearch("")} className="text-[#98A2B3] hover:text-[#475467]">
-                  <X className="h-3 w-3" />
-                </button>
-              )}
-            </div>
           </div>
-          <div className="flex-1 overflow-y-auto divide-y divide-border" style={{ maxHeight: 280 }}>
-            {filteredCustomers.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 text-center">
-                <p className="text-[12px] text-[#98A2B3]">No customers found</p>
-              </div>
-            ) : (
-              filteredCustomers.map((customer) => (
-                <button
-                  key={customer.id}
-                  type="button"
-                  onClick={() => handleCustomerSelect(customer.id)}
-                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-[#F9FAFB]"
-                >
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EBF4FD] text-[11px] font-bold text-[#166CCA]">
-                    {customer.initials}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[12px] font-semibold text-[#1D2939] truncate">{customer.name}</p>
-                    <p className="text-[11px] text-[#98A2B3]">{customer.customerId}</p>
-                  </div>
-                </button>
-              ))
-            )}
+
+          {/* Actions */}
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => { setStep("channel"); setSelectedChannel(null); setContactValue(""); setSelectedSkill(null); }}
+              className="flex-1 rounded-lg border border-[#D0D5DD] px-3 py-2 text-[12px] font-medium text-[#344054] hover:bg-[#F9FAFB] transition-colors"
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              disabled={!canInitiate}
+              onClick={onClose}
+              className="flex-1 rounded-lg bg-[#166CCA] px-3 py-2 text-[12px] font-semibold text-white hover:bg-[#1260B0] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {initiateLabel}
+            </button>
           </div>
-        </>
+        </div>
       )}
     </div>,
     document.body,
