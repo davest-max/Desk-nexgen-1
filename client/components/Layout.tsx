@@ -46,8 +46,10 @@ import {
   Disc,
   EyeOff,
   Hash,
+  Maximize2,
   Mic,
   MicOff,
+  Minimize2,
   Monitor,
   Moon,
   PanelLeft,
@@ -106,6 +108,7 @@ import AddPanelContent from "@/components/AddPanelContent";
 import ChatPopoverContent from "@/components/ChatPopover";
 import NotificationsPopoverContent, { seedNotifications, type AppNotification } from "@/components/NotificationsPopover";
 import NotesPanel from "@/components/NotesPanel";
+import CustomerInfoPanel, { CustomerOverviewCard } from "@/components/CustomerInfoPanel";
 import CustomerHistoryTimeline from "@/components/CustomerHistoryTimeline";
 import { conversationChannelOptions } from "@/components/ConversationChannelToggleGroup";
 import { type RecentInteractionItem } from "@/components/RecentInteractionsPanel";
@@ -3604,6 +3607,8 @@ function DockedCustomerInfoPanel({
   const contentInitializedRef = useRef(false);
   const [isContentVisible, setIsContentVisible] = useState(isOpen);
   const [isContentEntered, setIsContentEntered] = useState(isOpen);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const customerRecord = getCustomerRecord(customerRecordId);
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent) => {
@@ -3710,6 +3715,17 @@ function DockedCustomerInfoPanel({
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                {/* Expand / collapse all-sections view */}
+                <button
+                  type="button"
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onClick={() => setIsExpanded((v) => !v)}
+                  className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[#7A7A7A] transition-colors hover:bg-white dark:hover:bg-[#1C2536] hover:text-[#333333] dark:hover:text-[#CBD5E1]"
+                  aria-label={isExpanded ? "Minimize customer info" : "Expand customer info"}
+                  title={isExpanded ? "Minimize" : "Expand all sections"}
+                >
+                  <Maximize2 className="h-3.5 w-3.5" />
+                </button>
                 <button
                   type="button"
                   onMouseDown={(event) => event.stopPropagation()}
@@ -3730,6 +3746,89 @@ function DockedCustomerInfoPanel({
               customerName={customerName}
               takeoverCard={takeoverCard ?? undefined}
             />
+
+            {/* Expanded all-sections overlay */}
+            {isExpanded && createPortal(
+              <div className="fixed inset-0 z-[9998] flex items-stretch justify-end">
+                {/* Backdrop */}
+                <div
+                  className="absolute inset-0 bg-black/30 backdrop-blur-[2px]"
+                  onClick={() => setIsExpanded(false)}
+                />
+                {/* Drawer */}
+                <div className="relative z-[1] flex w-full max-w-[860px] flex-col bg-[#F8F8F9] shadow-[0_0_40px_rgba(0,0,0,0.18)] animate-in slide-in-from-right duration-300">
+                  {/* Header */}
+                  <div className="flex shrink-0 items-center justify-between gap-3 border-b border-black/10 bg-white px-5 py-4">
+                    <div>
+                      <h2 className="text-sm font-semibold tracking-tight text-[#333333]">Customer Information</h2>
+                      <p className="text-xs text-[#7A7A7A]">{customerName} · {customerId}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsExpanded(false)}
+                      className="flex items-center gap-1.5 rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-[12px] font-medium text-[#344054] transition-colors hover:bg-[#F9FAFB]"
+                    >
+                      <Minimize2 className="h-3.5 w-3.5" />
+                      Minimize
+                    </button>
+                  </div>
+
+                  {/* 2×2 content grid */}
+                  <div className="grid min-h-0 flex-1 grid-cols-2 grid-rows-2 gap-3 overflow-hidden p-3">
+
+                    {/* Overview */}
+                    <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-sm">
+                      <p className="shrink-0 border-b border-black/[0.06] px-4 py-2.5 text-[11px] font-bold uppercase tracking-widest text-[#667085]">Overview</p>
+                      <div className="min-h-0 flex-1 overflow-hidden">
+                        <NotesPanel
+                          key={`expanded-overview-${customerRecordId}`}
+                          customerId={customerRecordId}
+                          customerName={customerName}
+                          initialTab="Overview"
+                          hideTabs
+                        />
+                      </div>
+                    </div>
+
+                    {/* Details */}
+                    <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-sm">
+                      <p className="shrink-0 border-b border-black/[0.06] px-4 py-2.5 text-[11px] font-bold uppercase tracking-widest text-[#667085]">Details</p>
+                      <div className="min-h-0 flex-1 overflow-hidden">
+                        <CustomerInfoPanel customerId={customerRecordId} className="h-full" />
+                      </div>
+                    </div>
+
+                    {/* Accounts */}
+                    <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-sm">
+                      <p className="shrink-0 border-b border-black/[0.06] px-4 py-2.5 text-[11px] font-bold uppercase tracking-widest text-[#667085]">Accounts</p>
+                      <ScrollArea className="min-h-0 flex-1">
+                        {customerRecord
+                          ? <CustomerOverviewCard customerId={customerRecordId} customerName={customerName} />
+                          : <div className="flex min-h-[120px] items-center justify-center text-xs text-[#9CA3AF]">No accounts</div>
+                        }
+                      </ScrollArea>
+                    </div>
+
+                    {/* Notes */}
+                    <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-sm">
+                      <p className="shrink-0 border-b border-black/[0.06] px-4 py-2.5 text-[11px] font-bold uppercase tracking-widest text-[#667085]">Notes</p>
+                      <div className="min-h-0 flex-1 overflow-hidden">
+                        <NotesPanel
+                          key={`expanded-notes-${customerRecordId}`}
+                          customerId={customerRecordId}
+                          customerName={customerName}
+                          initialTab="Notes"
+                          hideTabs
+                          notesOnly
+                        />
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+              </div>,
+              document.body,
+            )}
           </>
         ) : null}
       </div>

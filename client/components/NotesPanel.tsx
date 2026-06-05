@@ -315,6 +315,8 @@ interface NotesPanelProps {
   initialTab?: string;
   initialTicketId?: string;
   notesOnly?: boolean;
+  /** When true, hides the tab bar so only the active tab's content is shown. */
+  hideTabs?: boolean;
   addNoteTrigger?: number;
   customerId?: string;
   customerName?: string;
@@ -325,6 +327,7 @@ export default function NotesPanel({
   initialTab,
   initialTicketId,
   notesOnly = false,
+  hideTabs = false,
   addNoteTrigger = 0,
   customerId,
   customerName,
@@ -495,7 +498,7 @@ export default function NotesPanel({
 
   return (
     <div ref={panelRef} className="relative flex h-full w-full min-w-0 flex-1 flex-col overflow-hidden">
-      {!notesOnly && (
+      {!notesOnly && !hideTabs && (
         <>
           <div className="shrink-0 border-b border-[rgba(0,0,0,0.1)] px-1">
             <div className="overflow-x-auto overflow-y-hidden">
@@ -633,7 +636,7 @@ export default function NotesPanel({
 
       {activeTab === "Notes" && (
         <div className="flex flex-1 flex-col overflow-hidden">
-          {!notesOnly && (
+          {!notesOnly && !hideTabs && (
             <div className="flex shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4 py-2.5">
               <span className="text-xs font-semibold text-[#333]">Latest Notes</span>
               <div className="flex items-center gap-2">
