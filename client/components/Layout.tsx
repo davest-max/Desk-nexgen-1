@@ -6349,11 +6349,13 @@ function AddNewAssignmentFlowPopover({
   onOpenCall: (customerRecordId: string) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const contactInputRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<AddNewFlowStep>("channel");
   const [selectedChannel, setSelectedChannel] = useState<AddNewFlowChannel | null>(null);
   const [contactValue, setContactValue] = useState("");
   const [selectedSkill, setSelectedSkill] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   // Close on outside click
   useEffect(() => {
@@ -6364,13 +6366,37 @@ function AddNewAssignmentFlowPopover({
     return () => document.removeEventListener("mousedown", handler);
   }, [onClose]);
 
-  // Auto-focus the contact field when entering the form step
+  // Auto-focus search on mount; contact field when entering form step
+  useEffect(() => { setTimeout(() => searchRef.current?.focus(), 50); }, []);
   useEffect(() => {
     if (step === "form") setTimeout(() => contactInputRef.current?.focus(), 50);
   }, [step]);
 
+  const filteredCustomers = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return [];
+    return customerDatabase.filter((c) =>
+      c.name.toLowerCase().includes(q) || c.customerId.toLowerCase().includes(q),
+    );
+  }, [search]);
+
+  // Pick the right contact value from the customer record for the chosen channel
+  const getCustomerContact = (customerId: string, ch: AddNewFlowChannel): string => {
+    const rec = customerDatabase.find((c) => c.id === customerId);
+    if (!rec) return "";
+    if (ch === "email") return rec.contact?.email ?? "";
+    return rec.contact?.phone ?? "";
+  };
+
+  const openForm = (ch: AddNewFlowChannel, prefill = "") => {
+    setSelectedChannel(ch);
+    setContactValue(prefill);
+    setStep("form");
+    setSearch("");
+  };
+
   const POPOVER_WIDTH = 300;
-  const estimatedHeight = step === "channel" ? 220 : 300;
+  const estimatedHeight = step === "channel" ? (filteredCustomers.length > 0 ? 420 : 240) : 300;
   const margin = 8;
   const spaceRight = window.innerWidth - anchorRect.right - margin;
   const useRightSide = spaceRight >= POPOVER_WIDTH + margin;
@@ -6420,22 +6446,75 @@ function AddNewAssignmentFlowPopover({
       </div>
 
       {step === "channel" ? (
-        /* Step 1: channel picker */
-        <div className="py-1.5">
-          {ADD_NEW_CHANNEL_OPTIONS.map(({ channel: ch, label, icon: Icon }) => (
-            <button
-              key={ch}
-              type="button"
-              onClick={() => { setSelectedChannel(ch); setStep("form"); }}
-              className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-[#F9FAFB]"
-            >
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#F2F4F7] text-[#475467]">
-                <Icon className="h-3.5 w-3.5" />
-              </div>
-              <span className="text-[13px] font-medium text-[#344054]">{label}</span>
-            </button>
-          ))}
-        </div>
+        /* Step 1: search + channel picker */
+        <>
+          {/* Search bar */}
+          <div className="shrink-0 border-b border-border px-3 py-2.5">
+            <div className="flex items-center gap-2 rounded-lg border border-border bg-[#F9FAFB] px-3 py-1.5">
+              <Search className="h-3.5 w-3.5 shrink-0 text-[#98A2B3]" />
+              <input
+                ref={searchRef}
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search customers…"
+                className="flex-1 bg-transparent text-[12px] text-[#344054] placeholder:text-[#98A2B3] outline-none"
+              />
+              {search && (
+                <button type="button" onClick={() => setSearch("")} className="text-[#98A2B3] hover:text-[#475467]">
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {filteredCustomers.length > 0 ? (
+            /* Customer search results — each row has channel icon buttons that pre-fill the form */
+            <div className="overflow-y-auto divide-y divide-border" style={{ maxHeight: 280 }}>
+              {filteredCustomers.map((customer) => (
+                <div key={customer.id} className="flex items-center gap-2 px-3 py-2.5 hover:bg-[#F9FAFB] transition-colors">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EBF4FD] text-[11px] font-bold text-[#166CCA]">
+                    {customer.initials}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[12px] font-semibold text-[#1D2939] truncate">{customer.name}</p>
+                    <p className="text-[11px] text-[#98A2B3]">{customer.customerId}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-0.5">
+                    {ADD_NEW_CHANNEL_OPTIONS.map(({ channel: ch, label, icon: Icon }) => (
+                      <button
+                        key={ch}
+                        type="button"
+                        title={label}
+                        onClick={() => openForm(ch, getCustomerContact(customer.id, ch))}
+                        className="flex h-6 w-6 items-center justify-center rounded-md text-[#667085] transition-colors hover:bg-[#EBF4FD] hover:text-[#166CCA]"
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            /* Default channel list */
+            <div className="py-1.5">
+              {ADD_NEW_CHANNEL_OPTIONS.map(({ channel: ch, label, icon: Icon }) => (
+                <button
+                  key={ch}
+                  type="button"
+                  onClick={() => openForm(ch)}
+                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-[#F9FAFB]"
+                >
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#F2F4F7] text-[#475467]">
+                    <Icon className="h-3.5 w-3.5" />
+                  </div>
+                  <span className="text-[13px] font-medium text-[#344054]">{label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </>
       ) : (
         /* Step 2: outbound contact form */
         <div className="px-4 py-4 space-y-4">
