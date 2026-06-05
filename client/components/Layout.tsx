@@ -6824,7 +6824,6 @@ function GroupedQueueCard({
     historyOnlyAssignmentIds,
   } = useLayoutContext();
 
-  const [isCollapsed, setIsCollapsed] = useState(false);
 
   // Task-level status — the case owns the status, not individual channels.
   // Use the highest-severity status across all channels so that opening a
@@ -6927,17 +6926,6 @@ function GroupedQueueCard({
                 return { name: group.name, customerId: group.lastActiveChannel.customerId, preview };
               })()}
             />
-            {/* Collapse toggle */}
-            <button
-              type="button"
-              aria-label={isCollapsed ? "Expand card" : "Collapse card"}
-              title={isCollapsed ? "Expand" : "Minimize"}
-              onClick={(e) => { e.stopPropagation(); setIsCollapsed((v) => !v); }}
-              onMouseDown={(e) => e.stopPropagation()}
-              className="flex h-5 w-5 items-center justify-center rounded text-[#C0C5CE] transition-colors hover:bg-[#F2F4F7] hover:text-[#5B5B5B]"
-            >
-              <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-200", isCollapsed && "-rotate-180")} />
-            </button>
           </div>
         </div>
         {/* Task description — task-level, shown once in the header.
@@ -6963,8 +6951,8 @@ function GroupedQueueCard({
         })()}
       </div>
 
-      {/* Channel rows — hidden when card is collapsed */}
-      {!isCollapsed && group.channels.filter((item) => !(taskSummaryIds?.has(item.id)) && !historyOnlyAssignmentIds.has(item.id)).map((item, index) => {
+      {/* Channel rows */}
+      {group.channels.filter((item) => !(taskSummaryIds?.has(item.id)) && !historyOnlyAssignmentIds.has(item.id)).map((item, index) => {
         const ItemIcon = item.icon;
         const channelLabel =
           conversationChannelOptions.find((o) => o.channel === item.channel)?.label ?? item.channel;
