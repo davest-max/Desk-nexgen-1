@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, Eye, FileDown, FilePlus2, Sparkles, Ticket, X } from "lucide-react";
+import { ChevronDown, Eye, FileDown, FilePlus2, Pin, PinOff, Sparkles, Ticket, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -345,6 +345,20 @@ export default function NotesPanel({
         : DEFAULT_SWITCHABLE_TAB,
   );
   const [showMoreTabs, setShowMoreTabs] = useState(false);
+  const [pinnedTabs, setPinnedTabs] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem("customer-info-pinned-tabs");
+      return new Set(stored ? JSON.parse(stored) : []);
+    } catch { return new Set<string>(); }
+  });
+  const togglePin = (tab: string) => {
+    setPinnedTabs((prev) => {
+      const next = new Set(prev);
+      next.has(tab) ? next.delete(tab) : next.add(tab);
+      try { localStorage.setItem("customer-info-pinned-tabs", JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  };
   const [notesData, setNotesData] = useState<CustomerNote[]>(() =>
     customerId ? getNotesForCustomer(customerId) : [],
   );
@@ -470,12 +484,16 @@ export default function NotesPanel({
     setIsComposerOpen(false);
   };
 
+  // Pinned switchable tabs always appear after primary tabs; activeSwitchableTab is
+  // the last visible non-pinned switchable tab (if it isn't already pinned).
+  const pinnedSwitchable = SWITCHABLE_TABS.filter((t) => pinnedTabs.has(t));
+  const unpinnedActive = !pinnedTabs.has(activeSwitchableTab) ? activeSwitchableTab : null;
   const visibleTabs: string[] = isCopilotTabOpen
-    ? [...PRIMARY_TABS, "Copilot"]
-    : [...PRIMARY_TABS, activeSwitchableTab];
+    ? [...PRIMARY_TABS, ...pinnedSwitchable, "Copilot"]
+    : [...PRIMARY_TABS, ...pinnedSwitchable, ...(unpinnedActive ? [unpinnedActive] : [])];
   const moreTabs: string[] = isCopilotTabOpen
     ? [...SWITCHABLE_TABS]
-    : SWITCHABLE_TABS.filter((tab) => tab !== activeSwitchableTab);
+    : SWITCHABLE_TABS.filter((t) => !pinnedTabs.has(t) && t !== activeSwitchableTab);
   const activeTicket = openTickets.find((ticket) => ticket.id === activeTab) ?? null;
 
   const handleOpenTicket = (ticket: CustomerTicket) => {
@@ -503,50 +521,52 @@ export default function NotesPanel({
           <div className="shrink-0 border-b border-[rgba(0,0,0,0.1)] px-1">
             <div className="overflow-x-auto overflow-y-hidden">
               <div className="flex min-w-max items-center">
-              {visibleTabs.map((tab) => (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => {
-                    setActiveTab(tab);
-                    setShowMoreTabs(false);
-                  }}
-                  className={cn(
-                    "relative flex items-center gap-1.5 whitespace-nowrap px-3 py-2.5 text-xs font-medium transition-colors",
-                    activeTab === tab
-                      ? "text-[#166CCA] after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:rounded-t after:bg-[#166CCA]"
-                      : "text-[#6B7280] hover:text-[#333]",
-                  )}
-                >
-                  {tab === "Copilot" && <Sparkles className="h-3 w-3 flex-shrink-0" />}
-                  {tab}
-                  {tab === "Copilot" && (
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIsCopilotTabOpen(false);
-                        setCopilotPhase("idle");
-                        setActiveTab("Overview");
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setIsCopilotTabOpen(false);
-                          setCopilotPhase("idle");
-                          setActiveTab("Overview");
-                        }
-                      }}
-                      className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#CBD5E1] text-[#F8FAFC] transition-colors hover:bg-[#94A3B8]"
-                      aria-label="Close Copilot tab"
-                    >
-                      <X className="h-3 w-3" />
-                    </span>
-                  )}
-                </button>
-              ))}
+              {visibleTabs.map((tab) => {
+                const isPinned = pinnedTabs.has(tab);
+                const isPrimary = (PRIMARY_TABS as readonly string[]).includes(tab);
+                return (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => { setActiveTab(tab); setShowMoreTabs(false); }}
+                    className={cn(
+                      "group/tab relative flex items-center gap-1 whitespace-nowrap px-3 py-2.5 text-xs font-medium transition-colors",
+                      activeTab === tab
+                        ? "text-[#166CCA] after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:rounded-t after:bg-[#166CCA]"
+                        : "text-[#6B7280] hover:text-[#333]",
+                    )}
+                  >
+                    {tab === "Copilot" && <Sparkles className="h-3 w-3 flex-shrink-0" />}
+                    {tab}
+                    {/* Unpin button — shown on hover for pinned switchable tabs */}
+                    {isPinned && !isPrimary && (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => { e.stopPropagation(); togglePin(tab); if (activeTab === tab) setActiveTab("Overview"); }}
+                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); togglePin(tab); } }}
+                        className="ml-0.5 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full text-[#98A2B3] opacity-0 transition-opacity group-hover/tab:opacity-100 hover:text-[#344054]"
+                        aria-label={`Unpin ${tab}`}
+                        title="Unpin"
+                      >
+                        <PinOff className="h-2.5 w-2.5" />
+                      </span>
+                    )}
+                    {tab === "Copilot" && (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => { e.stopPropagation(); setIsCopilotTabOpen(false); setCopilotPhase("idle"); setActiveTab("Overview"); }}
+                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); setIsCopilotTabOpen(false); setCopilotPhase("idle"); setActiveTab("Overview"); } }}
+                        className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#CBD5E1] text-[#F8FAFC] transition-colors hover:bg-[#94A3B8]"
+                        aria-label="Close Copilot tab"
+                      >
+                        <X className="h-3 w-3" />
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
               <div>
                 <button
                   ref={moreMenuButtonRef}
@@ -612,23 +632,54 @@ export default function NotesPanel({
 
           {showMoreTabs && moreMenuPosition ? (
             <div
-              className="absolute z-20 w-36 rounded-lg border border-[rgba(0,0,0,0.1)] bg-white py-1 shadow-lg"
+              className="absolute z-20 w-44 rounded-lg border border-[rgba(0,0,0,0.1)] bg-white py-1 shadow-lg"
               style={{ left: moreMenuPosition.left, top: moreMenuPosition.top }}
             >
               {moreTabs.map((tab) => (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => {
-                    setActiveSwitchableTab(tab);
-                    setActiveTab(tab);
-                    setShowMoreTabs(false);
-                  }}
-                  className="block w-full px-3 py-1.5 text-left text-xs text-[#333] hover:bg-[#F8F8F9]"
-                >
-                  {tab}
-                </button>
+                <div key={tab} className="group/row flex items-center gap-1 hover:bg-[#F8F8F9]">
+                  <button
+                    type="button"
+                    onClick={() => { setActiveSwitchableTab(tab); setActiveTab(tab); setShowMoreTabs(false); }}
+                    className="flex-1 px-3 py-1.5 text-left text-xs text-[#333]"
+                  >
+                    {tab}
+                  </button>
+                  {/* Pin button */}
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); togglePin(tab); }}
+                    title={pinnedTabs.has(tab) ? "Unpin" : "Pin to tab bar"}
+                    className="mr-2 flex h-5 w-5 shrink-0 items-center justify-center rounded text-[#D0D5DD] opacity-0 transition-all group-hover/row:opacity-100 hover:text-[#166CCA]"
+                  >
+                    <Pin className="h-3 w-3" />
+                  </button>
+                </div>
               ))}
+              {pinnedTabs.size > 0 && (
+                <>
+                  <div className="mx-2 my-1 border-t border-[#F2F4F7]" />
+                  <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-[#98A2B3]">Pinned</p>
+                  {[...pinnedTabs].filter(t => SWITCHABLE_TABS.includes(t as any)).map((tab) => (
+                    <div key={tab} className="group/row flex items-center gap-1 hover:bg-[#F8F8F9]">
+                      <button
+                        type="button"
+                        onClick={() => { setActiveTab(tab); setShowMoreTabs(false); }}
+                        className="flex-1 px-3 py-1.5 text-left text-xs font-medium text-[#166CCA]"
+                      >
+                        {tab}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); togglePin(tab); }}
+                        title="Unpin"
+                        className="mr-2 flex h-5 w-5 shrink-0 items-center justify-center rounded text-[#166CCA] opacity-70 hover:opacity-100"
+                      >
+                        <PinOff className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
           ) : null}
         </>
