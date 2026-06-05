@@ -9237,7 +9237,6 @@ function LeftQueueRail({
 
                   const groupId = group.customerRecordId;
                   const isCardEngaged =
-                    hasActiveCall ||
                     statusDropdownOpenGroupId === groupId ||
                     pointerInsideGroupId === groupId;
 
