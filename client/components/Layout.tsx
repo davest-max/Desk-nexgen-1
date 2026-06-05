@@ -8964,6 +8964,26 @@ function LeftQueueRail({
   const [pointerInsideGroupId, setPointerInsideGroupId] = useState<string | null>(null);
   const dropdownCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pointerLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hoverCardContentRef = useRef<HTMLDivElement | null>(null);
+
+  // Click-outside: when the nav is collapsed and a card popover is open,
+  // dismiss it immediately on any mousedown outside the card.
+  useEffect(() => {
+    if (isOpen || !pointerInsideGroupId) return;
+    const handler = (e: MouseEvent) => {
+      // Walk up from the click target; if it never reaches a [data-radix-popper-content-wrapper]
+      // that contains our card, treat it as an outside click.
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const inside = target.closest("[data-radix-popper-content-wrapper]");
+      if (!inside) {
+        if (pointerLeaveTimerRef.current) clearTimeout(pointerLeaveTimerRef.current);
+        setPointerInsideGroupId(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [isOpen, pointerInsideGroupId]);
 
   // When the rail closes, the <aside> animates from w-0 → w-[60px] over 300ms.
   // If the active-call card is forced open immediately, Radix UI positions it
