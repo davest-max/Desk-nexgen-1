@@ -55,6 +55,7 @@ import {
   PanelLeft,
   PanelRight,
   Pin,
+  PinOff,
   Pause,
   TriangleAlert,
   RefreshCw,
@@ -3764,6 +3765,121 @@ function DockedCustomerInfoPanel({
   );
 }
 
+// ─── Docked Copilot Panel ────────────────────────────────────────────────────
+
+const DOCKED_AI_ASSISTANT_DEFAULT_WIDTH = 340;
+const DOCKED_AI_ASSISTANT_MIN_WIDTH     = 280;
+const DOCKED_AI_ASSISTANT_MAX_WIDTH     = 520;
+
+function DockedAIAssistantPanel({
+  isOpen,
+  width,
+  onWidthChange,
+  onClose,
+  onUndock,
+}: {
+  isOpen: boolean;
+  width: number;
+  onWidthChange: (w: number) => void;
+  onClose: () => void;
+  onUndock: () => void;
+}) {
+  const resizeRef  = useRef({ mouseX: 0, width });
+  const isResizing = useRef(false);
+  const initRef    = useRef(false);
+  const [visible,  setVisible]  = useState(isOpen);
+  const [entered,  setEntered]  = useState(isOpen);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!isResizing.current) return;
+      const dx = e.clientX - resizeRef.current.mouseX;
+      onWidthChange(Math.min(DOCKED_AI_ASSISTANT_MAX_WIDTH, Math.max(DOCKED_AI_ASSISTANT_MIN_WIDTH, resizeRef.current.width + dx)));
+    };
+    const onUp = () => { isResizing.current = false; document.body.style.userSelect = ""; };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup",   onUp);
+    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+  }, [onWidthChange]);
+
+  useEffect(() => {
+    if (!initRef.current) { initRef.current = true; return; }
+    if (!isOpen) {
+      setEntered(false);
+      const t = window.setTimeout(() => setVisible(false), 350);
+      return () => window.clearTimeout(t);
+    }
+    setVisible(true);
+    const t = window.setTimeout(() => window.requestAnimationFrame(() => setEntered(true)), 30);
+    return () => window.clearTimeout(t);
+  }, [isOpen]);
+
+  return (
+    <div
+      aria-hidden={!isOpen}
+      className={cn("relative hidden min-h-0 overflow-visible min-[1024px]:block shrink-0", !isOpen && "pointer-events-none")}
+      style={{ width: isOpen ? width : 0, transition: "width 350ms cubic-bezier(0.16,1,0.3,1)" }}
+    >
+      <div className={cn(
+        "flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-black/[0.16] bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-[opacity,transform] duration-[350ms] ease-[cubic-bezier(0.16,1,0.3,1)]",
+        entered ? "opacity-100 scale-100" : "scale-[0.97] opacity-0",
+      )}>
+        {visible && (
+          <>
+            {/* Header */}
+            <div
+              className="flex min-h-[56px] items-center justify-between gap-3 border-b border-border bg-background/50 px-4 py-3"
+              onMouseDown={(e) => {
+                // left-edge resize handle
+                const rect = (e.currentTarget as HTMLElement).parentElement?.parentElement?.getBoundingClientRect();
+                if (!rect || e.clientX - rect.left > 8) return;
+              }}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <Sparkles className="h-4 w-4 shrink-0 text-[#166CCA]" />
+                <h3 className="text-sm font-semibold tracking-tight text-[#333333] dark:text-[#E2E8F0]">AI Assistant</h3>
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={onUndock}
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-[#7A7A7A] transition-colors hover:bg-white dark:hover:bg-[#1C2536] hover:text-[#333333]"
+                  aria-label="Undock AI Assistant"
+                  title="Undock"
+                >
+                  <PinOff className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-[#7A7A7A] transition-colors hover:bg-white dark:hover:bg-[#1C2536] hover:text-[#333333]"
+                  aria-label="Close AI Assistant"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+            {/* Content */}
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <CopilotContent />
+            </div>
+            {/* Left-edge resize handle */}
+            <div
+              className="absolute left-0 inset-y-0 w-1 cursor-col-resize"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                isResizing.current = true;
+                resizeRef.current = { mouseX: e.clientX, width };
+                document.body.style.userSelect = "none";
+              }}
+            />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 type CustomerInfoPopunderHandle = { triggerClose: () => void };
 
 const CustomerInfoPopunder = forwardRef<CustomerInfoPopunderHandle, {
@@ -5442,6 +5558,18 @@ function DeskCanvasPopunder({
               aria-label="Add new"
             >
               <Plus className="h-4 w-4" />
+            </button>
+          )}
+          {onDock && (
+            <button
+              type="button"
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={onDock}
+              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[#7A7A7A] transition-colors hover:bg-white dark:hover:bg-[#1C2536] hover:text-[#333333] dark:hover:text-[#CBD5E1]"
+              aria-label="Dock panel"
+              title="Dock panel"
+            >
+              <Pin className="h-3.5 w-3.5" />
             </button>
           )}
           <button
@@ -9745,6 +9873,8 @@ export default function Layout({ children }: LayoutProps) {
     height: typeof window === "undefined" ? 720 : Math.max(DESK_CANVAS_POPOUNDER_MIN_HEIGHT, window.innerHeight - 80),
   }));
   const [isCopilotViewPopunderOpen, setIsCopilotViewPopunderOpen] = useState(false);
+  const [isAIAssistantDocked, setIsAIAssistantDocked] = useState(false);
+  const [dockedAIAssistantWidth, setDockedAIAssistantWidth] = useState(DOCKED_AI_ASSISTANT_DEFAULT_WIDTH);
   const copilotPopunderPresence = useAnimatedPresence(isCopilotViewPopunderOpen);
   const [copilotViewPopunderPosition, setCopilotViewPopunderPosition] = useState<DeskCanvasPopunderPosition>(() => ({ x: 0, y: 0 }));
   const [copilotViewPopunderSize, setCopilotViewPopunderSize] = useState<DeskCanvasPopunderSize>(() => ({
@@ -11020,7 +11150,7 @@ export default function Layout({ children }: LayoutProps) {
   useEffect(() => {
     if (isCopilotDockingAllowed || typeof window === "undefined") return;
 
-    setIsCopilotDocked(false);
+    setIsAIAssistantDocked(false);
     setCopilotDragActivation(null);
     setCopilotPopunderPosition(getAnchoredCopilotPopunderPosition());
   }, [isCopilotDockingAllowed]);
@@ -13993,6 +14123,17 @@ export default function Layout({ children }: LayoutProps) {
                 });
               }}
             />
+            {/* AI Assistant — docked to the right when the user clicks "Dock" on the floating panel */}
+            <DockedAIAssistantPanel
+              isOpen={isAIAssistantDocked}
+              width={dockedAIAssistantWidth}
+              onWidthChange={setDockedAIAssistantWidth}
+              onClose={() => setIsAIAssistantDocked(false)}
+              onUndock={() => {
+                setIsAIAssistantDocked(false);
+                setIsCopilotViewPopunderOpen(true);
+              }}
+            />
             {/* Transcript panel docked directly to the right of the conversation panel
                 (activity route only, triggered by the dock button in the floating transcript).
                 Not shown for Terry's call — transcript is embedded inline in the voice area. */}
@@ -14149,6 +14290,7 @@ export default function Layout({ children }: LayoutProps) {
           onPositionChange={setCopilotViewPopunderPosition}
           onSizeChange={setCopilotViewPopunderSize}
           onClose={() => setIsCopilotViewPopunderOpen(false)}
+          onDock={() => { setIsCopilotViewPopunderOpen(false); setIsAIAssistantDocked(true); }}
           onInteractStart={() => bringFloatingPanelToFront("deskCanvas")}
         />
       )}
