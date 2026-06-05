@@ -43,7 +43,11 @@ import {
   Trash2,
   MessageCircle,
   MessageSquare,
+  Disc,
+  EyeOff,
+  Hash,
   Mic,
+  MicOff,
   Monitor,
   Moon,
   PanelLeft,
@@ -5784,22 +5788,77 @@ function ActiveVoiceAssignmentControls({
   customerInfo?: { name: string; customerId: string; preview: string };
 }) {
   const [showTransfer, setShowTransfer] = useState(false);
+  const [isOnHold,    setIsOnHold]    = useState(false);
+  const [isMuted,     setIsMuted]     = useState(false);
+  const [isMasked,    setIsMasked]    = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [showKeypad,  setShowKeypad]  = useState(false);
   const transferBtnRef = useRef<HTMLButtonElement>(null);
 
+  const stop = (e: React.MouseEvent | React.PointerEvent) => { e.stopPropagation(); (e as React.MouseEvent).preventDefault?.(); };
+
   return (
-    <div className="mt-3 flex items-stretch gap-2">
-      <Button
-        ref={transferBtnRef}
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={(event) => { event.stopPropagation(); setShowTransfer(true); }}
-        onMouseDown={(event) => event.stopPropagation()}
-        className="h-auto flex-1 flex-col gap-1 border-black/10 px-2 py-2 text-[11px] text-[#333333]"
-      >
-        <ArrowRightLeft className="h-4 w-4" />
-        Transfer
-      </Button>
+    <div
+      className="flex items-end justify-between gap-0.5 px-3 py-2.5 border-b border-black/[0.06]"
+      onClick={stop}
+      onMouseDown={stop}
+      onPointerDown={stop}
+    >
+      {/* Hold */}
+      <button type="button" onClick={(e) => { stop(e); setIsOnHold((v) => !v); }}
+        className={cn("flex flex-1 flex-col items-center gap-0.5 rounded-lg border py-1.5 text-[9px] font-semibold transition-colors",
+          isOnHold ? "border-[#D97706]/30 bg-[#FFF8E1] text-[#D97706]" : "border-black/10 text-[#5B5B5B] hover:bg-[#F8F8F9]")}
+        title="Hold">
+        <Pause className="h-3.5 w-3.5" />Hold
+      </button>
+
+      {/* Mute */}
+      <button type="button" onClick={(e) => { stop(e); setIsMuted((v) => !v); }}
+        className={cn("flex flex-1 flex-col items-center gap-0.5 rounded-lg border py-1.5 text-[9px] font-semibold transition-colors",
+          isMuted ? "border-[#D97706]/30 bg-[#FFF8E1] text-[#D97706]" : "border-black/10 text-[#5B5B5B] hover:bg-[#F8F8F9]")}
+        title="Mute">
+        {isMuted ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}Mute
+      </button>
+
+      {/* Mask */}
+      <button type="button" onClick={(e) => { stop(e); setIsMasked((v) => !v); }}
+        className={cn("flex flex-1 flex-col items-center gap-0.5 rounded-lg border py-1.5 text-[9px] font-semibold transition-colors",
+          isMasked ? "border-[#166CCA]/30 bg-[#EBF4FD] text-[#166CCA]" : "border-black/10 text-[#5B5B5B] hover:bg-[#F8F8F9]")}
+        title="Mask sensitive info">
+        <EyeOff className="h-3.5 w-3.5" />Mask
+      </button>
+
+      {/* Record */}
+      <button type="button" onClick={(e) => { stop(e); setIsRecording((v) => !v); }}
+        className={cn("flex flex-1 flex-col items-center gap-0.5 rounded-lg border py-1.5 text-[9px] font-semibold transition-colors",
+          isRecording ? "border-[#E32926]/30 bg-[#FDEAEA] text-[#E32926]" : "border-black/10 text-[#5B5B5B] hover:bg-[#F8F8F9]")}
+        title="Record call">
+        <Disc className={cn("h-3.5 w-3.5", isRecording && "animate-pulse")} />Rec
+      </button>
+
+      {/* Transfer */}
+      <button ref={transferBtnRef} type="button" onClick={(e) => { stop(e); setShowTransfer(true); }}
+        className="flex flex-1 flex-col items-center gap-0.5 rounded-lg border border-black/10 py-1.5 text-[9px] font-semibold text-[#5B5B5B] transition-colors hover:bg-[#F8F8F9]"
+        title="Transfer">
+        <ArrowRightLeft className="h-3.5 w-3.5" />Xfer
+      </button>
+
+      {/* Keypad */}
+      <button type="button" onClick={(e) => { stop(e); setShowKeypad((v) => !v); }}
+        className={cn("flex flex-1 flex-col items-center gap-0.5 rounded-lg border py-1.5 text-[9px] font-semibold transition-colors",
+          showKeypad ? "border-[#7C3AED]/30 bg-[#F5F3FF] text-[#7C3AED]" : "border-black/10 text-[#5B5B5B] hover:bg-[#F8F8F9]")}
+        title="Keypad">
+        <Hash className="h-3.5 w-3.5" />Keys
+      </button>
+
+      {/* End Call */}
+      <button type="button"
+        onClick={(e) => { stop(e); onOpenDisposition(e.currentTarget.getBoundingClientRect()); }}
+        className="flex flex-1 flex-col items-center gap-0.5 rounded-lg border border-[#E32926]/20 py-1.5 text-[9px] font-semibold text-[#E32926] transition-colors hover:bg-[#FDEAEA]"
+        title="End call">
+        <PhoneOff className="h-3.5 w-3.5" />End
+      </button>
+
       {showTransfer && (
         <IncomingTransferPopover
           triggerRef={transferBtnRef}
@@ -5809,31 +5868,6 @@ function ActiveVoiceAssignmentControls({
           onTransferred={(_destination) => { setShowTransfer(false); onOpenDisposition(); }}
         />
       )}
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={(event) => event.stopPropagation()}
-        onMouseDown={(event) => event.stopPropagation()}
-        className="h-auto flex-1 flex-col gap-1 border-black/10 px-2 py-2 text-[11px] text-[#333333]"
-      >
-        <Pause className="h-4 w-4" />
-        Hold
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={(event) => {
-          event.stopPropagation();
-          onOpenDisposition(event.currentTarget.getBoundingClientRect());
-        }}
-        onMouseDown={(event) => event.stopPropagation()}
-        className="h-auto flex-1 flex-col gap-1 border-[#E32926]/20 px-2 py-2 text-[11px] text-[#E32926] hover:bg-[#FDEAEA] hover:text-[#E32926]"
-      >
-        <PhoneOff className="h-4 w-4" />
-        End Call
-      </Button>
     </div>
   );
 }
@@ -6707,6 +6741,13 @@ function GroupedQueueCard({
     historyOnlyAssignmentIds,
   } = useLayoutContext();
 
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
+  // Is there an active voice call on any channel in this group?
+  const activeVoiceChannel = group.channels.find(
+    (ch) => isAgentInCall && ch.id === activeCallAssignmentId,
+  ) ?? null;
+
   // Task-level status — the case owns the status, not individual channels.
   // Use the highest-severity status across all channels so that opening a
   // new channel never silently downgrades an escalated case to "open".
@@ -6808,6 +6849,17 @@ function GroupedQueueCard({
                 return { name: group.name, customerId: group.lastActiveChannel.customerId, preview };
               })()}
             />
+            {/* Collapse toggle */}
+            <button
+              type="button"
+              aria-label={isCollapsed ? "Expand card" : "Collapse card"}
+              title={isCollapsed ? "Expand" : "Minimize"}
+              onClick={(e) => { e.stopPropagation(); setIsCollapsed((v) => !v); }}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="flex h-5 w-5 items-center justify-center rounded text-[#C0C5CE] transition-colors hover:bg-[#F2F4F7] hover:text-[#5B5B5B]"
+            >
+              <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-200", isCollapsed && "-rotate-180")} />
+            </button>
           </div>
         </div>
         {/* Task description — task-level, shown once in the header.
@@ -6833,8 +6885,16 @@ function GroupedQueueCard({
         })()}
       </div>
 
-      {/* Channel rows — omit rows that have been moved to task summary view or are in history-only mode */}
-      {group.channels.filter((item) => !(taskSummaryIds?.has(item.id)) && !historyOnlyAssignmentIds.has(item.id)).map((item, index) => {
+      {/* Phone controls — shown just below the header whenever a voice call is active on this card */}
+      {activeVoiceChannel && (
+        <ActiveVoiceAssignmentControls
+          onOpenDisposition={openCallDisposition}
+          customerInfo={{ name: group.name, customerId: activeVoiceChannel.customerId, preview: activeVoiceChannel.preview }}
+        />
+      )}
+
+      {/* Channel rows — hidden when card is collapsed */}
+      {!isCollapsed && group.channels.filter((item) => !(taskSummaryIds?.has(item.id)) && !historyOnlyAssignmentIds.has(item.id)).map((item, index) => {
         const ItemIcon = item.icon;
         const channelLabel =
           conversationChannelOptions.find((o) => o.channel === item.channel)?.label ?? item.channel;
@@ -6917,10 +6977,6 @@ function GroupedQueueCard({
                   {lastCustomerComment}
                 </div>
               )}
-              {showActiveVoiceControls ? (
-                <ActiveVoiceAssignmentControls onOpenDisposition={openCallDisposition} customerInfo={{ name: group.name, customerId: item.customerId, preview: item.preview }} />
-              ) : null}
-
               {/* Pending action buttons — Reject / Accept / Review */}
               {item.id === pendingChannelId && (
                 <div
