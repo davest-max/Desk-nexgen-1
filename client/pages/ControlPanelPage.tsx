@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   AlertTriangle,
+  BookOpen,
   CalendarCheck,
   CalendarDays,
   Check,
@@ -10,10 +11,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  ClipboardCheck,
   Loader2,
   Mail,
+  Maximize2,
   MessageCircle,
   MessageSquare,
+  Minimize2,
   Phone,
   GalleryVertical,
   LayoutGrid,
@@ -22,6 +26,7 @@ import {
   SlidersHorizontal,
   Send,
   Sparkles,
+  Star,
   TrendingUp,
   X,
 } from "lucide-react";
@@ -2616,30 +2621,188 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
                 </div>
               </div>
 
-              {/* Parked Work */}
-              <div className="rounded-xl border border-border bg-white dark:bg-[#0F1629] dark:border-[#1E293B] shadow-sm p-4 flex flex-col">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[#FFFAEB]">
-                    <PauseCircle className="h-3.5 w-3.5 text-[#F59E0B]" />
-                  </div>
-                  <p className="text-[13px] font-semibold text-[#101828] dark:text-[#E2E8F0]">Parked Work</p>
-                </div>
-                <div className="space-y-1.5 mb-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[12px] text-[#667085] dark:text-[#8898AB]">Total Parked</span>
-                    <span className="text-[13px] font-semibold text-[#101828] dark:text-[#E2E8F0]">3</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[12px] text-[#667085] dark:text-[#8898AB]">High Priority</span>
-                    <span className="text-[13px] font-semibold text-[#E53935]">1</span>
-                  </div>
-                </div>
-                <div className="mt-auto border-t border-border pt-2.5">
-                  <p className="text-[11px] text-[#667085] dark:text-[#8898AB]">Oldest:</p>
-                  <p className="text-[12px] font-semibold text-[#101828] dark:text-[#E2E8F0] mt-0.5">David Kim</p>
-                  <p className="text-[11px] text-[#F59E0B]">1 day ago</p>
-                </div>
-              </div>
+              {/* My Zone — WEM */}
+              {(() => {
+                const [myZoneExpanded, setMyZoneExpanded] = useState(false);
+                const wemData = {
+                  shift: { label: "Today 2:00 – 10:00 PM", nextBid: "Jun 9", bidsOpen: 2, status: "Confirmed" },
+                  training: { due: 2, modules: [
+                    { name: "Advanced CX Techniques", pct: 60, dueIn: "3 days" },
+                    { name: "Security & Compliance",  pct: 0,  dueIn: "1 week" },
+                    { name: "Product Knowledge v4",   pct: 100, dueIn: "Done" },
+                  ]},
+                  evaluations: { lastScore: 87, maxScore: 100, trend: "+4", evaluator: "Sandra H.", nextDate: "Jun 12", feedback: "Strong empathy and resolution rate. Work on first-contact resolution speed." },
+                };
+                return (
+                  <>
+                    <div className="rounded-xl border border-border bg-white dark:bg-[#0F1629] dark:border-[#1E293B] shadow-sm p-4 flex flex-col">
+                      {/* Header */}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[#EBF4FD]">
+                            <Star className="h-3.5 w-3.5 text-[#166CCA]" />
+                          </div>
+                          <p className="text-[13px] font-semibold text-[#101828] dark:text-[#E2E8F0]">My Zone</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setMyZoneExpanded(true)}
+                          className="flex h-6 w-6 items-center justify-center rounded-md text-[#98A2B3] transition-colors hover:bg-[#F2F4F7] hover:text-[#344054]"
+                          title="Expand"
+                        >
+                          <Maximize2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+
+                      {/* Shift */}
+                      <div className="flex items-start gap-2 rounded-lg bg-[#F8F8F9] dark:bg-[#0B1120] px-3 py-2 mb-2">
+                        <CalendarCheck className="h-3.5 w-3.5 text-[#166CCA] mt-0.5 shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[11px] font-semibold text-[#344054] dark:text-[#8898AB] uppercase tracking-wide">Shift</p>
+                          <p className="text-[12px] font-medium text-[#101828] dark:text-[#E2E8F0] truncate">{wemData.shift.label}</p>
+                          <p className="text-[10px] text-[#208337]">{wemData.shift.status}</p>
+                        </div>
+                      </div>
+
+                      {/* Training & Evaluations row */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="rounded-lg border border-border px-2.5 py-2">
+                          <div className="flex items-center gap-1 mb-1">
+                            <BookOpen className="h-3 w-3 text-[#7C3AED]" />
+                            <span className="text-[10px] font-semibold text-[#667085] dark:text-[#8898AB] uppercase tracking-wide">Training</span>
+                          </div>
+                          <p className="text-[18px] font-bold text-[#101828] dark:text-[#E2E8F0] leading-none">{wemData.training.due}</p>
+                          <p className="text-[10px] text-[#667085]">modules due</p>
+                        </div>
+                        <div className="rounded-lg border border-border px-2.5 py-2">
+                          <div className="flex items-center gap-1 mb-1">
+                            <ClipboardCheck className="h-3 w-3 text-[#059669]" />
+                            <span className="text-[10px] font-semibold text-[#667085] dark:text-[#8898AB] uppercase tracking-wide">Eval</span>
+                          </div>
+                          <p className="text-[18px] font-bold text-[#101828] dark:text-[#E2E8F0] leading-none">{wemData.evaluations.lastScore}<span className="text-[11px] font-normal text-[#98A2B3]">/{wemData.evaluations.maxScore}</span></p>
+                          <p className="text-[10px] text-[#208337]">↑ {wemData.evaluations.trend} pts</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Expanded overlay */}
+                    {myZoneExpanded && createPortal(
+                      <div className="fixed inset-0 z-[9998] flex items-stretch justify-end">
+                        <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={() => setMyZoneExpanded(false)} />
+                        <div className="relative z-[1] flex w-full max-w-[680px] flex-col bg-[#F8F8F9] shadow-[0_0_40px_rgba(0,0,0,0.18)] animate-in slide-in-from-right duration-300 overflow-y-auto">
+
+                          {/* Header */}
+                          <div className="flex shrink-0 items-center justify-between border-b border-black/10 bg-white px-6 py-4">
+                            <div className="flex items-center gap-2">
+                              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#EBF4FD]">
+                                <Star className="h-4 w-4 text-[#166CCA]" />
+                              </div>
+                              <div>
+                                <h2 className="text-[15px] font-semibold text-[#101828]">My Zone</h2>
+                                <p className="text-[11px] text-[#667085]">Workforce Engagement</p>
+                              </div>
+                            </div>
+                            <button type="button" onClick={() => setMyZoneExpanded(false)}
+                              className="flex items-center gap-1.5 rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-[12px] font-medium text-[#344054] transition-colors hover:bg-[#F9FAFB]">
+                              <Minimize2 className="h-3.5 w-3.5" />Minimize
+                            </button>
+                          </div>
+
+                          <div className="flex-1 space-y-4 p-5">
+
+                            {/* Shift Bidding */}
+                            <div className="rounded-xl border border-black/10 bg-white p-5 shadow-sm">
+                              <div className="flex items-center gap-2 mb-4">
+                                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#EBF4FD]">
+                                  <CalendarCheck className="h-4 w-4 text-[#166CCA]" />
+                                </div>
+                                <h3 className="text-[14px] font-semibold text-[#101828]">Shift Bidding</h3>
+                              </div>
+                              <div className="rounded-lg bg-[#F8F8F9] border border-border px-4 py-3 mb-3">
+                                <p className="text-[11px] font-semibold uppercase tracking-wide text-[#98A2B3] mb-1">Current Shift</p>
+                                <p className="text-[14px] font-semibold text-[#101828]">{wemData.shift.label}</p>
+                                <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-[#EFFBF1] border border-[#B9E0B4] px-2 py-0.5 text-[11px] font-semibold text-[#208337]">
+                                  <Check className="h-2.5 w-2.5" />{wemData.shift.status}
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="rounded-lg border border-border px-4 py-3">
+                                  <p className="text-[11px] text-[#667085] mb-0.5">Next Bid Round</p>
+                                  <p className="text-[13px] font-semibold text-[#101828]">{wemData.shift.nextBid}</p>
+                                </div>
+                                <div className="rounded-lg border border-border px-4 py-3">
+                                  <p className="text-[11px] text-[#667085] mb-0.5">Shifts Available</p>
+                                  <p className="text-[13px] font-semibold text-[#101828]">{wemData.shift.bidsOpen} open</p>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Training */}
+                            <div className="rounded-xl border border-black/10 bg-white p-5 shadow-sm">
+                              <div className="flex items-center gap-2 mb-4">
+                                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#F5F3FF]">
+                                  <BookOpen className="h-4 w-4 text-[#7C3AED]" />
+                                </div>
+                                <h3 className="text-[14px] font-semibold text-[#101828]">Training</h3>
+                                <span className="ml-auto rounded-full bg-[#FDEAEA] px-2 py-0.5 text-[11px] font-semibold text-[#E32926]">{wemData.training.due} due</span>
+                              </div>
+                              <div className="space-y-3">
+                                {wemData.training.modules.map((m) => (
+                                  <div key={m.name}>
+                                    <div className="flex items-center justify-between mb-1">
+                                      <span className="text-[12px] font-medium text-[#344054] truncate pr-3">{m.name}</span>
+                                      <span className={cn("text-[11px] font-semibold shrink-0", m.pct === 100 ? "text-[#208337]" : "text-[#667085]")}>
+                                        {m.pct === 100 ? "Done" : m.dueIn}
+                                      </span>
+                                    </div>
+                                    <div className="h-1.5 w-full rounded-full bg-[#F2F4F7]">
+                                      <div
+                                        className={cn("h-full rounded-full transition-all", m.pct === 100 ? "bg-[#208337]" : m.pct > 0 ? "bg-[#7C3AED]" : "bg-[#D0D5DD]")}
+                                        style={{ width: `${m.pct}%` }}
+                                      />
+                                    </div>
+                                    <p className="text-[10px] text-[#98A2B3] mt-0.5">{m.pct}% complete</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Evaluations */}
+                            <div className="rounded-xl border border-black/10 bg-white p-5 shadow-sm">
+                              <div className="flex items-center gap-2 mb-4">
+                                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#EFFBF1]">
+                                  <ClipboardCheck className="h-4 w-4 text-[#059669]" />
+                                </div>
+                                <h3 className="text-[14px] font-semibold text-[#101828]">Evaluations</h3>
+                              </div>
+                              <div className="grid grid-cols-3 gap-3 mb-4">
+                                <div className="rounded-lg bg-[#F8F8F9] border border-border px-3 py-2.5 text-center">
+                                  <p className="text-[22px] font-bold text-[#101828] leading-none">{wemData.evaluations.lastScore}</p>
+                                  <p className="text-[10px] text-[#667085] mt-0.5">Last Score</p>
+                                </div>
+                                <div className="rounded-lg bg-[#F8F8F9] border border-border px-3 py-2.5 text-center">
+                                  <p className="text-[22px] font-bold text-[#208337] leading-none">{wemData.evaluations.trend}</p>
+                                  <p className="text-[10px] text-[#667085] mt-0.5">Trend</p>
+                                </div>
+                                <div className="rounded-lg bg-[#F8F8F9] border border-border px-3 py-2.5 text-center">
+                                  <p className="text-[13px] font-bold text-[#101828] leading-tight mt-0.5">{wemData.evaluations.nextDate}</p>
+                                  <p className="text-[10px] text-[#667085] mt-0.5">Next Eval</p>
+                                </div>
+                              </div>
+                              <div className="rounded-lg border border-[#BFDBFE] bg-[#EBF4FD] px-4 py-3">
+                                <p className="text-[11px] font-semibold text-[#1260B0] mb-1">Latest Feedback · {wemData.evaluations.evaluator}</p>
+                                <p className="text-[12px] text-[#344054] leading-relaxed">"{wemData.evaluations.feedback}"</p>
+                              </div>
+                            </div>
+
+                          </div>
+                        </div>
+                      </div>,
+                      document.body,
+                    )}
+                  </>
+                );
+              })()}
             </div>
 
             {/* AI input bar — sticky to bottom of scroll area */}
