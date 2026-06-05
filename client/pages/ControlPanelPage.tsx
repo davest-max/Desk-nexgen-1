@@ -70,7 +70,7 @@ import { RejectPopover } from "./control-panel/RejectPopover";
 import { TakeoverButton } from "./control-panel/TakeoverButton";
 
 type DeskPageTab = "queue" | "customers" | "tickets" | "accounts" | "contact-history";
-type IssueTab = "all" | "open" | "pending" | "resolved" | "escalated";
+type IssueTab = "all" | "new" | "open" | "pending" | "escalated" | "closed" | "resolved";
 
 const DESK_PAGE_TABS: Array<{ id: DeskPageTab; label: string }> = [
   { id: "queue",           label: "Queue"            },
@@ -2196,8 +2196,24 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
   // Status rank for within-group and group-level sorting: escalated first, resolved last
   const statusRank: Record<string, number> = { escalated: 0, open: 1, pending: 2, resolved: 3 };
 
-  const allRows = [...baseRows, ...resolvedNormalised]
-    .filter((a) => issueTab === "all" || a.status === issueTab)
+  const unfilteredRows = [...baseRows, ...resolvedNormalised];
+
+  // Counts for each status tab (used in header badges)
+  const statusCounts = {
+    new:       unfilteredRows.filter((r) => r.status === "open" && !r.isAccepted && !r.isLive).length,
+    open:      unfilteredRows.filter((r) => r.status === "open").length,
+    pending:   unfilteredRows.filter((r) => r.status === "pending").length,
+    escalated: unfilteredRows.filter((r) => r.status === "escalated").length,
+    closed:    unfilteredRows.filter((r) => r.status === "resolved").length,
+  };
+
+  const allRows = unfilteredRows
+    .filter((a) => {
+      if (issueTab === "all") return true;
+      if (issueTab === "new")    return a.status === "open" && !a.isAccepted && !a.isLive;
+      if (issueTab === "closed") return a.status === "resolved";
+      return a.status === issueTab;
+    })
     .sort((a, b) => (priorityRank[a.priority] ?? 99) - (priorityRank[b.priority] ?? 99));
 
   // If the currently-selected case is no longer visible after a filter change,
@@ -2227,6 +2243,8 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
     // even after the status was programmatically set to "resolved" before dismissal, making the
     // count show 1 while the banner correctly shows 0.
     escalated: baseRows.filter((a) => a.status === "escalated").length + resolvedNormalised.filter((r) => r.status === "escalated").length,
+    new:    baseRows.filter((a) => a.status === "open" && !a.isAccepted && !a.isLive).length,
+    closed: baseRows.filter((a) => a.status === "resolved").length + filteredResolvedAssignments.filter((r) => r.status === "resolved").length,
   };
   const totalTasks = tabCounts.open + tabCounts.pending + tabCounts.resolved + tabCounts.escalated;
 
@@ -2790,15 +2808,56 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
       })()}
 
       {/* ── Queue tab ─────────────────────────────────────────────────────────── */}
-      {mode === "inbox" && <div className="min-h-0 flex-1 overflow-hidden">
-        <div className="flex gap-0 h-full">
+      {mode === "inbox" && <div className="min-h-0 flex-1 overflow-hidden flex flex-col">
+
+        {/* ── Contacts page header ── */}
+        <div className="shrink-0 border-b border-[#E4E7EC] dark:border-[#1C2536] bg-white dark:bg-[#0F1629] px-5 pt-4 pb-0">
+          <h1 className="text-sm font-semibold tracking-tight text-[#333333] dark:text-white mb-3">Contacts</h1>
+          {/* Status tabs */}
+          <div className="flex">
+            {([
+              { id: "new",       label: "New"       },
+              { id: "open",      label: "Open"      },
+              { id: "pending",   label: "Pending"   },
+              { id: "escalated", label: "Escalated" },
+              { id: "closed",    label: "Closed"    },
+            ] as const).map(({ id, label }) => {
+              const count = statusCounts[id];
+              const isActive = issueTab === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setIssueTab(id)}
+                  className={cn(
+                    "relative flex items-center gap-1.5 px-4 py-2.5 text-[12px] font-medium whitespace-nowrap transition-colors",
+                    isActive ? "text-[#166CCA]" : "text-[#7A7A7A] dark:text-[#8898AB] hover:text-[#333333] dark:hover:text-[#CBD5E1]",
+                  )}
+                >
+                  {label}
+                  {count > 0 && (
+                    <span className={cn(
+                      "flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-semibold",
+                      isActive ? "bg-[#166CCA] text-white" : "bg-[#F2F4F7] dark:bg-[#1C2536] text-[#667085] dark:text-[#8898AB]",
+                    )}>
+                      {count}
+                    </span>
+                  )}
+                  {isActive && <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-t-full bg-[#166CCA]" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="flex gap-0 flex-1 min-h-0 overflow-hidden">
 
 
           {/* Tasks card */}
           <div className="flex flex-row flex-1 min-w-0 h-full overflow-hidden">
 
             <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-            {/* Header: title + filters */}
+            {/* Header: view toggles + filters */}
             <div className="shrink-0 px-5 pt-4 pb-0">
               <div className="flex items-center justify-between gap-3 mb-3">
 
