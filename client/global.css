@@ -29,7 +29,8 @@
     --accent: 211 70% 96%;
     --accent-foreground: 211 80% 44%;
 
-    --destructive: 0 84% 60%;
+    /* Lyra: lyra/color/bg/destructive = #BD2A2A → hsl(0, 64%, 45%) */
+    --destructive: 0 64% 45%;
     --destructive-foreground: 0 0% 100%;
 
     --border: 0 0% 84%;

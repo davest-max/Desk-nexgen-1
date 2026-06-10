@@ -1,0 +1,12 @@
+{
+  "codeConnect": {
+    "include": [
+      "client/components/ui/**/*.tsx",
+      "client/components/ui/figma/**/*.figma.tsx"
+    ],
+    "parser": "react",
+    "importPaths": {
+      "@/*": "./client/*"
+    }
+  }
+}
