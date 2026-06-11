@@ -5,7 +5,7 @@
 
 export const SCENARIO_CHANNEL = "desk-nexgen-scenario";
 
-export type CaseKey = "jordan" | "sofia" | "marcus" | "terry";
+export type CaseKey = "jordan" | "sofia" | "marcus" | "terry" | "diana";
 export type CaseStatus = "idle" | "queued" | "active" | "resolved";
 
 /** Messages sent controller page → main app */

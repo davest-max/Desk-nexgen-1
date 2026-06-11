@@ -1,6 +1,6 @@
 import { useLayoutContext } from "@/components/layout-context";
 
-type CaseKey = "jordan" | "sofia" | "marcus" | "terry";
+type CaseKey = "jordan" | "sofia" | "marcus" | "terry" | "diana";
 type CaseStatus = "idle" | "active" | "resolved";
 
 type CaseConfig = {
@@ -13,7 +13,6 @@ type CaseConfig = {
   issue: string;
   bot: string;
   botColor: string;
-  dependsOn?: string;
 };
 
 const CASES: CaseConfig[] = [
@@ -38,7 +37,7 @@ const CASES: CaseConfig[] = [
     issue: "Proactive fraud alert — 2 unauthorized transactions totaling $2,159",
     bot: "Jacob",
     botColor: "bg-green-100 text-green-700",
-    dependsOn: "Jordan resolved",
+
   },
   {
     key: "marcus",
@@ -50,7 +49,7 @@ const CASES: CaseConfig[] = [
     issue: "Order shipped to wrong address — request for human agent",
     bot: "Emily",
     botColor: "bg-purple-100 text-purple-700",
-    dependsOn: "Sofia resolved",
+
   },
   {
     key: "terry",
@@ -62,7 +61,18 @@ const CASES: CaseConfig[] = [
     issue: "Inbound callback — VP of Ops at Nexus Freight evaluating TMS replacement for 200-person team",
     bot: "Aria",
     botColor: "bg-blue-100 text-blue-700",
-    dependsOn: "Marcus resolved",
+
+  },
+  {
+    key: "diana",
+    initials: "DC",
+    name: "Diana Chen",
+    customerId: "CST-15872",
+    channel: "Voice",
+    channelIcon: "📞",
+    issue: "Billing dispute — charged $147 for cancelled subscription. Transferred from 2 prior agents with full summary & context.",
+    bot: "2nd Transfer",
+    botColor: "bg-orange-100 text-orange-700",
   },
 ];
 
@@ -93,10 +103,8 @@ function CaseCard({ config, status, onTrigger }: {
   status: CaseStatus;
   onTrigger: () => void;
 }) {
-  const canTrigger = status === "idle";
-
   return (
-    <div className={`rounded-xl border bg-white shadow-sm overflow-hidden transition-opacity ${status === "resolved" ? "opacity-50" : "opacity-100"}`}>
+    <div className="rounded-xl border bg-white shadow-sm overflow-hidden">
       <div className="flex items-start justify-between gap-3 px-5 pt-4 pb-3">
         <div className="flex items-center gap-3 min-w-0">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#C5DEF5] text-[13px] font-bold text-[#1260B0]">
@@ -118,17 +126,13 @@ function CaseCard({ config, status, onTrigger }: {
 
       <p className="px-5 pb-4 text-[12px] leading-relaxed text-gray-500">{config.issue}</p>
 
-      <div className="border-t border-gray-100 px-5 py-3 flex items-center justify-between gap-3">
-        <p className="text-[11px] text-gray-400">
-          {config.dependsOn ? `Unlocks after ${config.dependsOn}` : "Ready to trigger"}
-        </p>
+      <div className="border-t border-gray-100 px-5 py-3 flex items-center justify-end gap-3">
         <button
           type="button"
           onClick={onTrigger}
-          disabled={!canTrigger}
-          className="rounded-lg bg-[#166CCA] px-4 py-1.5 text-[12px] font-semibold text-white hover:bg-[#1260B0] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="rounded-lg bg-[#166CCA] px-4 py-1.5 text-[12px] font-semibold text-white hover:bg-[#1260B0] transition-colors"
         >
-          {status === "active" ? "In Progress" : status === "resolved" ? "Resolved" : "Trigger"}
+          Trigger
         </button>
       </div>
     </div>

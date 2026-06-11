@@ -11,7 +11,10 @@ import {
   type QueuePreviewItem,
   type ResolvedAssignment,
   type AcceptIssueData,
+  type ConferenceParticipant,
+  type ChatCoParticipant,
 } from "@/components/layout-context";
+import { ParticipantBar } from "@/components/ParticipantBar";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
@@ -79,6 +82,8 @@ import {
   ScrollText,
   Layers2,
   Star,
+  LayoutList,
+  UserPlus,
 } from "lucide-react";
 
 import {
@@ -105,6 +110,9 @@ import CopilotPopunder, { CopilotContent, type CopilotDragActivation } from "@/c
 import ConversationPanel, { type ConversationMessage, type ConversationStatus, type InlineSuggestion, type SharedConversationData } from "@/components/ConversationPanel";
 import DeskDataTable from "@/components/DeskDataTable";
 import DirectoryPanel from "@/components/DirectoryPanel";
+import DirectoryPage from "@/pages/DirectoryPage";
+import Schedule from "@/pages/Schedule";
+import ControlPanelPage from "@/pages/ControlPanelPage";
 import AddPanelContent from "@/components/AddPanelContent";
 import ChatPopoverContent from "@/components/ChatPopover";
 import NotificationsPopoverContent, { seedNotifications, type AppNotification } from "@/components/NotificationsPopover";
@@ -264,6 +272,8 @@ let escalation2Fired = false;
 let escalation3Fired = false;
 // Prevents the Terry Williams (Aria) sales-lead escalation from re-firing after Marcus's case resolves.
 let escalation4Fired = false;
+// Prevents the Diana Chen transferred-voice-call escalation from re-firing.
+let escalation5Fired = false;
 // Resolved flags — read by the BroadcastChannel HELLO handler to report current state.
 let jordanResolvedFlag = false;
 let sofiaResolvedFlag = false;
@@ -492,6 +502,9 @@ function CallControlsPopunder({
   const [isTestingAudio, setIsTestingAudio] = useState(false);
   const [audioLevels, setAudioLevels] = useState({ mic: 42, speaker: 58 });
   const [selectedDisposition, setSelectedDisposition] = useState<string | null>(null);
+  const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
+  const [selectedDispositionCode, setSelectedDispositionCode] = useState<string | null>(null);
 
   useEffect(() => {
     if (mode !== "setup") {
@@ -515,7 +528,7 @@ function CallControlsPopunder({
     if (typeof window === "undefined") return;
 
     const width = mode === "controls" ? size.width : CALL_POPUNDER_WIDTH;
-    const height = mode === "setup" ? 320 : mode === "connecting" ? 296 : mode === "controls" ? size.height : 420;
+    const height = mode === "setup" ? 320 : mode === "connecting" ? 296 : mode === "controls" ? size.height : 560;
     const nextPosition = {
       x: Math.min(
         Math.max(CALL_POPUNDER_MARGIN, position.x),
@@ -535,7 +548,7 @@ function CallControlsPopunder({
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent) => {
       const width = mode === "controls" ? size.width : CALL_POPUNDER_WIDTH;
-    const height = mode === "setup" ? 320 : mode === "connecting" ? 296 : mode === "controls" ? size.height : 420;
+    const height = mode === "setup" ? 320 : mode === "connecting" ? 296 : mode === "controls" ? size.height : 560;
 
       if (isDraggingRef.current) {
         const nextX = event.clientX - dragOffsetRef.current.x;
@@ -748,40 +761,136 @@ function CallControlsPopunder({
             </Button>
           </div>
         ) : (
-          <>
-            <p className="text-[10px] leading-5 text-[#98A2B3]">
-              Select a disposition to complete the call.
-            </p>
-            <div className="-mx-3 divide-y divide-[#F2F4F7] overflow-y-auto" style={{ maxHeight: 320 }}>
-              {CALL_DISPOSITION_OPTIONS.map((option) => {
-                const isSelected = selectedDisposition === option;
-                const isDisabled = selectedDisposition !== null && !isSelected;
-                return (
-                  <button
-                    key={option}
-                    type="button"
-                    disabled={isDisabled}
-                    onClick={() => {
-                      if (selectedDisposition) return;
-                      setSelectedDisposition(option);
-                      setTimeout(() => {
-                        onSelectDisposition(option);
-                        setSelectedDisposition(null);
-                      }, 700);
-                    }}
-                    className={cn(
-                      "w-full flex items-center justify-between px-4 py-2.5 text-left transition-colors",
-                      isSelected ? "bg-[#EBF4FD] text-[#166CCA]" : "hover:bg-[#F9FAFB] text-[#344054]",
-                      isDisabled && "opacity-40 cursor-not-allowed",
-                    )}
-                  >
-                    <span className="text-[12px] font-medium">{option}</span>
-                    {isSelected && <span className="text-[10px] font-semibold text-[#166CCA]">Selected</span>}
-                  </button>
-                );
-              })}
+          <div className="-mx-3 overflow-y-auto" style={{ maxHeight: 420 }}>
+            {/* ── Status ── */}
+            <div className="px-3 pb-3">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[#98A2B3]">Status</p>
+              <div className="flex flex-wrap gap-1.5">
+                {CALL_DISPOSITION_OPTIONS.map((option) => {
+                  const isActive = selectedStatus === option;
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => setSelectedStatus(isActive ? null : option)}
+                      className={cn(
+                        "rounded-full border px-3 py-1 text-[11px] font-medium transition-colors",
+                        isActive
+                          ? "border-[#166CCA]/40 bg-[#EBF4FD] text-[#166CCA]"
+                          : "border-[#E4E7EC] bg-white text-[#344054] hover:border-[#166CCA]/30 hover:bg-[#F5F9FF]",
+                      )}
+                    >
+                      {option}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </>
+
+            <div className="mx-0 border-t border-[#F2F4F7]" />
+
+            {/* ── Tags ── */}
+            <div className="px-3 py-3">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[#98A2B3]">Tags</p>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  "Billing", "Refund", "Subscription", "Technical", "Account",
+                  "Fraud", "Escalated", "VIP", "Callback", "First Contact",
+                ].map((tag) => {
+                  const isActive = selectedTags.has(tag);
+                  return (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => {
+                        setSelectedTags((prev) => {
+                          const next = new Set(prev);
+                          isActive ? next.delete(tag) : next.add(tag);
+                          return next;
+                        });
+                      }}
+                      className={cn(
+                        "rounded-full border px-3 py-1 text-[11px] font-medium transition-colors",
+                        isActive
+                          ? "border-[#6941C6]/30 bg-[#F4F0FF] text-[#6941C6]"
+                          : "border-[#E4E7EC] bg-white text-[#344054] hover:border-[#6941C6]/20 hover:bg-[#FAF8FF]",
+                      )}
+                    >
+                      {tag}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="mx-0 border-t border-[#F2F4F7]" />
+
+            {/* ── Disposition ── */}
+            <div className="px-3 py-3">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[#98A2B3]">Disposition</p>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  "Issue Resolved",
+                  "Partial Resolution",
+                  "Pending Follow-up",
+                  "Transferred to Tier 2",
+                  "Transferred to Billing",
+                  "Supervisor Override",
+                  "Refund Issued",
+                  "Credit Applied",
+                  "Information Provided",
+                  "No Action Required",
+                  "Customer Declined",
+                  "Callback Scheduled",
+                ].map((code) => {
+                  const isActive = selectedDispositionCode === code;
+                  return (
+                    <button
+                      key={code}
+                      type="button"
+                      onClick={() => setSelectedDispositionCode(isActive ? null : code)}
+                      className={cn(
+                        "rounded-full border px-3 py-1 text-[11px] font-medium transition-colors",
+                        isActive
+                          ? "border-[#027A48]/30 bg-[#ECFDF3] text-[#027A48]"
+                          : "border-[#E4E7EC] bg-white text-[#344054] hover:border-[#027A48]/20 hover:bg-[#F6FEF9]",
+                      )}
+                    >
+                      {code}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* ── Submit ── */}
+            <div className="border-t border-[#F2F4F7] px-3 py-3">
+              <button
+                type="button"
+                disabled={!selectedStatus}
+                onClick={() => {
+                  if (!selectedStatus) return;
+                  const disposition = selectedStatus as (typeof CALL_DISPOSITION_OPTIONS)[number];
+                  setSelectedDisposition(disposition);
+                  setTimeout(() => {
+                    onSelectDisposition(disposition);
+                    setSelectedDisposition(null);
+                    setSelectedStatus(null);
+                    setSelectedTags(new Set());
+                    setSelectedDispositionCode(null);
+                  }, 700);
+                }}
+                className={cn(
+                  "w-full rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors",
+                  selectedStatus
+                    ? "bg-[#166CCA] text-white hover:bg-[#1260B0]"
+                    : "bg-[#F2F4F7] text-[#98A2B3] cursor-not-allowed",
+                )}
+              >
+                {selectedStatus ? `Complete — ${selectedStatus}` : "Select a status to complete"}
+              </button>
+            </div>
+          </div>
         )}
       </div>
 
@@ -1421,9 +1530,7 @@ function DispositionPopover({
 // ─── More-options dropdown for the active-case panel header ──────────────────
 
 function CaseMoreOptionsMenu({ onDismiss, onClose, iconSize = "md", customerInfo }: { onDismiss: (transferRecipient?: string | null) => void; onClose?: () => void; iconSize?: "sm" | "md"; customerInfo?: { name: string; customerId: string; preview: string } }) {
-  const { openChatPopover } = useLayoutContext();
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [showTransfer, setShowTransfer] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   return (
@@ -1463,34 +1570,6 @@ function CaseMoreOptionsMenu({ onDismiss, onClose, iconSize = "md", customerInfo
             Dismiss and Unassign
           </DropdownMenuItem>
 
-          {/* Transfer — opens agent picker, then disposition */}
-          <DropdownMenuItem
-            className="gap-2 cursor-pointer"
-            onClick={(e) => { e.preventDefault(); setDropdownOpen(false); setShowTransfer(true); }}
-          >
-            <ArrowRightLeft className="h-4 w-4" />
-            Transfer
-          </DropdownMenuItem>
-
-          {/* Consult — opens the internal agent chat window */}
-          <DropdownMenuItem
-            className="gap-2 cursor-pointer"
-            onClick={() => {
-              // Walk up from the ⋮ button to find the enclosing card element
-              let cardEl: HTMLElement | null = triggerRef.current;
-              while (cardEl?.parentElement) {
-                cardEl = cardEl.parentElement;
-                if (cardEl.getBoundingClientRect().height >= 80) break;
-              }
-              const cardRect = cardEl?.getBoundingClientRect() ?? null;
-              setDropdownOpen(false);
-              openChatPopover(cardRect);
-            }}
-          >
-            <MessageCircle className="h-4 w-4" />
-            Consult
-          </DropdownMenuItem>
-
           {/* Send Transcript */}
           <DropdownMenuItem
             className="gap-2 cursor-pointer"
@@ -1502,15 +1581,6 @@ function CaseMoreOptionsMenu({ onDismiss, onClose, iconSize = "md", customerInfo
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {showTransfer && (
-        <IncomingTransferPopover
-          triggerRef={triggerRef}
-          side="bottom"
-          customerInfo={customerInfo}
-          onClose={() => setShowTransfer(false)}
-          onTransferred={(destination) => { setShowTransfer(false); onDismiss(destination || undefined); }}
-        />
-      )}
     </>
   );
 }
@@ -1639,6 +1709,7 @@ function DockedConversationPanel({
   voiceRightPanel,
   voiceContentOverlay,
   onVoiceOpeningLineClick,
+  chatTopContent,
   extraHistoryItems = [],
   onConversationStatusChange,
   onResolveAssignment,
@@ -1727,11 +1798,17 @@ function DockedConversationPanel({
   customerContext?: string;
   /** Called when the agent clicks an AI-suggested action card embedded in a message. */
   onAiActionClick?: (actionId: string) => void;
+  /** Slot rendered above the message list for non-voice channels (e.g. ParticipantBar for co-agent chats). */
+  chatTopContent?: React.ReactNode;
 }) {
   const contentInitializedRef = useRef(false);
   const panelContainerRef = useRef<HTMLDivElement>(null);
   const [isContentVisible, setIsContentVisible] = useState(isOpen);
-  const { openCallDisposition } = useLayoutContext();
+  const [isCaseDetailsOpen, setIsCaseDetailsOpen] = useState(false);
+  const [caseDetailsPos, setCaseDetailsPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const caseDetailsDragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+  const caseDetailsBtnRef = useRef<HTMLButtonElement>(null);
+  const { openCallDisposition, openChatPopover } = useLayoutContext();
   const [isContentEntered, setIsContentEntered] = useState(isOpen);
   const [isAiPanelVisible, setIsAiPanelVisible] = useState(false);
   const [isNarrowPanel, setIsNarrowPanel] = useState(false);
@@ -2661,7 +2738,7 @@ function DockedConversationPanel({
           <>
             <div
               data-conversation-panel-header
-              className="relative flex flex-col border-b border-border px-5 py-4 gap-0"
+              className="relative flex flex-col border-b border-border px-5 pt-4 pb-0 gap-0"
             >
               {/* Top row: drag handle · summary toggle · name · actions · status chip · close */}
               <div className={cn(
@@ -2735,8 +2812,32 @@ function DockedConversationPanel({
                     </div>
                   )}
                 </div>
-                {/* Right side: customer info icon + status chip + close */}
+                {/* Right side: customer info icon + case details toggle + status chip + close */}
                 <div className="flex items-center gap-2 shrink-0">
+                  {/* Case details floating panel toggle — hidden during voice calls */}
+                  {activeChannel !== "voice" && <button
+                    ref={caseDetailsBtnRef}
+                    type="button"
+                    title="Case details"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={() => {
+                      if (isCaseDetailsOpen) { setIsCaseDetailsOpen(false); return; }
+                      const btn = caseDetailsBtnRef.current;
+                      if (btn) {
+                        const r = btn.getBoundingClientRect();
+                        setCaseDetailsPos({ x: Math.max(8, r.right - 380), y: r.bottom + 8 });
+                      }
+                      setIsCaseDetailsOpen(true);
+                    }}
+                    className={cn(
+                      "flex h-7 w-7 items-center justify-center rounded-full transition-colors",
+                      isCaseDetailsOpen
+                        ? "bg-[#EBF4FD] text-[#166CCA]"
+                        : "text-[#667085] hover:bg-[#F2F4F7] hover:text-[#344054]",
+                    )}
+                  >
+                    <LayoutList className="h-3.5 w-3.5" />
+                  </button>}
                   <CustomerInfoIconButton onOpenCustomerInfo={onOpenCustomerInfo} isCustomerInfoOpen={isCustomerInfoOpen} />
                   {assignmentStatus && onAssignmentStatusChange && (
                     <div onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
@@ -2761,7 +2862,163 @@ function DockedConversationPanel({
                 />
               )}
 
+              {/* Digital contact controls — shown for chat/email/sms/whatsapp when not a voice call and not pending */}
+              {!isCallActive && !isPendingAcceptance && activeChannel !== "voice" && assignmentStatus && (
+                <DigitalContactControls
+                  onConsult={(btnRect) => {
+                    // Place the chat popover to the right, vertically aligned with the Consult button.
+                    // openChatPopover(anchorRect) → x = anchorRect.right + 12, y = anchorRect.top
+                    const syntheticRect = {
+                      right: btnRect.right,
+                      top: btnRect.top,
+                      left: btnRect.left,
+                      bottom: btnRect.bottom,
+                      width: btnRect.width, height: btnRect.height, x: btnRect.right, y: btnRect.top,
+                      toJSON: () => ({}),
+                    } as DOMRect;
+                    openChatPopover(syntheticRect, undefined, undefined, 575);
+                  }}
+                  onTransfer={() => {
+                    const cardEl = document.querySelector("[data-conversation-panel-header]");
+                    const rect = cardEl?.getBoundingClientRect() ?? null;
+                    openChatPopover(rect, customerRecord ? { id: customerRecord.customerId, name: customerRecord.name, initials: (customerRecord.name.split(" ").map((w: string) => w[0]).join("").slice(0, 2)), role: "", avatarColor: "", status: "online" as const } : undefined);
+                  }}
+                  onOutcome={() => onRemoveAssignment?.(undefined)}
+                  customerInfo={customerRecord ? { name: customerRecord.name, customerId: customerRecord.customerId, preview: casePreview ?? "" } : undefined}
+                />
+              )}
+
             </div>
+
+            {/* Case Details floating panel — portal-rendered, draggable */}
+            {isCaseDetailsOpen && typeof document !== "undefined" && createPortal(
+              <div
+                className="fixed z-[9999] w-[380px] rounded-xl border border-black/10 bg-white shadow-[0_20px_50px_rgba(0,0,0,0.18)] animate-in fade-in slide-in-from-top-2 duration-200 overflow-hidden"
+                style={{ left: caseDetailsPos.x, top: caseDetailsPos.y }}
+              >
+                {/* Drag handle header */}
+                <div
+                  className="flex cursor-grab items-center justify-between gap-3 border-b border-border bg-background/50 px-5 py-3.5 active:cursor-grabbing select-none"
+                  onMouseDown={(e) => {
+                    if ((e.target as HTMLElement).closest("button")) return;
+                    caseDetailsDragRef.current = { startX: e.clientX, startY: e.clientY, origX: caseDetailsPos.x, origY: caseDetailsPos.y };
+                    const onMove = (me: MouseEvent) => {
+                      if (!caseDetailsDragRef.current) return;
+                      setCaseDetailsPos({
+                        x: Math.max(0, caseDetailsDragRef.current.origX + me.clientX - caseDetailsDragRef.current.startX),
+                        y: Math.max(0, caseDetailsDragRef.current.origY + me.clientY - caseDetailsDragRef.current.startY),
+                      });
+                    };
+                    const onUp = () => { caseDetailsDragRef.current = null; window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+                    window.addEventListener("mousemove", onMove);
+                    window.addEventListener("mouseup", onUp);
+                  }}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <GripHorizontal className="h-4 w-4 flex-shrink-0 text-[#7A7A7A]" />
+                    <div>
+                      <h3 className="text-sm font-semibold tracking-tight text-[#333333]">Case Details</h3>
+                      <p className="text-xs text-[#7A7A7A]">{customerRecord?.name ?? conversation.customerName} · {customerRecord?.customerId}</p>
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => setIsCaseDetailsOpen(false)} className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[#7A7A7A] transition-colors hover:bg-[#F2F4F7] hover:text-[#333333]">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                {/* Content */}
+                <div className="overflow-y-auto max-h-[calc(100vh-200px)]">
+                  {/* Section 1 — Case fields */}
+                  <div className="px-5 py-4 space-y-4">
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                      {/* Company */}
+                      <div className="flex flex-col gap-1.5">
+                        <span className="text-[11px] text-[#7A7A7A]">Company</span>
+                        <input type="text" defaultValue="" placeholder="—" className="h-8 w-full rounded-md border border-black/[0.15] bg-white px-3 text-[13px] font-semibold text-[#111827] placeholder:font-normal placeholder:text-[#D0D5DD] focus:border-[#166CCA] focus:outline-none focus:ring-2 focus:ring-[#166CCA]/20" />
+                      </div>
+                      {/* Brand */}
+                      <div className="flex flex-col gap-1.5">
+                        <span className="text-[11px] text-[#7A7A7A]">Brand</span>
+                        <select className="h-8 w-full rounded-md border border-black/[0.15] bg-white px-3 text-[13px] font-semibold text-[#111827] focus:border-[#166CCA] focus:outline-none focus:ring-2 focus:ring-[#166CCA]/20 appearance-none">
+                          <option value="">Select</option>
+                          <option>NovaTech</option>
+                          <option>Enterprise</option>
+                          <option>Standard</option>
+                          <option>Partner</option>
+                        </select>
+                      </div>
+                      {/* Dropdown List */}
+                      <div className="flex flex-col gap-1.5">
+                        <span className="text-[11px] text-[#7A7A7A]">Dropdown List</span>
+                        <select className="h-8 w-full rounded-md border border-black/[0.15] bg-white px-3 text-[13px] font-semibold text-[#111827] focus:border-[#166CCA] focus:outline-none focus:ring-2 focus:ring-[#166CCA]/20 appearance-none">
+                          <option value="">Select</option>
+                          <option>Billing</option>
+                          <option>Technical</option>
+                          <option>Account</option>
+                          <option>Other</option>
+                        </select>
+                      </div>
+                      {/* Account Number */}
+                      <div className="flex flex-col gap-1.5">
+                        <span className="text-[11px] text-[#7A7A7A]">Account Number</span>
+                        <input type="text" defaultValue={customerRecord?.accounts?.[0]?.id ?? ""} placeholder="—" className="h-8 w-full rounded-md border border-black/[0.15] bg-white px-3 text-[13px] font-semibold text-[#111827] placeholder:font-normal placeholder:text-[#D0D5DD] focus:border-[#166CCA] focus:outline-none focus:ring-2 focus:ring-[#166CCA]/20" />
+                      </div>
+                      {/* Escalation Type */}
+                      <div className="flex flex-col gap-1.5">
+                        <span className="text-[11px] text-[#7A7A7A]">Escalation Type</span>
+                        <select className="h-8 w-full rounded-md border border-black/[0.15] bg-white px-3 text-[13px] font-semibold text-[#111827] focus:border-[#166CCA] focus:outline-none focus:ring-2 focus:ring-[#166CCA]/20 appearance-none">
+                          <option value="">Select</option>
+                          <option>Billing</option>
+                          <option>Technical</option>
+                          <option>Complaint</option>
+                          <option>Fraud</option>
+                          <option>Other</option>
+                        </select>
+                      </div>
+                      {/* Escalation Details — full width */}
+                      <div className="flex flex-col gap-1.5 col-span-2">
+                        <span className="text-[11px] text-[#7A7A7A]">Escalation Details</span>
+                        <input type="text" defaultValue="" placeholder="Add details…" className="h-8 w-full rounded-md border border-black/[0.15] bg-white px-3 text-[13px] font-semibold text-[#111827] placeholder:font-normal placeholder:text-[#D0D5DD] focus:border-[#166CCA] focus:outline-none focus:ring-2 focus:ring-[#166CCA]/20" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Divider */}
+                  <div className="mx-5 border-t border-black/[0.06]" />
+
+                  {/* Section 2 — Digital fingerprint */}
+                  <div className="px-5 py-4">
+                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-[#98A2B3]">Digital Fingerprint</p>
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                      {([
+                        { label: "OS",              value: "Windows" },
+                        { label: "OS Version",      value: "10" },
+                        { label: "Browser",         value: "Chrome" },
+                        { label: "Browser Version", value: "148.0.0.0" },
+                        { label: "Language",        value: "en-US" },
+                        { label: "IP",              value: undefined },
+                        { label: "Country",         value: undefined },
+                        { label: "Location",        value: undefined },
+                      ] as Array<{ label: string; value: string | undefined }>).map(({ label, value }) => (
+                        <div key={label} className="flex flex-col gap-0.5">
+                          <span className="text-[11px] text-[#7A7A7A]">{label}</span>
+                          <span className={cn("text-[13px] font-semibold", value ? "text-[#111827]" : "text-[#D0D5DD]")}>
+                            {value ?? "N/A"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Save button */}
+                  <div className="border-t border-black/[0.06] px-5 py-3 flex justify-end gap-2">
+                    <button type="button" onClick={() => setIsCaseDetailsOpen(false)} className="rounded-lg border border-black/10 px-4 py-1.5 text-[13px] font-medium text-[#344054] hover:bg-[#F9FAFB] transition-colors">Cancel</button>
+                    <button type="button" className="rounded-lg bg-[#166CCA] px-4 py-1.5 text-[13px] font-semibold text-white hover:bg-[#1260B0] transition-colors">Save</button>
+                  </div>
+                </div>
+              </div>,
+              document.body
+            )}
 
             {/* Content area — flex-row when wide (>=991px) to show persistent sidebar */}
             <div className="relative min-h-0 flex-1 flex flex-row overflow-hidden">
@@ -2822,6 +3079,7 @@ function DockedConversationPanel({
                     voiceContentOverlay={voiceContentOverlay}
                     onVoiceOpeningLineClick={onVoiceOpeningLineClick}
                     onAiActionClick={onAiActionClick}
+                    chatTopContent={chatTopContent}
                   />
                 )}
               </div>
@@ -5998,6 +6256,7 @@ function ActiveVoiceAssignmentControls({
   onOpenDisposition: (anchorRect?: DOMRect | null) => void;
   customerInfo?: { name: string; customerId: string; preview: string };
 }) {
+  const { openChatPopover } = useLayoutContext();
   const [showTransfer, setShowTransfer] = useState(false);
   const [isOnHold,    setIsOnHold]    = useState(false);
   const [isMuted,     setIsMuted]     = useState(false);
@@ -6012,6 +6271,7 @@ function ActiveVoiceAssignmentControls({
     { id: "mute",     label: "Mute",     icon: isMuted ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />, active: isMuted, onClick: (e) => { e.stopPropagation(); setIsMuted((v) => !v); } },
     { id: "mask",     label: "Mask",     icon: <EyeOff className="h-3.5 w-3.5" />,                                active: isMasked,    onClick: (e) => { e.stopPropagation(); setIsMasked((v) => !v); } },
     { id: "record",   label: "Record",   icon: <Disc className={cn("h-3.5 w-3.5", isRecording && "animate-pulse")} />, active: isRecording, onClick: (e) => { e.stopPropagation(); setIsRecording((v) => !v); } },
+    { id: "consult",  label: "Consult",  icon: <MessageCircle className="h-3.5 w-3.5" />,                         active: false,       onClick: (e) => { e.stopPropagation(); const rect = (e.currentTarget as HTMLElement).getBoundingClientRect(); const syntheticRect = { right: rect.right, top: rect.top, left: rect.left, bottom: rect.bottom, width: rect.width, height: rect.height, x: rect.right, y: rect.top, toJSON: () => ({}) } as DOMRect; openChatPopover(syntheticRect, undefined, undefined, 575); } },
     { id: "transfer", label: "Transfer", icon: <ArrowRightLeft className="h-3.5 w-3.5" />,                        active: false,       onClick: (e) => { e.stopPropagation(); setShowTransfer(true); } },
     { id: "keypad",   label: "Keypad",   icon: <Hash className="h-3.5 w-3.5" />,                                  active: showKeypad,  onClick: (e) => { e.stopPropagation(); setShowKeypad((v) => !v); } },
     { id: "end",      label: "End Call", icon: <PhoneOff className="h-3.5 w-3.5" />,                              danger: true,        onClick: (e) => { e.stopPropagation(); onOpenDisposition(e.currentTarget.getBoundingClientRect()); } },
@@ -6019,7 +6279,7 @@ function ActiveVoiceAssignmentControls({
 
   return (
     <div
-      className="flex flex-wrap gap-1.5 border-t border-black/[0.06] px-5 py-2.5"
+      className="flex flex-wrap gap-1.5 border-t border-black/[0.06] bg-[#F8F9FB] px-5 py-2"
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
     >
@@ -6034,12 +6294,14 @@ function ActiveVoiceAssignmentControls({
           className={cn(
             "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-colors",
             danger
-              ? "border-[#E32926]/20 text-[#E32926] hover:bg-[#FDEAEA]"
+              ? "border-[#E32926]/25 bg-[#FFF0F0] text-[#E32926] hover:bg-[#FDEAEA]"
               : active
                 ? id === "mute" || id === "hold" ? "border-[#D97706]/30 bg-[#FFF8E1] text-[#D97706]"
                   : id === "mask" ? "border-[#166CCA]/30 bg-[#EBF4FD] text-[#166CCA]"
                   : id === "record" ? "border-[#E32926]/30 bg-[#FDEAEA] text-[#E32926]"
                   : "border-[#7C3AED]/30 bg-[#F5F3FF] text-[#7C3AED]"
+                : id === "hold" || id === "mute" || id === "mask" || id === "record" ? "border-[#7A869A]/20 bg-white text-[#4B5563] hover:bg-[#F1F5F9]"
+                : id === "consult" || id === "transfer" || id === "keypad" ? "border-[#166CCA]/20 bg-[#F0F6FF] text-[#166CCA] hover:bg-[#E0EEFF]"
                 : "border-black/10 text-[#5B5B5B] hover:bg-[#F8F8F9]",
           )}
         >
@@ -6055,6 +6317,230 @@ function ActiveVoiceAssignmentControls({
           onTransferred={(_destination) => { setShowTransfer(false); onOpenDisposition(); }}
         />
       )}
+    </div>
+  );
+}
+
+// ─── Digital contact controls (chat / email / sms / whatsapp) ────────────────
+function DigitalContactControls({
+  onConsult,
+  onTransfer,
+  onOutcome,
+  customerInfo,
+}: {
+  onConsult: (rect: DOMRect) => void;
+  onTransfer: () => void;
+  onOutcome: () => void;
+  customerInfo?: { name: string; customerId: string; preview: string };
+}) {
+  const [showTransfer, setShowTransfer] = useState(false);
+  const [showDisposition, setShowDisposition] = useState(false);
+  const consultBtnRef = useRef<HTMLButtonElement>(null);
+  const transferBtnRef = useRef<HTMLButtonElement>(null);
+  const outcomeBtnRef = useRef<HTMLButtonElement>(null);
+
+  return (
+    <div
+      className="flex flex-wrap gap-1.5 border-t border-black/[0.06] bg-[#F8F9FB] px-5 py-2"
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      {/* Consult */}
+      <button
+        ref={consultBtnRef}
+        type="button"
+        onClick={() => {
+          const rect = consultBtnRef.current?.getBoundingClientRect();
+          if (rect) onConsult(rect);
+        }}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-[#166CCA]/20 bg-[#F0F6FF] px-2.5 py-1.5 text-[11px] font-medium text-[#166CCA] transition-colors hover:bg-[#E0EEFF]"
+      >
+        <MessageCircle className="h-3.5 w-3.5" />
+        Consult
+      </button>
+
+      {/* Transfer */}
+      <button
+        ref={transferBtnRef}
+        type="button"
+        onClick={() => setShowTransfer(true)}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-[#166CCA]/20 bg-[#F0F6FF] px-2.5 py-1.5 text-[11px] font-medium text-[#166CCA] transition-colors hover:bg-[#E0EEFF]"
+      >
+        <ArrowRightLeft className="h-3.5 w-3.5" />
+        Transfer
+      </button>
+
+      {/* Outcome — triggers disposition popup to resolve/close */}
+      <button
+        ref={outcomeBtnRef}
+        type="button"
+        onClick={() => setShowDisposition(true)}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-[#027A48]/20 bg-[#ECFDF3] px-2.5 py-1.5 text-[11px] font-medium text-[#027A48] transition-colors hover:bg-[#D1FAE5]"
+      >
+        <CheckCircle2 className="h-3.5 w-3.5" />
+        Outcome
+      </button>
+
+      {showTransfer && (
+        <IncomingTransferPopover
+          triggerRef={transferBtnRef}
+          side="right"
+          customerInfo={customerInfo}
+          onClose={() => setShowTransfer(false)}
+          onTransferred={(_dest) => { setShowTransfer(false); onTransfer(); }}
+        />
+      )}
+
+      {showDisposition && typeof document !== "undefined" && createPortal(
+        <DigitalOutcomePopup
+          anchorRef={outcomeBtnRef}
+          customerInfo={customerInfo}
+          onClose={() => setShowDisposition(false)}
+          onConfirm={() => { setShowDisposition(false); onOutcome(); }}
+        />,
+        document.body,
+      )}
+    </div>
+  );
+}
+
+// ─── Digital outcome (disposition) popup ─────────────────────────────────────
+function DigitalOutcomePopup({
+  anchorRef,
+  customerInfo,
+  onClose,
+  onConfirm,
+}: {
+  anchorRef: React.RefObject<HTMLButtonElement | null>;
+  customerInfo?: { name: string; customerId: string; preview: string };
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
+  const [selectedDispositionCode, setSelectedDispositionCode] = useState<string | null>(null);
+  const [pos, setPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+
+  useEffect(() => {
+    if (!anchorRef.current) return;
+    const r = anchorRef.current.getBoundingClientRect();
+    setPos({ x: Math.max(8, r.right - 360), y: Math.max(8, r.top - 520) });
+  }, [anchorRef]);
+
+  const statusOptions = ["Resolved", "Follow-up needed", "Transferred", "Duplicate case", "Escalated"];
+  const tagOptions = ["Billing", "Refund", "Subscription", "Technical", "Account", "Fraud", "Escalated", "VIP", "First Contact"];
+  const dispositionOptions = [
+    "Issue Resolved", "Partial Resolution", "Pending Follow-up",
+    "Transferred to Tier 2", "Transferred to Billing", "Refund Issued",
+    "Credit Applied", "Information Provided", "No Action Required",
+    "Customer Declined", "Callback Scheduled",
+  ];
+
+  return (
+    <div
+      className="fixed z-[9999] w-[360px] rounded-xl border border-black/10 bg-white shadow-[0_20px_50px_rgba(0,0,0,0.18)] overflow-hidden"
+      style={{ left: pos.x, top: pos.y }}
+    >
+      {/* Header */}
+      <div
+        className="flex cursor-grab items-center justify-between border-b border-black/[0.06] bg-[#F8F8F9] px-4 py-3 select-none active:cursor-grabbing"
+        onMouseDown={(e) => {
+          if ((e.target as HTMLElement).closest("button")) return;
+          dragRef.current = { startX: e.clientX, startY: e.clientY, origX: pos.x, origY: pos.y };
+          const onMove = (me: MouseEvent) => {
+            if (!dragRef.current) return;
+            setPos({ x: Math.max(0, dragRef.current.origX + me.clientX - dragRef.current.startX), y: Math.max(0, dragRef.current.origY + me.clientY - dragRef.current.startY) });
+          };
+          const onUp = () => { dragRef.current = null; window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+          window.addEventListener("mousemove", onMove);
+          window.addEventListener("mouseup", onUp);
+        }}
+      >
+        <div className="flex items-center gap-2">
+          <GripHorizontal className="h-3.5 w-3.5 text-[#98A2B3]" />
+          <span className="text-[13px] font-semibold text-[#333333]">Outcome</span>
+          {customerInfo && <span className="text-[11px] text-[#98A2B3]">· {customerInfo.name}</span>}
+        </div>
+        <button type="button" onClick={onClose} className="flex h-6 w-6 items-center justify-center rounded-full text-[#98A2B3] hover:bg-black/[0.06] hover:text-[#344054] transition-colors">
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      <div className="overflow-y-auto" style={{ maxHeight: 440 }}>
+        {/* Status */}
+        <div className="px-4 pt-3 pb-2">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[#98A2B3]">Status</p>
+          <div className="flex flex-wrap gap-1.5">
+            {statusOptions.map((opt) => (
+              <button key={opt} type="button"
+                onClick={() => setSelectedStatus(selectedStatus === opt ? null : opt)}
+                className={cn("rounded-full border px-3 py-1 text-[11px] font-medium transition-colors",
+                  selectedStatus === opt
+                    ? "border-[#166CCA]/40 bg-[#EBF4FD] text-[#166CCA]"
+                    : "border-[#E4E7EC] bg-white text-[#344054] hover:border-[#166CCA]/30 hover:bg-[#F5F9FF]",
+                )}>
+                {opt}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="mx-4 border-t border-[#F2F4F7]" />
+        {/* Tags */}
+        <div className="px-4 py-3">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[#98A2B3]">Tags</p>
+          <div className="flex flex-wrap gap-1.5">
+            {tagOptions.map((tag) => {
+              const on = selectedTags.has(tag);
+              return (
+                <button key={tag} type="button"
+                  onClick={() => setSelectedTags((prev) => { const n = new Set(prev); on ? n.delete(tag) : n.add(tag); return n; })}
+                  className={cn("rounded-full border px-3 py-1 text-[11px] font-medium transition-colors",
+                    on
+                      ? "border-[#6941C6]/30 bg-[#F4F0FF] text-[#6941C6]"
+                      : "border-[#E4E7EC] bg-white text-[#344054] hover:border-[#6941C6]/20 hover:bg-[#FAF8FF]",
+                  )}>
+                  {tag}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="mx-4 border-t border-[#F2F4F7]" />
+        {/* Disposition */}
+        <div className="px-4 py-3">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[#98A2B3]">Disposition</p>
+          <div className="flex flex-wrap gap-1.5">
+            {dispositionOptions.map((code) => (
+              <button key={code} type="button"
+                onClick={() => setSelectedDispositionCode(selectedDispositionCode === code ? null : code)}
+                className={cn("rounded-full border px-3 py-1 text-[11px] font-medium transition-colors",
+                  selectedDispositionCode === code
+                    ? "border-[#027A48]/30 bg-[#ECFDF3] text-[#027A48]"
+                    : "border-[#E4E7EC] bg-white text-[#344054] hover:border-[#027A48]/20 hover:bg-[#F6FEF9]",
+                )}>
+                {code}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="border-t border-[#F2F4F7] px-4 py-3 flex gap-2">
+        <button type="button" onClick={onClose}
+          className="flex-1 rounded-lg border border-black/10 py-2 text-[12px] font-medium text-[#344054] hover:bg-[#F9FAFB] transition-colors">
+          Cancel
+        </button>
+        <button type="button" disabled={!selectedStatus} onClick={onConfirm}
+          className={cn("flex-1 rounded-lg py-2 text-[12px] font-semibold transition-colors",
+            selectedStatus
+              ? "bg-[#166CCA] text-white hover:bg-[#1260B0]"
+              : "bg-[#F2F4F7] text-[#98A2B3] cursor-not-allowed",
+          )}>
+          {selectedStatus ? `Complete · ${selectedStatus}` : "Select a status"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -7285,6 +7771,7 @@ function IncomingTransferPopover({
   customerInfo?: { name: string; customerId: string; preview: string };
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const { openChatPopover } = useLayoutContext();
   const [tab, setTab] = useState<"Favorites" | "Department" | "Agent" | "Supervisor">("Favorites");
   const [search, setSearch] = useState("");
   const [assigned, setAssigned] = useState<string | null>(null);
@@ -7490,12 +7977,15 @@ function IncomingTransferPopover({
                           </div>
                         );
                       })}
-                      {favAgents.map((agent) => {
+                      {[...favAgents, ...favSups].map((agent) => {
                         const isAssigned = assigned === agent.id;
                         const isDisabled = agent.availability === "Offline";
+                        const canCall = agent.availability === "Available";
+                        const isOffline = agent.availability === "Offline";
+                        const agentStatus: "online" | "away" | "offline" = agent.availability === "Available" || agent.availability === "In a Call" ? "online" : agent.availability === "Away" ? "away" : "offline";
                         return (
-                          <div key={agent.id} className={cn("flex items-center gap-3 px-4 py-3 transition-colors", isAssigned ? "bg-[#EBF4FD]" : "hover:bg-[#F9FAFB]", isDisabled && "opacity-40")}>
-                            <button type="button" disabled={isDisabled} className="flex flex-1 items-center gap-3 text-left min-w-0" onClick={() => handleAssignAgent(agent)}>
+                          <div key={agent.id} data-agent-row className={cn("flex items-center gap-2 px-3 py-2.5 transition-colors", isAssigned ? "bg-[#EBF4FD]" : "hover:bg-[#F9FAFB]", isDisabled && "opacity-40")}>
+                            <button type="button" disabled={isDisabled} className="flex flex-1 items-center gap-2 text-left min-w-0" onClick={() => handleAssignAgent(agent)}>
                               <div className="relative shrink-0">
                                 <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#F2F4F7] text-[10px] font-bold text-[#475467]">{agent.initials}</div>
                                 <span className={cn("absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-white", notifAvailabilityDot[agent.availability])} />
@@ -7505,30 +7995,25 @@ function IncomingTransferPopover({
                                 <p className="text-[10px] text-[#98A2B3] truncate">{agent.skills.join(" · ")}</p>
                               </div>
                             </button>
-                            <button type="button" onClick={(e) => toggleFavorite(agent.id, e)} className="shrink-0 p-1 text-[#FFB800] hover:text-[#D0A000] transition-colors">
-                              <Star className="h-3.5 w-3.5 fill-current" />
-                            </button>
-                          </div>
-                        );
-                      })}
-                      {favSups.map((sup) => {
-                        const isAssigned = assigned === sup.id;
-                        const isDisabled = sup.availability === "Offline";
-                        return (
-                          <div key={sup.id} className={cn("flex items-center gap-3 px-4 py-3 transition-colors", isAssigned ? "bg-[#EBF4FD]" : "hover:bg-[#F9FAFB]", isDisabled && "opacity-40")}>
-                            <button type="button" disabled={isDisabled} className="flex flex-1 items-center gap-3 text-left min-w-0" onClick={() => handleAssignAgent(sup)}>
-                              <div className="relative shrink-0">
-                                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#F2F4F7] text-[10px] font-bold text-[#475467]">{sup.initials}</div>
-                                <span className={cn("absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-white", notifAvailabilityDot[sup.availability])} />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[12px] font-semibold text-[#1D2939] truncate">{sup.name}</p>
-                                <p className="text-[10px] text-[#98A2B3] truncate">{sup.skills.join(" · ")}</p>
-                              </div>
-                            </button>
-                            <button type="button" onClick={(e) => toggleFavorite(sup.id, e)} className="shrink-0 p-1 text-[#FFB800] hover:text-[#D0A000] transition-colors">
-                              <Star className="h-3.5 w-3.5 fill-current" />
-                            </button>
+                            <div className="flex shrink-0 items-center gap-0.5">
+                              <button type="button" title={`Transfer to ${agent.name}`} disabled={isDisabled} onClick={() => handleAssignAgent(agent)}
+                                className={cn("flex h-6 w-6 items-center justify-center rounded-full transition-colors", isDisabled ? "text-[#D0D5DD] cursor-not-allowed" : "text-[#667085] hover:bg-[#F2F4F7] hover:text-[#166CCA]")}>
+                                <ArrowRightLeft className="h-3 w-3" />
+                              </button>
+                              <button type="button" title={canCall ? `Call ${agent.name}` : `${agent.name} is ${agent.availability.toLowerCase()}`} disabled={!canCall}
+                                onClick={(e) => { const rect = (e.currentTarget as HTMLElement).closest("[data-agent-row]")?.getBoundingClientRect() ?? null; openChatPopover(rect, { id: agent.id, name: agent.name, initials: agent.initials, role: agent.skills[0] ?? "", avatarColor: "#475467", status: agentStatus }, true); }}
+                                className={cn("flex h-6 w-6 items-center justify-center rounded-full transition-colors", canCall ? "text-[#667085] hover:bg-[#EFFBF1] hover:text-[#208337]" : "text-[#D0D5DD] cursor-not-allowed")}>
+                                <Phone className="h-3 w-3" />
+                              </button>
+                              <button type="button" title={isOffline ? `${agent.name} is offline` : `Message ${agent.name}`} disabled={isOffline}
+                                onClick={(e) => { const rect = (e.currentTarget as HTMLElement).closest("[data-agent-row]")?.getBoundingClientRect() ?? null; openChatPopover(rect, { id: agent.id, name: agent.name, initials: agent.initials, role: agent.skills[0] ?? "", avatarColor: "#475467", status: agentStatus }); }}
+                                className={cn("flex h-6 w-6 items-center justify-center rounded-full transition-colors", isOffline ? "text-[#D0D5DD] cursor-not-allowed" : "text-[#667085] hover:bg-[#EBF4FD] hover:text-[#166CCA]")}>
+                                <MessageCircle className="h-3 w-3" />
+                              </button>
+                              <button type="button" onClick={(e) => toggleFavorite(agent.id, e)} className="flex h-6 w-6 items-center justify-center rounded-full text-[#FFB800] hover:text-[#D0A000] transition-colors">
+                                <Star className="h-3 w-3 fill-current" />
+                              </button>
+                            </div>
                           </div>
                         );
                       })}
@@ -7578,9 +8063,12 @@ function IncomingTransferPopover({
                 const isAssigned = assigned === agent.id;
                 const isDisabled = agent.availability === "Offline" || (assigned !== null && !isAssigned);
                 const isFav = favorites.has(agent.id);
+                const canCall = agent.availability === "Available";
+                const isOffline = agent.availability === "Offline";
+                const agentStatus: "online" | "away" | "offline" = agent.availability === "Available" || agent.availability === "In a Call" ? "online" : agent.availability === "Away" ? "away" : "offline";
                 return (
-                  <div key={agent.id} className={cn("flex items-center gap-3 px-4 py-3 transition-colors", isAssigned ? "bg-[#EBF4FD] dark:bg-[#0C2A4A]" : "hover:bg-[#F9FAFB] dark:hover:bg-[#1C2536]", isDisabled && "opacity-40")}>
-                    <button type="button" disabled={isDisabled} className="flex flex-1 items-center gap-3 text-left min-w-0" onClick={() => handleAssignAgent(agent)}>
+                  <div key={agent.id} data-agent-row className={cn("flex items-center gap-2 px-3 py-2.5 transition-colors", isAssigned ? "bg-[#EBF4FD] dark:bg-[#0C2A4A]" : "hover:bg-[#F9FAFB] dark:hover:bg-[#1C2536]", isDisabled && "opacity-40")}>
+                    <button type="button" disabled={isDisabled} className="flex flex-1 items-center gap-2 text-left min-w-0" onClick={() => handleAssignAgent(agent)}>
                       <div className="relative shrink-0">
                         <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#F2F4F7] dark:bg-[#1C2A3A] text-[10px] font-bold text-[#475467] dark:text-[#94A3B8]">{agent.initials}</div>
                         <span className={cn("absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-white dark:border-[#0F1629]", notifAvailabilityDot[agent.availability])} />
@@ -7589,11 +8077,27 @@ function IncomingTransferPopover({
                         <p className="text-[12px] font-semibold text-[#1D2939] dark:text-[#E2E8F0] truncate">{agent.name}</p>
                         <p className="text-[10px] text-[#98A2B3] truncate">{agent.skills.join(" · ")}</p>
                       </div>
-                      <span className="shrink-0 text-[10px] text-[#667085]">{agent.activeCount}</span>
                     </button>
-                    <button type="button" onClick={(e) => toggleFavorite(agent.id, e)} className={cn("shrink-0 p-1 transition-colors", isFav ? "text-[#FFB800] hover:text-[#D0A000]" : "text-[#D0D5DD] hover:text-[#FFB800]")}>
-                      <Star className={cn("h-3.5 w-3.5", isFav && "fill-current")} />
-                    </button>
+                    {/* Action icons */}
+                    <div className="flex shrink-0 items-center gap-0.5">
+                      <button type="button" title={`Transfer to ${agent.name}`} disabled={isDisabled} onClick={() => handleAssignAgent(agent)}
+                        className={cn("flex h-6 w-6 items-center justify-center rounded-full transition-colors", isDisabled ? "text-[#D0D5DD] cursor-not-allowed" : "text-[#667085] hover:bg-[#F2F4F7] hover:text-[#166CCA]")}>
+                        <ArrowRightLeft className="h-3 w-3" />
+                      </button>
+                      <button type="button" title={canCall ? `Call ${agent.name}` : `${agent.name} is ${agent.availability.toLowerCase()}`} disabled={!canCall}
+                        onClick={(e) => { const rect = (e.currentTarget as HTMLElement).closest("[data-agent-row]")?.getBoundingClientRect() ?? null; openChatPopover(rect, { id: agent.id, name: agent.name, initials: agent.initials, role: agent.skills[0] ?? "", avatarColor: "#475467", status: agentStatus }, true); }}
+                        className={cn("flex h-6 w-6 items-center justify-center rounded-full transition-colors", canCall ? "text-[#667085] hover:bg-[#EFFBF1] hover:text-[#208337]" : "text-[#D0D5DD] cursor-not-allowed")}>
+                        <Phone className="h-3 w-3" />
+                      </button>
+                      <button type="button" title={isOffline ? `${agent.name} is offline` : `Message ${agent.name}`} disabled={isOffline}
+                        onClick={(e) => { const rect = (e.currentTarget as HTMLElement).closest("[data-agent-row]")?.getBoundingClientRect() ?? null; openChatPopover(rect, { id: agent.id, name: agent.name, initials: agent.initials, role: agent.skills[0] ?? "", avatarColor: "#475467", status: agentStatus }); }}
+                        className={cn("flex h-6 w-6 items-center justify-center rounded-full transition-colors", isOffline ? "text-[#D0D5DD] cursor-not-allowed" : "text-[#667085] hover:bg-[#EBF4FD] hover:text-[#166CCA]")}>
+                        <MessageCircle className="h-3 w-3" />
+                      </button>
+                      <button type="button" onClick={(e) => toggleFavorite(agent.id, e)} className={cn("flex h-6 w-6 items-center justify-center rounded-full transition-colors", isFav ? "text-[#FFB800] hover:text-[#D0A000]" : "text-[#D0D5DD] hover:text-[#FFB800]")}>
+                        <Star className={cn("h-3 w-3", isFav && "fill-current")} />
+                      </button>
+                    </div>
                   </div>
                 );
               });
@@ -7961,7 +8465,9 @@ function IncomingAssignmentCard({
    *  panel toggle is clicked while the toast is visible). */
   dismissTrigger?: number;
 }) {
-  const [summaryOpen, setSummaryOpen] = useState(item.statusLabel === "transferred");
+  const [summaryOpen, setSummaryOpen] = useState(item.statusLabel === "transferred" || item.statusLabel === "voice-transfer");
+  const [priorAgentsOpen, setPriorAgentsOpen] = useState(true);
+  const [openingLinesOpen, setOpeningLinesOpen] = useState(true);
   const [approvePhase, setApprovePhase] = useState<"idle" | "approving" | "resolved">("idle");
   const [resolvedToastStatus, setResolvedToastStatus] = useState("Resolved");
   const [resolvedStatusOpen, setResolvedStatusOpen] = useState(false);
@@ -8069,6 +8575,163 @@ function IncomingAssignmentCard({
   );
   const aiOverview = staticAssignment?.aiOverview ?? getTaskAiOverview(item.customerRecordId, item.name, item.channel);
   const customerContext = staticAssignment?.customerContext;
+
+  // ── Voice Transfer Card — rendered for human-to-human transferred call notifications ──
+  if (item.statusLabel === "voice-transfer" && item.transferHistory) {
+    return (
+      <div
+        ref={cardRef}
+        onMouseEnter={() => {
+          if (autoIdleTimerRef.current !== null) { clearTimeout(autoIdleTimerRef.current); autoIdleTimerRef.current = null; }
+        }}
+        className="pointer-events-auto w-full rounded-2xl bg-white shadow-[0_8px_32px_rgba(16,24,40,0.18)] animate-in fade-in slide-in-from-bottom-3 duration-300 overflow-hidden border border-[#E32926]/20"
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between gap-2 bg-[#FFF5F5] border-b border-[#FED7D7] px-4 pt-3.5 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#E32926] text-white">
+              <Phone className="h-3.5 w-3.5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <p className="text-[13px] font-semibold text-[#111827]">{item.name}</p>
+                <span className="rounded-full bg-[#FDEAEA] border border-[#FCA5A5] px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-[#C71D1A]">2nd Transfer</span>
+              </div>
+              <p className="text-[11px] text-[#667085]">{item.customerId} · Voice · Inbound transfer</p>
+            </div>
+          </div>
+          <button type="button" onClick={handleDismiss} className="shrink-0 text-[#98A2B3] hover:text-[#344054] transition-colors mt-0.5">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        {/* Call Summary accordion — Aria-style blue card */}
+        <div className="border-b border-black/[0.06]">
+          <button
+            type="button"
+            onClick={() => { setSummaryOpen((v) => !v); cancelIdleTimer(); }}
+            className="flex w-full items-center justify-between px-4 py-2.5 text-left transition-colors hover:bg-[#F9FAFB]"
+          >
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Case Overview</span>
+            <ChevronDown className={cn("h-3.5 w-3.5 text-[#667085] transition-transform duration-200", summaryOpen ? "rotate-180" : "rotate-0")} />
+          </button>
+          <div
+            className="overflow-hidden transition-all duration-300 ease-in-out"
+            style={{ maxHeight: summaryOpen ? "300px" : "0px", opacity: summaryOpen ? 1 : 0 }}
+          >
+            <div className="px-4 pb-3">
+              <div className="rounded-xl border border-[#BFDBFE] bg-[#EBF4FD] p-3">
+                <p className="text-[13px] leading-relaxed text-[#1D2939]">{item.callSummary ?? "Customer was charged $147 on March 14 for a Pro subscription she cancelled on December 10. She has a confirmation email on file. She is frustrated after 13+ minutes on hold and 2 prior transfers — expects an immediate refund with supervisor override."}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Prior Agents — compact one-liner per agent */}
+        <div className="border-b border-black/[0.06]">
+          <button
+            type="button"
+            onClick={() => { setPriorAgentsOpen((v) => !v); cancelIdleTimer(); }}
+            className="flex w-full items-center justify-between px-4 py-2.5 text-left transition-colors hover:bg-[#FFF5F5]"
+          >
+            <span className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">
+              Prior Agents
+              <span className="rounded-full bg-[#FDEAEA] border border-[#FCA5A5] px-1.5 py-px text-[9px] font-bold text-[#C71D1A]">{item.transferHistory.length}</span>
+            </span>
+            <ChevronDown className={cn("h-3.5 w-3.5 text-[#667085] transition-transform duration-200", priorAgentsOpen ? "rotate-180" : "rotate-0")} />
+          </button>
+          <div
+            className="overflow-hidden transition-all duration-300 ease-in-out"
+            style={{ maxHeight: priorAgentsOpen ? "400px" : "0px", opacity: priorAgentsOpen ? 1 : 0 }}
+          >
+            <div className="px-4 pb-2.5">
+              {/* Compact timeline rows */}
+              <div className="relative">
+                {/* Vertical spine */}
+                <div className="absolute left-[9px] top-4 bottom-4 w-px bg-[#FCA5A5]/40" />
+                <div className="space-y-0">
+                  {item.transferHistory.map((entry, idx) => (
+                    <div key={idx} className="flex gap-2.5 py-1.5">
+                      <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#FDEAEA] border border-[#FCA5A5] text-[9px] font-bold text-[#C71D1A] mt-0.5 z-10">
+                        {idx + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[11px] font-semibold text-[#1D2939]">{entry.agent}</span>
+                          <span className="text-[10px] text-[#98A2B3]">{entry.role}</span>
+                          <span className="ml-auto text-[10px] text-[#98A2B3] shrink-0">{entry.duration}</span>
+                        </div>
+                        <p className="text-[11px] leading-relaxed text-[#667085] mt-0.5 line-clamp-2">{entry.summary}</p>
+                      </div>
+                    </div>
+                  ))}
+                  {/* You */}
+                  <div className="flex gap-2.5 py-1.5">
+                    <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#166CCA] z-10">
+                      <div className="h-1.5 w-1.5 rounded-full bg-white" />
+                    </div>
+                    <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                      <span className="text-[11px] font-semibold text-[#166CCA]">You</span>
+                      <span className="text-[10px] text-[#98A2B3]">Now accepting</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* AI Suggested Opening Lines */}
+        <div className="border-b border-black/[0.06]">
+          <button
+            type="button"
+            onClick={() => { setOpeningLinesOpen((v) => !v); cancelIdleTimer(); }}
+            className="flex w-full items-center justify-between px-4 py-2.5 text-left transition-colors hover:bg-[#F9FAFB]"
+          >
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-[#667085]">💡 AI Suggested Opening Lines</span>
+            <ChevronDown className={cn("h-3.5 w-3.5 text-[#667085] transition-transform duration-200", openingLinesOpen ? "rotate-180" : "rotate-0")} />
+          </button>
+          <div
+            className="overflow-hidden transition-all duration-300 ease-in-out"
+            style={{ maxHeight: openingLinesOpen ? "300px" : "0px", opacity: openingLinesOpen ? 1 : 0 }}
+          >
+            <div className="px-4 pb-3">
+              <ul className="space-y-1.5">
+                {[
+                  { intro: "Own it immediately —", question: '"Diana, I have your full case — I\'ll resolve this now."' },
+                  { intro: "Lead with authority —", question: '"I have override access and can issue the $147 refund directly."' },
+                ].map((line, i) => (
+                  <li key={i} className="rounded-lg border border-[#E4E7EC] bg-[#F9FAFB] px-2.5 py-2 text-[11px] text-[#344054] leading-relaxed">
+                    <span className="font-medium">{line.intro}</span>{" "}
+                    <span className="text-[#667085]">{line.question}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        {/* Action buttons */}
+        <div className="border-t border-black/[0.06] px-4 py-3 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onTakeover(item)}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#166CCA] px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-[#1260B0] transition-colors"
+          >
+            <Phone className="h-3.5 w-3.5" />
+            Accept Call
+          </button>
+          <button
+            type="button"
+            onClick={handleDismiss}
+            className="flex-1 rounded-xl border border-black/10 bg-white px-4 py-2.5 text-[13px] font-semibold text-[#344054] hover:bg-[#F9FAFB] transition-colors"
+          >
+            Dismiss
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // ── Lead Intelligence Card — rendered for Sales Lead notifications ──────────
   if (item.statusLabel === "lead" && item.leadIntelligence) {
@@ -9067,6 +9730,9 @@ function LeftQueueRail({
   onIncomingReviewLead,
   launchingAssignmentId = null,
   onDeselect,
+  sideNavPanel = null,
+  onSideNavPanelChange,
+  isConversationActive = false,
 }: {
   visibleAssignments: QueuePreviewItem[];
   queueStatuses: Record<string, QueueAssignmentStatus>;
@@ -9091,6 +9757,9 @@ function LeftQueueRail({
   onIncomingReviewLead?: (item: QueuePreviewItem) => void;
   launchingAssignmentId?: string | null;
   onDeselect?: () => void;
+  sideNavPanel?: "queue" | "directory" | "schedule" | null;
+  onSideNavPanelChange?: (panel: "queue" | "directory" | "schedule" | null) => void;
+  isConversationActive?: boolean;
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -9111,9 +9780,29 @@ function LeftQueueRail({
   // the active assignment card is the active context, not a nav section.
   const hasActiveAssignment = visibleAssignments.some((a) => a.id === selectedAssignment.id);
 
+  // Maps nav paths to the side panel key used when a conversation is active.
+  const SIDE_PANEL_PATHS: Record<string, "queue" | "directory" | "schedule"> = {
+    "/queue": "queue",
+    "/directory": "directory",
+    "/schedule": "schedule",
+  };
+
+  // Helper: handle a nav item click — if a conversation is active and the target is a
+  // side-panel-eligible route, open it beside the conversation instead of navigating away.
+  const handleNavClick = (path: string) => {
+    const key = SIDE_PANEL_PATHS[path];
+    if (key && isConversationActive) {
+      onSideNavPanelChange?.(sideNavPanel === key ? null : key);
+    } else {
+      onSideNavPanelChange?.(null);
+      navigate(path);
+    }
+  };
+
   // If the agent is on a top-level nav page (Desk / Inbox / Schedule / Settings), the
   // assignment icon should not appear "active" — the nav destination is the focus.
-  const isOnNavPage = ["/control-center", "/queue", "/directory", "/schedule", "/settings"].includes(location.pathname);
+  const isOnNavPage = ["/control-center", "/queue", "/directory", "/schedule", "/settings"].includes(location.pathname)
+    || sideNavPanel !== null;
 
   const visibleQueuePreviewItems = useMemo(() => {
     const nextItems = visibleAssignments.map((item) => ({
@@ -9249,7 +9938,8 @@ function LeftQueueRail({
                 { icon: CalendarCheck, path: "/schedule",      label: "Schedule"       },
                 { icon: Settings,      path: "/settings",      label: "Settings"       },
               ] as const).map(({ icon: Icon, path, label }) => {
-                const isActive = location.pathname === path;
+                const sideKey = SIDE_PANEL_PATHS[path];
+                const isActive = location.pathname === path || (sideKey ? sideNavPanel === sideKey : false);
                 const showDot = label === "Control Center" && escalatedRailCount > 0;
                 return (
                   <Tooltip key={label}>
@@ -9258,7 +9948,7 @@ function LeftQueueRail({
                         <button
                           type="button"
                           aria-label={label}
-                          onClick={() => navigate(path)}
+                          onClick={() => handleNavClick(path)}
                           className={cn(
                             "flex h-9 w-9 items-center justify-center rounded-lg transition-colors",
                             isActive
@@ -9525,7 +10215,8 @@ function LeftQueueRail({
                   { label: "Schedule",   icon: CalendarCheck, path: "/schedule"      },
                   { label: "Settings",   icon: Settings,      path: "/settings"      },
                 ].map(({ label, icon: Icon, path }) => {
-                  const isActive = location.pathname === path;
+                  const sideKeyExp = SIDE_PANEL_PATHS[path];
+                  const isActive = location.pathname === path || (sideKeyExp ? sideNavPanel === sideKeyExp : false);
                   const caseCount = label === "Contacts" ? totalQueueCount : 0;
                   const escalatedCount = label === "Control Center" ? escalatedRailCount : 0;
                   const badgeCount = caseCount || escalatedCount;
@@ -9533,7 +10224,7 @@ function LeftQueueRail({
                     <button
                       key={label}
                       type="button"
-                      onClick={() => navigate(path)}
+                      onClick={() => handleNavClick(path)}
                       className={cn(
                         "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors",
                         isActive
@@ -9882,7 +10573,7 @@ export default function Layout({ children }: LayoutProps) {
   const [isChatPopoverOpen, setIsChatPopoverOpen] = useState(false);
   const [chatPopunderPosition, setChatPopunderPosition] = useState(() => ({ x: 0, y: 0 }));
   const [chatPopunderSize, setChatPopunderSize] = useState(() => ({
-    width: 360,
+    width: 450,
     height: typeof window === "undefined" ? 720 : Math.max(420, window.innerHeight - 80),
   }));
   const [isNotificationsPopoverOpen, setIsNotificationsPopoverOpen] = useState(false);
@@ -10009,6 +10700,11 @@ export default function Layout({ children }: LayoutProps) {
   const [completedTodayCount, setCompletedTodayCount] = useState(0);
   const [resolvedAssignments, setResolvedAssignments] = useState<ResolvedAssignment[]>([]);
   const [isConversationPanelOpen, setIsConversationPanelOpen] = useState(true);
+  // Side-panel shown alongside an active conversation when the user clicks Directory/Contacts/Schedule
+  const [sideNavPanel, setSideNavPanel] = useState<"queue" | "directory" | "schedule" | null>(null);
+  // Width of the conversation panel in the split view, as a fraction (0–1) of the available space
+  const [sideNavSplitFraction, setSideNavSplitFraction] = useState(0.5);
+  const sideNavDividerRef = useRef<{ startX: number; startFraction: number; containerWidth: number } | null>(null);
   // Tracks assignments whose channel has been removed — shows task summary in the panel
   const [taskSummaryIds, setTaskSummaryIds] = useState<Set<string>>(new Set());
   // Tracks assignments opened via the "Review" button — summary auto-expands for these
@@ -10116,6 +10812,14 @@ export default function Layout({ children }: LayoutProps) {
     Object.fromEntries(queuePreviewItems.map((item) => [item.id, "open"])) as Record<string, QueueAssignmentStatus>
   ));
   const [activeCallAssignmentId, setActiveCallAssignmentId] = useState<QueuePreviewItem["id"] | null>(null);
+  // ── Multi-participant state ────────────────────────────────────────────────
+  const [conferenceParticipantsByAssignmentId, setConferenceParticipantsByAssignmentId] =
+    useState<Record<string, ConferenceParticipant[]>>({});
+  const [chatCoParticipantsByAssignmentId, setChatCoParticipantsByAssignmentId] =
+    useState<Record<string, ChatCoParticipant[]>>({});
+  const [showAddAgentPickerForAssignment, setShowAddAgentPickerForAssignment] =
+    useState<string | null>(null);
+  const addAgentBtnRectRef = useRef<DOMRect | null>(null);
   const [recentInteractions, setRecentInteractions] = useState<RecentInteractionItem[]>([]);
   const [pendingCallCustomerRecordId, setPendingCallCustomerRecordId] = useState(initialSelectedAssignment.customerRecordId);
   const [isCallPopunderOpen, setIsCallPopunderOpen] = useState(false);
@@ -10282,7 +10986,6 @@ export default function Layout({ children }: LayoutProps) {
   const fireJordanEscalation = useCallback(() => {
     if (escalationFired) return;
     escalationFired = true;
-    if (visibleAssignmentIdsRef.current.includes("static-11")) return;
     setIncomingNotifications((prev) => {
       if (prev.some((n) => n.id === "escalation-static-11")) return prev;
       return [...prev, {
@@ -10307,7 +11010,6 @@ export default function Layout({ children }: LayoutProps) {
   const fireSofiaEscalation = useCallback(() => {
     if (escalation2Fired) return;
     escalation2Fired = true;
-    if (visibleAssignmentIdsRef.current.includes("static-sofia")) return;
     setIncomingNotifications((prev) => {
       if (prev.some((n) => n.id === "escalation-static-sofia")) return prev;
       return [...prev, {
@@ -10333,8 +11035,6 @@ export default function Layout({ children }: LayoutProps) {
   const fireMarcusEscalation = useCallback(() => {
     if (escalation3Fired) return;
     escalation3Fired = true;
-    if (visibleAssignmentIdsRef.current.includes("static-marcus")) return;
-    if (visibleAssignmentIdsRef.current.some((id) => id.includes("marcus"))) return;
     setIncomingNotifications((prev) => {
       if (prev.some((n) => n.id === "escalation-static-marcus")) return prev;
       return [...prev, {
@@ -10358,8 +11058,6 @@ export default function Layout({ children }: LayoutProps) {
   const fireTerryEscalation = useCallback(() => {
     if (escalation4Fired) return;
     escalation4Fired = true;
-    if (visibleAssignmentIdsRef.current.includes("static-terry")) return;
-    if (visibleAssignmentIdsRef.current.some((id) => id.includes("terry"))) return;
     const sa = staticAssignments.find((s) => s.customerRecordId === "terry");
     const leadItem: QueuePreviewItem = {
       id: "escalation-static-terry", customerRecordId: "terry", channel: "voice" as const,
@@ -10386,6 +11084,53 @@ export default function Layout({ children }: LayoutProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const fireDianaEscalation = useCallback(() => {
+    if (escalation5Fired) return;
+    escalation5Fired = true;
+    setIncomingNotifications((prev) => {
+      if (prev.some((n) => n.id === "escalation-static-diana")) return prev;
+      const item: QueuePreviewItem = {
+        id: "escalation-static-diana",
+        customerRecordId: "diana",
+        customerId: "CST-15872",
+        channel: "voice" as const,
+        name: "Diana Chen",
+        initials: "DC",
+        label: "2nd Transfer",
+        priority: "High",
+        preview: "Billing dispute — charged for cancelled subscription. Transferred from 2 prior agents.",
+        lastUpdated: "0m",
+        time: "0m",
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        icon: Phone,
+        badgeColor: "#E32926",
+        priorityClassName: "border-[#E53935] bg-[#FDEAEA] text-[#C71D1A]",
+        statusLabel: "voice-transfer",
+        escalatedAt: Date.now(),
+        callSummary: "Customer was charged $147 on March 14 for a Pro subscription she cancelled on December 10. She has a confirmation email on file. She is frustrated after 13+ minutes on hold and 2 prior transfers — expects an immediate refund with supervisor override.",
+        transferHistory: [
+          {
+            agent: "Alex Rivera",
+            role: "Initial Agent",
+            duration: "8 min",
+            summary: "Verified identity and confirmed charge. Attempted refund — billing system returned ERR-4402 (engine timeout). Could not resolve. Escalated to billing specialist.",
+          },
+          {
+            agent: "Jamie Torres",
+            role: "Billing Specialist",
+            duration: "5 min",
+            summary: "Confirmed cancellation record (Dec 10). Attempted manual credit override twice — system timed out both times. Escalating to supervisor with override authority.",
+          },
+        ],
+      };
+      return [...prev, item];
+    });
+    scenarioChannelRef.current?.postMessage({ type: "CASE_STATUS", case: "diana", status: "active" } satisfies AppMsg);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // BroadcastChannel — listen for controller messages and send status updates.
   useEffect(() => {
     const ch = new BroadcastChannel(SCENARIO_CHANNEL);
@@ -10405,6 +11150,7 @@ export default function Layout({ children }: LayoutProps) {
               sofia:  escalation2Fired ? (sofiaResolvedFlag ? "resolved" : "active") : "idle",
               marcus: escalation3Fired ? (marcusResolvedFlag ? "resolved" : "active") : "idle",
               terry:  escalation4Fired ? "active" : "idle",
+              diana:  escalation5Fired ? "active" : "idle",
             },
           } satisfies AppMsg);
         }
@@ -10417,6 +11163,7 @@ export default function Layout({ children }: LayoutProps) {
         if (msg.case === "sofia")  fireSofiaEscalation();
         if (msg.case === "marcus") fireMarcusEscalation();
         if (msg.case === "terry")  fireTerryEscalation();
+        if (msg.case === "diana")  fireDianaEscalation();
       }
     };
 
@@ -10425,21 +11172,49 @@ export default function Layout({ children }: LayoutProps) {
       ch.close();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fireJordanEscalation, fireSofiaEscalation, fireMarcusEscalation, fireTerryEscalation]);
+  }, [fireJordanEscalation, fireSofiaEscalation, fireMarcusEscalation, fireTerryEscalation, fireDianaEscalation]);
 
-  const [scenarioCaseStatuses, setScenarioCaseStatuses] = useState<Record<"jordan" | "sofia" | "marcus" | "terry", "idle" | "active" | "resolved">>({
-    jordan: "idle", sofia: "idle", marcus: "idle", terry: "idle",
+  const [scenarioCaseStatuses, setScenarioCaseStatuses] = useState<Record<"jordan" | "sofia" | "marcus" | "terry" | "diana", "idle" | "active" | "resolved">>({
+    jordan: "idle", sofia: "idle", marcus: "idle", terry: "idle", diana: "idle",
   });
 
-  const triggerScenario = useCallback((key: "jordan" | "sofia" | "marcus" | "terry") => {
+  const triggerScenario = useCallback((key: "jordan" | "sofia" | "marcus" | "terry" | "diana") => {
+    // Map each scenario key to the notification/static IDs it may have created so we can
+    // scrub them before re-firing. This lets Trigger work any number of times without refresh.
+    const notifIdMap: Record<typeof key, string> = {
+      jordan: "escalation-static-11",
+      sofia:  "escalation-static-sofia",
+      marcus: "escalation-static-marcus",
+      terry:  "escalation-static-terry",
+      diana:  "escalation-static-diana",
+    };
+    const notifId = notifIdMap[key];
+
+    // 1. Remove any existing incoming notification for this scenario.
+    setIncomingNotifications((prev) => prev.filter((n) => n.id !== notifId));
+
+    // 2. For Terry, also clear the persisted Home-tab lead notification.
+    if (key === "terry") {
+      setActiveLeadNotifications((prev) => prev.filter((n) => n.id !== notifId));
+    }
+
+    // 3. Remove any existing live assignment for this customer from the visible rail so
+    //    re-accepting creates a fresh one rather than being silently blocked.
+    setVisibleAssignmentIds((prev) => prev.filter((id) => {
+      const item = assignmentItemsByIdRef.current[id];
+      return item?.customerRecordId !== key;
+    }));
+
+    // 4. Reset module-level guard flags so the fire functions will run.
     setScenarioCaseStatuses((prev) => ({ ...prev, [key]: "active" }));
     switch (key) {
       case "jordan": { escalationFired = false; fireJordanEscalation(); break; }
       case "sofia":  { escalation2Fired = false; fireSofiaEscalation(); break; }
       case "marcus": { escalation3Fired = false; fireMarcusEscalation(); break; }
       case "terry":  { escalation4Fired = false; fireTerryEscalation(); break; }
+      case "diana":  { escalation5Fired = false; fireDianaEscalation(); break; }
     }
-  }, [fireJordanEscalation, fireSofiaEscalation, fireMarcusEscalation, fireTerryEscalation]);
+  }, [fireJordanEscalation, fireSofiaEscalation, fireMarcusEscalation, fireTerryEscalation, fireDianaEscalation]);
 
   // When the agent transitions to Available while the controller is already connected,
   // send APP_READY so the controller unlocks buttons and starts auto-timers.
@@ -10890,6 +11665,18 @@ export default function Layout({ children }: LayoutProps) {
       (s) => s.customerRecordId === customerRecordId || s.customerId === resolveAssignment?.customerId,
     );
     handleRemoveVisibleAssignment(selectedAssignmentId);
+
+    // Clear conference/chat participant state for this assignment
+    setConferenceParticipantsByAssignmentId((prev) => {
+      const next = { ...prev };
+      delete next[selectedAssignmentId];
+      return next;
+    });
+    setChatCoParticipantsByAssignmentId((prev) => {
+      const next = { ...prev };
+      delete next[selectedAssignmentId];
+      return next;
+    });
 
     // Show rich DismissalToast instead of plain sonner toast
     if (resolveAssignment || resolveSa) {
@@ -12238,9 +13025,17 @@ export default function Layout({ children }: LayoutProps) {
       status: (item.statusLabel?.toLowerCase() ?? sa?.status ?? "open") as QueueAssignmentStatus, // eslint-disable-line @typescript-eslint/no-unnecessary-type-assertion
       waitTime: item.time,
       initialConversation,
-      onCreated: sa
-        ? (assignmentId) => { acceptedStaticsStore.set(sa.id, assignmentId); }
-        : undefined,
+      onCreated: (assignmentId) => {
+          if (sa) acceptedStaticsStore.set(sa.id, assignmentId);
+          // For voice calls accepted via takeover (e.g. Diana Chen 2nd Transfer),
+          // start the in-call status and activate the call controls — same as launchLeadCall.
+          if (item.channel === "voice") {
+            layoutContextValue.startCallStatus();
+            setActiveCallAssignmentId(assignmentId);
+            setCopilotPopunderPosition(getAnchoredCopilotPopunderPosition());
+            setIsCopilotPopoverOpen(true);
+          }
+        },
     });
   };
 
@@ -12528,6 +13323,7 @@ export default function Layout({ children }: LayoutProps) {
     anchorRect?: DOMRect | null,
     agent?: { id: string; name: string; initials: string; role: string; avatarColor?: string; status?: "online" | "away" | "offline" },
     autoCall?: boolean,
+    heightOverride?: number,
   ) => {
     const margin = 16;
     const gap = 12;
@@ -12547,7 +13343,8 @@ export default function Layout({ children }: LayoutProps) {
       y = buttonBounds ? Math.max(margin, buttonBounds.bottom + gap) : margin + 60;
     }
     const maxHeight = window.innerHeight - y - margin;
-    setChatPopunderSize((prev) => ({ ...prev, height: Math.max(420, maxHeight) }));
+    const resolvedHeight = heightOverride ?? Math.max(420, maxHeight);
+    setChatPopunderSize((prev) => ({ ...prev, height: resolvedHeight }));
     bringFloatingPanelToFront("chat");
     setChatPopunderPosition({ x, y });
     if (agent) {
@@ -12942,6 +13739,73 @@ export default function Layout({ children }: LayoutProps) {
     }
   };
 
+  // ── Multi-participant callbacks ──────────────────────────────────────────────
+  const addConferenceParticipant = useCallback((agent: ConferenceParticipant) => {
+    const id = selectedAssignment.id;
+    setConferenceParticipantsByAssignmentId((prev) => {
+      const existing = prev[id] ?? [];
+      if (existing.some((p) => p.id === agent.id)) return prev;
+      return { ...prev, [id]: [...existing, { ...agent, status: "joining" as const }] };
+    });
+    setTimeout(() => {
+      setConferenceParticipantsByAssignmentId((prev) => ({
+        ...prev,
+        [id]: (prev[id] ?? []).map((p) => p.id === agent.id ? { ...p, status: "live" as const } : p),
+      }));
+    }, 2000);
+  }, [selectedAssignment.id]);
+
+  const removeConferenceParticipant = useCallback((agentId: string) => {
+    const id = selectedAssignment.id;
+    setConferenceParticipantsByAssignmentId((prev) => ({
+      ...prev,
+      [id]: (prev[id] ?? []).filter((p) => p.id !== agentId),
+    }));
+  }, [selectedAssignment.id]);
+
+  const addChatCoParticipant = useCallback((agent: ChatCoParticipant) => {
+    const id = selectedAssignment.id;
+    setChatCoParticipantsByAssignmentId((prev) => {
+      const existing = prev[id] ?? [];
+      if (existing.some((p) => p.id === agent.id)) return prev;
+      return { ...prev, [id]: [...existing, agent] };
+    });
+    // Inject system join message into the conversation state
+    const key = getConversationStateKey(id);
+    setConversationStatesByKey((current) => {
+      const existing = current[key];
+      if (!existing) return current;
+      return {
+        ...current,
+        [key]: {
+          ...existing,
+          messages: [
+            ...existing.messages,
+            {
+              id: Date.now(),
+              role: "agent" as const,
+              content: `${agent.name} has joined the conversation`,
+              time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              isInternal: true,
+              author: "__system__",
+            },
+          ],
+        },
+      };
+    });
+  }, [selectedAssignment.id, setConversationStatesByKey]);
+
+  const removeChatCoParticipant = useCallback((agentId: string) => {
+    const id = selectedAssignment.id;
+    setChatCoParticipantsByAssignmentId((prev) => ({
+      ...prev,
+      [id]: (prev[id] ?? []).filter((p) => p.id !== agentId),
+    }));
+  }, [selectedAssignment.id]);
+
+  const conferenceParticipants = conferenceParticipantsByAssignmentId[selectedAssignment.id] ?? [];
+  const chatCoParticipants = chatCoParticipantsByAssignmentId[selectedAssignment.id] ?? [];
+
   const layoutContextValue = useMemo(
     () => ({
       activeRightPanel,
@@ -13150,6 +14014,12 @@ export default function Layout({ children }: LayoutProps) {
         }
       },
       openChatPopover,
+      conferenceParticipants,
+      addConferenceParticipant,
+      removeConferenceParticipant,
+      chatCoParticipants,
+      addChatCoParticipant,
+      removeChatCoParticipant,
     }),
     [
       activeRightPanel,
@@ -13208,6 +14078,12 @@ export default function Layout({ children }: LayoutProps) {
       pendingTakeoverCaseId,
       triggerScenario,
       scenarioCaseStatuses,
+      conferenceParticipants,
+      addConferenceParticipant,
+      removeConferenceParticipant,
+      chatCoParticipants,
+      addChatCoParticipant,
+      removeChatCoParticipant,
     ],
   );
 
@@ -13608,6 +14484,9 @@ export default function Layout({ children }: LayoutProps) {
           }}
           launchingAssignmentId={launchingLeadId}
           onDeselect={closeConversationPanel}
+          sideNavPanel={sideNavPanel}
+          onSideNavPanelChange={setSideNavPanel}
+          isConversationActive={isDockedConversationVisible}
         />
         {isActivityRoute && visibleAssignments.length === 0 && (
           <div className={cn(
@@ -13819,6 +14698,16 @@ export default function Layout({ children }: LayoutProps) {
                     handleResolveAssignment();
                   }
                 }}
+                chatTopContent={
+                  chatCoParticipants.length > 0 ? (
+                    <ParticipantBar
+                      customer={{ name: selectedAssignment.name, initials: selectedAssignment.initials }}
+                      agents={chatCoParticipants}
+                      context="chat"
+                      onRemove={removeChatCoParticipant}
+                    />
+                  ) : undefined
+                }
               />
             ) : null}
             <InlineAppSpacePanel isOpen={isInlineAppSpacePanelVisible && isDeskRoute}>
@@ -13876,6 +14765,170 @@ export default function Layout({ children }: LayoutProps) {
               />
             ) : null}
           </div>
+        ) : sideNavPanel !== null ? (
+          /* ── Split view: conversation + side nav panel ── */
+          <div
+            className="flex min-h-0 flex-1 overflow-hidden"
+            ref={(el) => {
+              // store container ref for drag calculations
+              if (el) (el as HTMLElement & { _splitContainer?: HTMLElement })._splitContainer = el;
+            }}
+          >
+            {/* Left — conversation panel, width controlled by fraction */}
+            <div
+              className="flex min-h-0 flex-col overflow-hidden flex-shrink-0"
+              style={{ width: `calc(${sideNavSplitFraction * 100}% - 8px)` }}
+            >
+              <DockedConversationPanel
+                isOpen={isDockedConversationVisible}
+                conversation={conversationState}
+                openChannels={activeConversationTabs}
+                activeChannel={activeConversationChannel}
+                customerRecordId={selectedAssignment.customerRecordId}
+                onConversationChange={handleConversationStateChange}
+                onSelectChannel={(channel) => {
+                  const target = visibleAssignments.find(
+                    (a) => a.customerRecordId === selectedAssignment.customerRecordId && a.channel === channel,
+                  );
+                  if (target) {
+                    if (closedSummaryIds.has(selectedAssignment.id)) {
+                      setClosedSummaryIds((prev) => new Set([...prev, target.id]));
+                    }
+                    setSelectedAssignmentId(target.id);
+                  }
+                }}
+                onOpenDeskPanel={openDeskPanel}
+                onOpenCall={layoutContextValue.toggleCallPopunder}
+                onOpenChannel={(channel) => openCustomerConversation(selectedAssignment.customerRecordId, channel)}
+                isCustomerInfoOpen={isConversationDockedCustomerInfoVisible || isDeskCustomerInfoPopunderVisible || isCustomerInfoIconPopoverOpen || isTakeoverInfoOpen}
+                onOpenCustomerInfo={openCustomerInfoIconPopover}
+                isCallActive={status === "In a Call" && activeCallAssignmentId === selectedAssignment.id}
+                hasTranscript={selectedAssignment.customerRecordId !== "terry" && transcriptLines.length > 0}
+                voiceOpeningLines={
+                  status === "In a Call" && activeCallAssignmentId === selectedAssignment.id
+                    ? (staticAssignments.find((s) =>
+                        s.customerRecordId === selectedAssignment.customerRecordId ||
+                        s.customerId === selectedAssignment.customerId
+                      )?.leadIntelligence?.openingLines ?? null)
+                    : null
+                }
+                onConversationStatusChange={handleConversationStatusChange}
+                onResolveAssignment={handleResolveAssignment}
+                overviewIsOpen={overviewOpenByAssignmentId[selectedAssignment.id] ?? true}
+                onOverviewOpenChange={(open) => {
+                  setOverviewOpenByAssignmentId((currentState) => ({
+                    ...currentState,
+                    [selectedAssignment.id]: open,
+                  }));
+                }}
+                isCallDisabled={status === "In a Call" || status !== "Available"}
+                onClose={closeConversationPanel}
+                showTrailingGap={false}
+                initialSummaryOpen={false}
+                onSummaryClose={() => setClosedSummaryIds((prev) => new Set([...prev, selectedAssignment.id]))}
+                isPendingAcceptance={pendingAcceptanceIds.has(selectedAssignment.id)}
+                onAcceptAssignment={() => acceptPendingAssignment(selectedAssignment.id)}
+                casePreview={selectedAssignment.preview}
+                assignmentStatus={getCaseStatus(selectedAssignment.customerRecordId)}
+                onAssignmentStatusChange={(s) => handleCaseStatusChange(selectedAssignment.customerRecordId, s)}
+                onRemoveAssignment={(recipient) => handleDismissCase(selectedAssignment.customerRecordId, recipient)}
+                onUndockStart={(event) => {
+                  if (typeof window === "undefined") return;
+                  event.preventDefault();
+                  const bounds = event.currentTarget.closest("[data-conversation-panel-header]")?.getBoundingClientRect()
+                    ?? event.currentTarget.parentElement?.getBoundingClientRect();
+                  if (!bounds) return;
+                  const undockWidth = 750;
+                  const margin = CONVERSATION_POPOUNDER_MARGIN;
+                  const nextPosition = {
+                    x: Math.min(Math.max(margin, bounds.left), window.innerWidth - undockWidth - margin),
+                    y: Math.min(Math.max(margin, bounds.top), window.innerHeight - conversationPopunderSize.height - margin),
+                  };
+                  bringFloatingPanelToFront("conversation");
+                  setConversationPopunderSize({ width: undockWidth, height: conversationPopunderSize.height });
+                  setConversationPopunderPosition(nextPosition);
+                  setIsConversationPanelOpen(false);
+                  setIsConversationPopunderOpen(true);
+                  setConversationDragActivation({ id: Date.now(), offset: { x: event.clientX - nextPosition.x, y: event.clientY - nextPosition.y } });
+                }}
+                caseOverviewOpenTrigger={caseOverviewOpenTrigger}
+                activeCaseTransferredItem={activeCaseTransferredItem}
+                onTakeoverOpen={(pos) => {
+                  if (pos) conversationPanelHeaderBottomRef.current = pos.y;
+                  const botLabel = selectedAssignment.label ?? "Aria";
+                  const botAvatarUrl = botLabel === "Emily"
+                    ? `${import.meta.env.BASE_URL}emily-avatar.jpg`
+                    : botLabel === "Jacob"
+                      ? "https://cdn.builder.io/api/v1/image/assets%2F9d3d716b4b844ab4bcf3267b33310813%2F9f1a8ec85d5f478b9a015a2b7eece268?format=webp&width=800&height=1200"
+                      : "https://cdn.builder.io/api/v1/image/assets%2F9d3d716b4b844ab4bcf3267b33310813%2F054057b71e64441097a4902d7dcea754?format=webp&width=800&height=1200";
+                  const ctx = staticAssignments.find((s) =>
+                    s.customerRecordId === selectedAssignment.customerRecordId ||
+                    s.customerId === selectedAssignment.customerId
+                  )?.customerContext;
+                  if (ctx) {
+                    setCustomerInfoTakeoverCard({
+                      botType: botLabel,
+                      botAvatarUrl,
+                      customerContext: ctx,
+                      aiConfidence: selectedAssignment.aiConfidence ?? 78,
+                      aiConfidenceReason: selectedAssignment.aiConfidenceReason ?? "Based on 3 similar resolved cases and firmware documentation match.",
+                    });
+                  }
+                  setCustomerInfoTakeoverStartTime(Date.now());
+                }}
+                onAiActionClick={(actionId) => {
+                  if (actionId === "auto-resolve-dismiss") handleResolveAssignment();
+                }}
+              />
+            </div>
+
+            {/* Drag handle divider */}
+            <div
+              className="relative flex w-4 flex-shrink-0 cursor-col-resize items-center justify-center group select-none"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                const container = (e.currentTarget.parentElement as HTMLElement);
+                const containerWidth = container.getBoundingClientRect().width;
+                sideNavDividerRef.current = { startX: e.clientX, startFraction: sideNavSplitFraction, containerWidth };
+                const onMove = (me: MouseEvent) => {
+                  if (!sideNavDividerRef.current) return;
+                  const { startX, startFraction, containerWidth: cw } = sideNavDividerRef.current;
+                  const delta = me.clientX - startX;
+                  const newFraction = Math.min(0.75, Math.max(0.25, startFraction + delta / cw));
+                  setSideNavSplitFraction(newFraction);
+                };
+                const onUp = () => {
+                  sideNavDividerRef.current = null;
+                  window.removeEventListener("mousemove", onMove);
+                  window.removeEventListener("mouseup", onUp);
+                };
+                window.addEventListener("mousemove", onMove);
+                window.addEventListener("mouseup", onUp);
+              }}
+            >
+              {/* Visual track */}
+              <div className="h-full w-px bg-black/[0.08] transition-colors group-hover:bg-[#166CCA]/40 group-active:bg-[#166CCA]/60" />
+              {/* Drag pill */}
+              <div className="absolute flex h-8 w-4 items-center justify-center rounded-full border border-black/[0.10] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition-all group-hover:border-[#166CCA]/30 group-hover:shadow-[0_2px_6px_rgba(22,108,202,0.15)] group-active:scale-95">
+                <div className="flex gap-[2px]">
+                  <div className="h-3 w-px rounded-full bg-[#D0D5DD] group-hover:bg-[#166CCA]/50" />
+                  <div className="h-3 w-px rounded-full bg-[#D0D5DD] group-hover:bg-[#166CCA]/50" />
+                </div>
+              </div>
+            </div>
+
+            {/* Right — side nav panel */}
+            <div
+              className={cn(
+                "flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-black/[0.16] bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04)]",
+                "transition-[opacity] duration-[350ms] ease-[cubic-bezier(0.16,1,0.3,1)]",
+              )}
+            >
+              {sideNavPanel === "directory" && <DirectoryPage />}
+              {sideNavPanel === "queue" && <ControlPanelPage mode="inbox" />}
+              {sideNavPanel === "schedule" && <Schedule />}
+            </div>
+          </div>
         ) : (
           <>
             <DockedConversationPanel
@@ -13913,8 +14966,9 @@ export default function Layout({ children }: LayoutProps) {
                   : null
               }
               voiceTopContent={
-                selectedAssignment.customerRecordId === "terry" && status === "In a Call" && activeCallAssignmentId === selectedAssignment.id
-                  ? <TerryCallPanel
+                (() => {
+                  const terryPanel = selectedAssignment.customerRecordId === "terry" && status === "In a Call" && activeCallAssignmentId === selectedAssignment.id
+                    ? <TerryCallPanel
                       lineCount={transcriptLines.length}
                       callKey={activeCallAssignmentId ?? "terry"}
                       isCallActive={status === "In a Call"}
@@ -13934,8 +14988,22 @@ export default function Layout({ children }: LayoutProps) {
                         });
                       }}
                     />
-                  : undefined
-              }
+                    : undefined;
+                  if (!conferenceParticipants.length && !terryPanel) return undefined;
+                  return (
+                    <>
+                      {conferenceParticipants.length > 0 && (
+                        <ParticipantBar
+                          customer={{ name: selectedAssignment.name, initials: selectedAssignment.initials }}
+                          agents={conferenceParticipants}
+                          context="voice"
+                          onRemove={removeConferenceParticipant}
+                        />
+                      )}
+                      {terryPanel}
+                    </>
+                  );
+                })()}
               voiceContentOverlay={
                 selectedAssignment.customerRecordId === "terry" && transcriptLines.length > 0 && !isTranscriptVisible
                   ? (
@@ -14065,6 +15133,16 @@ export default function Layout({ children }: LayoutProps) {
                   handleResolveAssignment();
                 }
               }}
+              chatTopContent={
+                chatCoParticipants.length > 0 ? (
+                  <ParticipantBar
+                    customer={{ name: selectedAssignment.name, initials: selectedAssignment.initials }}
+                    agents={chatCoParticipants}
+                    context="chat"
+                    onRemove={removeChatCoParticipant}
+                  />
+                ) : undefined
+              }
             />
             {/* Customer info docked directly to the right of the conversation panel
                 (activity route only, triggered by the dock button in the floating popunder). */}
@@ -14208,9 +15286,10 @@ export default function Layout({ children }: LayoutProps) {
                 });
               }}
             />
+
           </>
         )}
-        {!isExpandedCanvasRoute && !isCanvasMergedIntoCombinedPanel && (
+        {!isExpandedCanvasRoute && !isCanvasMergedIntoCombinedPanel && sideNavPanel === null && (
           <div
             className={cn(
               "flex min-w-0 flex-1 flex-col overflow-hidden min-[800px]:min-w-[360px]",
@@ -14762,6 +15841,32 @@ export default function Layout({ children }: LayoutProps) {
             preview: selectedAssignment.preview,
             priority: selectedAssignment.priority,
           } : null}
+          isVoiceCallActive={status === "In a Call" && activeCallAssignmentId === selectedAssignment.id}
+          onAddToCall={(agent) => {
+            addConferenceParticipant({
+              id: agent.id,
+              name: agent.name,
+              initials: agent.initials,
+              avatarColor: agent.avatarColor ?? "#475467",
+              role: agent.role,
+              joinedAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              status: "joining",
+            });
+          }}
+          isLiveChatActive={
+            selectedAssignment.channel !== "voice" &&
+            activatedChannelIds.has(selectedAssignment.id)
+          }
+          onAddToChat={(agent) => {
+            addChatCoParticipant({
+              id: agent.id,
+              name: agent.name,
+              initials: agent.initials,
+              avatarColor: agent.avatarColor ?? "#475467",
+              role: agent.role,
+              joinedAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            });
+          }}
         />
       )}
 

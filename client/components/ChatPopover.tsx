@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRightLeft, GripHorizontal, Phone, PhoneOff, Send, X } from "lucide-react";
+import { ArrowRightLeft, GripHorizontal, Phone, PhoneOff, Send, UserPlus, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -478,6 +478,10 @@ export default function ChatPopoverContent({
   autoStartCall,
   onPendingAgentConsumed,
   consultContext,
+  isVoiceCallActive,
+  onAddToCall,
+  isLiveChatActive,
+  onAddToChat,
 }: {
   visible?: boolean;
   position: { x: number; y: number };
@@ -493,6 +497,14 @@ export default function ChatPopoverContent({
   autoStartCall?: boolean;
   onPendingAgentConsumed?: () => void;
   consultContext?: ConsultContext | null;
+  /** When true (voice call active for the current assignment), the phone button becomes "Add to Call". */
+  isVoiceCallActive?: boolean;
+  /** Called when the agent clicks "Add to Call" with the selected agent's details. */
+  onAddToCall?: (agent: { id: string; name: string; initials: string; role: string; avatarColor: string }) => void;
+  /** When true (live chat active), shows an "Add to Chat" button alongside the transfer button. */
+  isLiveChatActive?: boolean;
+  /** Called when the agent clicks "Add to Chat". */
+  onAddToChat?: (agent: { id: string; name: string; initials: string; role: string; avatarColor: string }) => void;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(initialConversationId ?? null);
   const [conversations, setConversations] = useState<Conversation[]>(seedConversations);
@@ -676,7 +688,7 @@ export default function ChatPopoverContent({
             const canCall = agent && agent.status !== "offline";
             return (
               <>
-                {/* Transfer */}
+                {/* 1. Transfer */}
                 <button
                   type="button"
                   title={`Transfer to ${selectedConversation.name}`}
@@ -685,23 +697,59 @@ export default function ChatPopoverContent({
                   <ArrowRightLeft className="h-3.5 w-3.5" />
                 </button>
 
-                {/* Call / hang up */}
-                <button
-                  type="button"
-                  disabled={!canCall}
-                  onClick={() => setIsCallingAgent((v) => !v)}
-                  title={isCallingAgent ? "End call" : canCall ? `Call ${selectedConversation.name}` : "Agent offline"}
-                  className={cn(
-                    "flex h-7 w-7 items-center justify-center rounded-full transition-colors",
-                    isCallingAgent
-                      ? "bg-[#E32926] text-white hover:bg-[#C71D1A]"
-                      : canCall
-                        ? "text-[#208337] hover:bg-[#EFFBF1]"
+                {/* 2. Add to Chat — always shown when agent is available; adds this agent into the live customer chat */}
+                {onAddToChat && agent && (
+                  <button
+                    type="button"
+                    title={`Add ${selectedConversation.name} to chat`}
+                    onClick={() => onAddToChat({ id: agent.id, name: agent.name, initials: agent.initials, role: agent.role, avatarColor: agent.avatarColor })}
+                    className="flex h-7 w-7 items-center justify-center rounded-full text-[#667085] transition-colors hover:bg-[#ECFDF5] hover:text-[#059669]"
+                  >
+                    <UserPlus className="h-3.5 w-3.5" />
+                  </button>
+                )}
+
+                {/* 3. Phone — "Add to Call" when a voice call is active, otherwise standard call/hang-up */}
+                {isVoiceCallActive && onAddToCall && agent ? (
+                  <button
+                    type="button"
+                    disabled={!canCall}
+                    title={canCall ? `Add ${selectedConversation.name} to call` : "Agent offline"}
+                    onClick={() => {
+                      if (!canCall) return;
+                      onAddToCall({ id: agent.id, name: agent.name, initials: agent.initials, role: agent.role, avatarColor: agent.avatarColor });
+                      setIsCallingAgent(true);
+                    }}
+                    className={cn(
+                      "flex h-7 w-7 items-center justify-center rounded-full transition-colors",
+                      canCall
+                        ? "bg-[#F0F6FF] text-[#166CCA] hover:bg-[#DBEAFE]"
                         : "text-[#D0D5DD] cursor-not-allowed",
-                  )}
-                >
-                  {isCallingAgent ? <PhoneOff className="h-3.5 w-3.5" /> : <Phone className="h-3.5 w-3.5" />}
-                </button>
+                    )}
+                  >
+                    {isCallingAgent
+                      ? <div className="h-3 w-3 rounded-full border-[1.5px] border-[#166CCA]/30 border-t-[#166CCA] animate-spin" />
+                      : <Phone className="h-3.5 w-3.5" />
+                    }
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={!canCall}
+                    onClick={() => setIsCallingAgent((v) => !v)}
+                    title={isCallingAgent ? "End call" : canCall ? `Call ${selectedConversation.name}` : "Agent offline"}
+                    className={cn(
+                      "flex h-7 w-7 items-center justify-center rounded-full transition-colors",
+                      isCallingAgent
+                        ? "bg-[#E32926] text-white hover:bg-[#C71D1A]"
+                        : canCall
+                          ? "text-[#208337] hover:bg-[#EFFBF1]"
+                          : "text-[#D0D5DD] cursor-not-allowed",
+                    )}
+                  >
+                    {isCallingAgent ? <PhoneOff className="h-3.5 w-3.5" /> : <Phone className="h-3.5 w-3.5" />}
+                  </button>
+                )}
               </>
             );
           })()}

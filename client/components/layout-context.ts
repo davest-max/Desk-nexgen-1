@@ -10,6 +10,28 @@ import type { LeadIntelligenceData } from "@/lib/static-assignments";
 import type { ConversationStatus, SharedConversationData } from "@/components/ConversationPanel";
 import type { RecentInteractionItem } from "@/components/RecentInteractionsPanel";
 
+// ─── Multi-participant types ───────────────────────────────────────────────────
+
+export type ConferenceParticipant = {
+  id: string;
+  name: string;
+  initials: string;
+  avatarColor: string;
+  role: string;
+  /** Formatted time the agent joined, e.g. "2:14 PM" */
+  joinedAt: string;
+  status: "joining" | "live" | "left";
+};
+
+export type ChatCoParticipant = {
+  id: string;
+  name: string;
+  initials: string;
+  avatarColor: string;
+  role: string;
+  joinedAt: string;
+};
+
 // ─── Primitive types ──────────────────────────────────────────────────────────
 
 export type RightPanelView = "info" | "desk" | "interactions" | null;
@@ -50,6 +72,10 @@ export type QueuePreviewItem = {
   aiConfidenceReason?: string;
   /** Present on Sales Lead notifications — renders the Lead Intelligence Card variant. */
   leadIntelligence?: LeadIntelligenceData;
+  /** Present on human-transfer voice call notifications — renders the Transfer History Card variant. */
+  transferHistory?: Array<{ agent: string; role: string; duration: string; summary: string }>;
+  /** Short call summary shown in the Transfer History Card overview accordion. */
+  callSummary?: string;
 };
 
 export type ResolvedAssignment = {
@@ -153,7 +179,7 @@ export interface LayoutContextValue {
   setAssignmentStatus: (assignmentId: string, status: QueueAssignmentStatus) => void;
   openCopilot: () => void;
   openDirectoryPanel: () => void;
-  openChatPopover: (anchorRect?: DOMRect | null, agent?: { id: string; name: string; initials: string; role: string; avatarColor?: string; status?: "online" | "away" | "offline" }, autoCall?: boolean) => void;
+  openChatPopover: (anchorRect?: DOMRect | null, agent?: { id: string; name: string; initials: string; role: string; avatarColor?: string; status?: "online" | "away" | "offline" }, autoCall?: boolean, heightOverride?: number) => void;
   isBriefingDismissed: boolean;
   incomingNotifications: QueuePreviewItem[];
   /** Lead notifications that persist on the Home tab even after the toast is dismissed. */
@@ -192,9 +218,23 @@ export interface LayoutContextValue {
     preview?: string;
   }) => void;
   /** Fire a named scenario escalation directly (no BroadcastChannel required). */
-  triggerScenario: (key: "jordan" | "sofia" | "marcus" | "terry") => void;
+  triggerScenario: (key: "jordan" | "sofia" | "marcus" | "terry" | "diana") => void;
   /** Live status of each scenario case — updated as escalations fire and resolve. */
-  scenarioCaseStatuses: Record<"jordan" | "sofia" | "marcus" | "terry", "idle" | "active" | "resolved">;
+  scenarioCaseStatuses: Record<"jordan" | "sofia" | "marcus" | "terry" | "diana", "idle" | "active" | "resolved">;
+  // ── Conference call (voice) ──────────────────────────────────────────────────
+  /** Agents currently on the conference call for the selected assignment. */
+  conferenceParticipants: ConferenceParticipant[];
+  /** Add an agent to the conference call for the selected assignment. */
+  addConferenceParticipant: (agent: ConferenceParticipant) => void;
+  /** Remove an agent from the conference call by id. */
+  removeConferenceParticipant: (agentId: string) => void;
+  // ── Chat co-participants ────────────────────────────────────────────────────
+  /** Agents added to the live chat for the selected assignment. */
+  chatCoParticipants: ChatCoParticipant[];
+  /** Add a co-agent to the live chat for the selected assignment (also injects join note). */
+  addChatCoParticipant: (agent: ChatCoParticipant) => void;
+  /** Remove a co-agent from the live chat by id. */
+  removeChatCoParticipant: (agentId: string) => void;
 }
 
 // ─── Context + hook ───────────────────────────────────────────────────────────

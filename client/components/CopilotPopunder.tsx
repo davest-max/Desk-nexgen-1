@@ -58,6 +58,7 @@ const SUGGESTION_PILLS = [
   "What should I focus on first?",
   "What changed recently?",
   "What actions do you recommend?",
+  "Help me build a widget for my dashboard",
 ];
 
 // Step timings (ms): how long each step takes before completing

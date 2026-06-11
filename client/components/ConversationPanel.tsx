@@ -115,6 +115,9 @@ interface ConversationPanelProps {
   voiceContentOverlay?: React.ReactNode;
   /** Called when the agent clicks one of the opening lines (e.g. to start a demo script). */
   onVoiceOpeningLineClick?: () => void;
+  /** Optional content rendered between the tab bar and the message scroll area (non-voice channels only).
+   *  Used for the ParticipantBar when a co-agent has been added to a live chat. */
+  chatTopContent?: React.ReactNode;
   /** When true, renders the reply footer in-flow instead of portalling to document.body.
    *  Use inside draggable popunders where the portalled footer can't track the container position during drag. */
   inlineFooter?: boolean;
@@ -160,6 +163,7 @@ export default function ConversationPanel({
   voiceTopContent,
   voiceRightPanel,
   voiceContentOverlay,
+  chatTopContent,
   onVoiceOpeningLineClick,
   inlineFooter = false,
   onAiActionClick,
@@ -1192,6 +1196,9 @@ export default function ConversationPanel({
           </div>
         )}
 
+        {/* Participant bar — non-voice multi-agent chats */}
+        {!isVoiceChannel && chatTopContent}
+
         {/* Conversation view — hidden on copilot tab when narrow */}
         {(!isNarrowPanel || !showAiPanel || narrowTab === "conversation") && (
         <div className="relative min-h-0 flex-1 flex flex-col overflow-hidden">
@@ -1341,18 +1348,36 @@ export default function ConversationPanel({
                   const appliedTags = messageTags[message.id] ?? [];
                   const isMsgAgent = message.role === "agent";
                   const isMsgLatest = message.id === latestNonInternalMessage?.id;
+
+                  // ── System join/leave pill — centred, no bubble ────────────────────────
+                  if (message.isInternal && message.author === "__system__") {
+                    return (
+                      <div key={message.id} className="flex items-center justify-center py-2">
+                        <span className="rounded-full bg-[#F2F4F7] dark:bg-[#1C2536] px-3 py-1 text-[11px] text-[#667085] dark:text-[#94A3B8]">
+                          {message.content}
+                        </span>
+                      </div>
+                    );
+                  }
+
                   // Bot messages have message.author set to the bot's name (e.g. "Jacob", "Aria", "Emily").
                   // These use the bot's avatar rather than the human agent's avatar.
-                  const isBotMessage = isMsgAgent && !!message.author;
+                  // Co-agent messages also use message.author (the agent's real name) but are NOT in BOT_AVATARS.
                   const BOT_AVATARS: Record<string, string> = {
                     Aria: "https://cdn.builder.io/api/v1/image/assets%2F9d3d716b4b844ab4bcf3267b33310813%2F054057b71e64441097a4902d7dcea754?format=webp&width=800&height=1200",
                     Jacob: "https://cdn.builder.io/api/v1/image/assets%2F9d3d716b4b844ab4bcf3267b33310813%2F9f1a8ec85d5f478b9a015a2b7eece268?format=webp&width=800&height=1200",
                     Emily: `${import.meta.env.BASE_URL}emily-avatar.jpg`,
                   };
+                  const isBotMessage = isMsgAgent && !!message.author && !!BOT_AVATARS[message.author];
+                  const isCoAgentMessage = isMsgAgent && !!message.author && !BOT_AVATARS[message.author];
                   const effectiveAvatarUrl = isBotMessage
                     ? (BOT_AVATARS[message.author!] ?? null)
                     : agentAvatarUrl ?? null;
-                  const msgName = isMsgAgent && !isBotMessage ? agentFullName : conversation.customerName;
+                  const msgName = isCoAgentMessage
+                    ? message.author!
+                    : isMsgAgent && !isBotMessage
+                      ? agentFullName
+                      : conversation.customerName;
                   const msgInitials = isBotMessage
                     ? (message.author ?? "").slice(0, 2).toUpperCase()
                     : msgName.split(" ").filter(Boolean).map((n: string) => n[0]).join("").slice(0, 2).toUpperCase();

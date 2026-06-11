@@ -1757,10 +1757,256 @@ const persistedState = {
   controlCenterTab: "monitor" as "monitor" | "assigned" | "queue",
 };
 
+// ─── Contact History Tab ──────────────────────────────────────────────────────
+
+type HistoryItem = {
+  id: string;
+  name: string;
+  customerId: string;
+  initials: string;
+  avatarBg: string;
+  channel: "voice" | "chat" | "email" | "sms";
+  duration: string;
+  resolvedAt: number;
+  outcome: "resolved" | "transferred" | "closed";
+  summary: string;
+  detail: string;
+};
+
+const DEMO_HISTORY: HistoryItem[] = [
+  {
+    id: "dh-1",
+    name: "Nathan Cole",
+    customerId: "CST-22841",
+    initials: "NC",
+    avatarBg: "#166CCA",
+    channel: "voice",
+    duration: "8m 14s",
+    resolvedAt: Date.now() - 1000 * 60 * 18,
+    outcome: "resolved",
+    summary: "Password reset & account unlock",
+    detail: "Customer was locked out after 5 failed attempts. Verified identity via KBA, reset credentials, and confirmed access restored.",
+  },
+  {
+    id: "dh-2",
+    name: "Priya Shah",
+    customerId: "CST-30194",
+    initials: "PS",
+    avatarBg: "#7C3AED",
+    channel: "chat",
+    duration: "12m 02s",
+    resolvedAt: Date.now() - 1000 * 60 * 41,
+    outcome: "resolved",
+    summary: "Duplicate charge dispute — $89.99 refund issued",
+    detail: "Customer identified a duplicate transaction from 3 days ago. Reviewed billing history, confirmed duplicate, and processed refund.",
+  },
+  {
+    id: "dh-3",
+    name: "Omar Farooq",
+    customerId: "CST-18823",
+    initials: "OF",
+    avatarBg: "#059669",
+    channel: "email",
+    duration: "6m 30s",
+    resolvedAt: Date.now() - 1000 * 60 * 67,
+    outcome: "resolved",
+    summary: "Plan upgrade confirmation & feature overview",
+    detail: "Responded to upgrade inquiry. Outlined Pro plan features, confirmed proration credit of $14.50, and sent confirmation email.",
+  },
+  {
+    id: "dh-4",
+    name: "Lauren Briggs",
+    customerId: "CST-27760",
+    initials: "LB",
+    avatarBg: "#BE123C",
+    channel: "voice",
+    duration: "22m 47s",
+    resolvedAt: Date.now() - 1000 * 60 * 105,
+    outcome: "transferred",
+    summary: "Escalated fraud investigation — 4 suspicious transactions",
+    detail: "Customer reported 4 unrecognised charges totalling $1,240. Temporary card freeze applied, case escalated to Fraud team with full notes.",
+  },
+  {
+    id: "dh-5",
+    name: "Mei Tanaka",
+    customerId: "CST-31045",
+    initials: "MT",
+    avatarBg: "#D97706",
+    channel: "chat",
+    duration: "9m 55s",
+    resolvedAt: Date.now() - 1000 * 60 * 138,
+    outcome: "resolved",
+    summary: "Shipping delay — expedited replacement dispatched",
+    detail: "Order CST-31045-B not delivered after 10 days. Confirmed carrier delay, dispatched replacement via overnight with waived shipping fee.",
+  },
+  {
+    id: "dh-6",
+    name: "David Reyes",
+    customerId: "CST-14502",
+    initials: "DR",
+    avatarBg: "#0891B2",
+    channel: "email",
+    duration: "4m 10s",
+    resolvedAt: Date.now() - 1000 * 60 * 172,
+    outcome: "closed",
+    summary: "Invoice request for Q1 — PDF sent",
+    detail: "Customer needed itemised invoice for Q1 expenses report. Generated and emailed PDF invoice for all 3 transactions.",
+  },
+  {
+    id: "dh-7",
+    name: "Chloe Park",
+    customerId: "CST-29317",
+    initials: "CP",
+    avatarBg: "#DB2777",
+    channel: "voice",
+    duration: "15m 22s",
+    resolvedAt: Date.now() - 1000 * 60 * 215,
+    outcome: "resolved",
+    summary: "Cancellation retained — switched to pause plan",
+    detail: "Customer called to cancel due to cost. Offered 60-day pause at no charge. Customer accepted; cancellation avoided.",
+  },
+];
+
+const CHANNEL_ICON: Record<HistoryItem["channel"], React.ReactNode> = {
+  voice: <Phone className="h-3 w-3" />,
+  chat:  <MessageCircle className="h-3 w-3" />,
+  email: <Mail className="h-3 w-3" />,
+  sms:   <MessageCircle className="h-3 w-3" />,
+};
+
+const OUTCOME_STYLE: Record<HistoryItem["outcome"], string> = {
+  resolved:    "bg-[#ECFDF3] text-[#027A48]",
+  transferred: "bg-[#FFF4ED] text-[#B54708]",
+  closed:      "bg-[#F2F4F7] text-[#344054]",
+};
+
+function ContactHistoryTab({
+  resolvedAssignments,
+  toggleCallPopunder,
+}: {
+  resolvedAssignments: import("@/components/layout-context").ResolvedAssignment[];
+  toggleCallPopunder: (anchorRect?: DOMRect | null, customerRecordId?: string) => void;
+}) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const liveItems: HistoryItem[] = resolvedAssignments
+    .filter((r) => r.assignedTo === CURRENT_AGENT_NAME)
+    .map((r) => ({
+      id: r.id,
+      name: r.name,
+      customerId: "",
+      initials: r.name.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase(),
+      avatarBg: "#166CCA",
+      channel: r.channel as HistoryItem["channel"],
+      duration: "—",
+      resolvedAt: r.resolvedAt,
+      outcome: (r.status === "resolved" ? "resolved" : "closed") as HistoryItem["outcome"],
+      summary: r.preview,
+      detail: r.preview,
+    }));
+
+  const allItems = [...liveItems, ...DEMO_HISTORY].sort((a, b) => b.resolvedAt - a.resolvedAt);
+
+  const formatElapsed = (ts: number) => {
+    const diff = Math.round((Date.now() - ts) / 60000);
+    if (diff < 1) return "Just now";
+    if (diff < 60) return `${diff}m ago`;
+    const h = Math.floor(diff / 60);
+    if (h < 24) return `${h}h ${diff % 60}m ago`;
+    return `${Math.floor(h / 24)}d ago`;
+  };
+
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const groups: Array<{ label: string; items: HistoryItem[] }> = [];
+  allItems.forEach((item) => {
+    const d = new Date(item.resolvedAt);
+    const label = d >= todayStart ? "Today" : d.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+    const last = groups[groups.length - 1];
+    if (last && last.label === label) last.items.push(item);
+    else groups.push({ label, items: [item] });
+  });
+
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto bg-[#F9FAFB]">
+      {/* Toolbar */}
+      <div className="sticky top-0 z-10 border-b border-[#E4E7EC] bg-white px-5 py-3">
+        <span className="text-[12px] font-medium text-[#667085]">
+          {allItems.length} interaction{allItems.length !== 1 ? "s" : ""} today
+        </span>
+      </div>
+
+      <div className="w-full max-w-4xl space-y-5 px-5 py-5">
+        {groups.map(({ label, items }) => (
+          <div key={label}>
+            <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-[#98A2B3]">{label}</p>
+            <div className="overflow-hidden rounded-xl border border-[#E4E7EC] bg-white shadow-[0_1px_3px_rgba(16,24,40,0.06)]">
+              {items.map((item, idx) => {
+                const isExpanded = expandedId === item.id;
+                return (
+                  <div key={item.id} className={cn("border-[#F2F4F7]", idx > 0 && "border-t")}>
+                    {/* Main row */}
+                    <div
+                      className="flex cursor-pointer items-start gap-3.5 px-4 py-3.5 transition-colors hover:bg-[#F9FAFB]"
+                      onClick={() => setExpandedId(isExpanded ? null : item.id)}
+                    >
+                      {/* Avatar */}
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-bold text-white" style={{ backgroundColor: item.avatarBg }}>
+                        {item.initials}
+                      </div>
+                      {/* Info */}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[13px] font-semibold text-[#111827]">{item.name}</span>
+                          <span className="text-[11px] text-[#98A2B3]">{item.customerId}</span>
+                        </div>
+                        <p className="mt-0.5 text-[12px] text-[#344054] font-medium leading-snug">{item.summary}</p>
+                        {isExpanded && (
+                          <p className="mt-1.5 text-[12px] text-[#667085] leading-relaxed">{item.detail}</p>
+                        )}
+                      </div>
+                      {/* Meta */}
+                      <div className="flex shrink-0 flex-col items-end gap-1.5 ml-2">
+                        <div className="flex items-center gap-1.5 text-[11px] text-[#98A2B3]">
+                          {CHANNEL_ICON[item.channel]}
+                          <span className="capitalize">{item.channel}</span>
+                          <span className="text-[#D0D5DD]">·</span>
+                          <span>{formatElapsed(item.resolvedAt)}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-[#98A2B3]">{item.duration}</span>
+                          <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", OUTCOME_STYLE[item.outcome])}>
+                            {item.outcome.charAt(0).toUpperCase() + item.outcome.slice(1)}
+                          </span>
+                        </div>
+                        {/* Redial button — voice only */}
+                        {item.channel === "voice" && (
+                          <button
+                            type="button"
+                            title={`Redial ${item.name}`}
+                            onClick={(e) => { e.stopPropagation(); toggleCallPopunder(e.currentTarget.getBoundingClientRect(), item.customerId || undefined); }}
+                            className="mt-0.5 inline-flex items-center gap-1 rounded-full border border-[#166CCA]/25 bg-[#EBF4FD] px-2 py-0.5 text-[10px] font-medium text-[#166CCA] transition-colors hover:bg-[#D6EBFB]"
+                          >
+                            <Phone className="h-2.5 w-2.5" />
+                            Redial
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-panel" } = {}) {
-  const { resolvedAssignments, assignmentStatusesById, acceptIssue, visibleAssignments, setAssignmentStatus, selectAssignment, openCopilot, isAgentAvailable, pendingMonitorCaseId, clearPendingMonitorCaseId, pendingTakeoverCaseId, clearPendingTakeoverCaseId, openCustomerConversation, dismissIncomingByCustomer, decrementEscalatedCount, onJordanCaseResolved, onSofiaCaseResolved, onMarcusCaseResolved, showDismissalToast, pushTransferredToast, setConversationStateForAssignment, activeLeadNotifications, dismissLeadNotification, launchLeadCall } = useLayoutContext();
+  const { resolvedAssignments, assignmentStatusesById, acceptIssue, visibleAssignments, setAssignmentStatus, selectAssignment, openCopilot, isAgentAvailable, pendingMonitorCaseId, clearPendingMonitorCaseId, pendingTakeoverCaseId, clearPendingTakeoverCaseId, openCustomerConversation, dismissIncomingByCustomer, decrementEscalatedCount, onJordanCaseResolved, onSofiaCaseResolved, onMarcusCaseResolved, showDismissalToast, pushTransferredToast, setConversationStateForAssignment, activeLeadNotifications, dismissLeadNotification, launchLeadCall, toggleCallPopunder } = useLayoutContext();
   const navigate = useNavigate();
   const peakEscalationCountRef = useRef(0);
   const [homeTrendSlide, setHomeTrendSlide] = useState(0);
@@ -1826,6 +2072,7 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
   // Trigger re-renders when acceptedStaticsStore changes (the store itself lives at module scope
   // so it survives remounts when the agent navigates away and back).
   const [, forceUpdate] = useState(0);
+  const [myZoneExpanded, setMyZoneExpanded] = useState(false);
   const [escalatedModalCase, setEscalatedModalCase] = useState<EscalatedCaseModalData | null>(null);
   // Initialise from persistedState so escalated status survives navigation away and back.
   const [escalatedOverrides, setEscalatedOverrides] = useState<Set<string>>(() => new Set(persistedState.escalatedIds));
@@ -2245,7 +2492,7 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
       {/* ── Top-level Review / Queue tabs ────────────────────────────────────── */}
       {mode !== "inbox" && (
         <div className="shrink-0 flex items-center gap-0 border-b border-border bg-white dark:bg-[#0F1629] px-5">
-          {([["Home", "monitor"], ["Assigned", "assigned"]] as const).map(([label, key]) => {
+          {([["Home", "monitor"], ["Contact History", "assigned"]] as const).map(([label, key]) => {
             const isActive = controlCenterTab === key;
             return (
               <button
@@ -2623,7 +2870,6 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
 
               {/* My Zone — WEM */}
               {(() => {
-                const [myZoneExpanded, setMyZoneExpanded] = useState(false);
                 const wemData = {
                   shift: { label: "Today 2:00 – 10:00 PM", nextBid: "Jun 9", bidsOpen: 2, status: "Confirmed" },
                   training: { due: 2, modules: [
@@ -2836,125 +3082,10 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
         );
       })()}
 
-      {/* ── Assigned tab ─────────────────────────────────────────────────────── */}
-      {mode !== "inbox" && controlCenterTab === "assigned" && (() => {
-        // Include all cases assigned to the current agent:
-        // 1. Static cases taken over via the review modal (active in rail)
-        // 2. Live cases currently active in the rail
-        // 3. Resolved/dismissed cases still attributed to this agent (shown in queue via resolvedNormalised)
-        //    but NOT transferred to someone else.
-        const staticAssigned = staticNormalised.filter(
-          (r) => r.isAccepted && !r.isClosed && !bulkResolvedIds.has(r.id) && !rejectedIds.has(r.id),
-        );
-        const liveAssigned = liveNormalised.filter(
-          (r) => r.isAccepted && !r.isParkedFromToast,
-        );
-        const resolvedAssigned = resolvedNormalised.filter(
-          (r) => r.assignedTo === CURRENT_AGENT_NAME,
-        );
-        const seenIds = new Set(staticAssigned.map((r) => r.id));
-        liveAssigned.forEach((r) => seenIds.add(r.id));
-        const assignedRows = [
-          ...staticAssigned,
-          ...liveAssigned.filter((r) => !seenIds.has(r.id)),
-          ...resolvedAssigned.filter((r) => !seenIds.has(r.id)),
-        ];
-        return (
-          <div className="min-h-0 flex-1 overflow-hidden flex flex-col">
-            <div className="flex flex-row flex-1 min-w-0 h-full overflow-hidden">
-              <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-
-                {/* Header: view toggles + filter */}
-                <div className="shrink-0 px-5 pt-4 pb-0">
-                  <div className="flex items-center justify-between gap-3 mb-3">
-                    <div className="flex items-center gap-1">
-                      <button type="button" onClick={() => setViewMode("list")} className={cn("flex h-7 w-7 items-center justify-center rounded-md border transition-colors", viewMode === "list" ? "border-[#166CCA]/40 bg-[#EBF4FD] text-[#166CCA]" : "border-border bg-white text-[#667085] hover:bg-[#F9FAFB]")}><LayoutList className="h-3.5 w-3.5" /></button>
-                      <button type="button" onClick={() => setViewMode("card")} className={cn("flex h-7 w-7 items-center justify-center rounded-md border transition-colors", viewMode === "card" ? "border-[#166CCA]/40 bg-[#EBF4FD] text-[#166CCA]" : "border-border bg-white text-[#667085] hover:bg-[#F9FAFB]")}><LayoutGrid className="h-3.5 w-3.5" /></button>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[12px] text-[#98A2B3]">{assignedRows.length} assigned case{assignedRows.length !== 1 ? "s" : ""}</span>
-                    </div>
-                  </div>
-                  {/* Active filter chips */}
-                  {(channelFilters.size > 0 || priorityFilters.size > 0 || agentTypeFilter !== "all" || issueTab.size > 0) && (
-                    <div className="flex flex-wrap gap-1.5 pb-3">
-                      {[...channelFilters].map((ch) => (
-                        <span key={ch} className="inline-flex items-center gap-1 rounded-full border border-[#BFDBFE] bg-[#EBF4FD] pl-2.5 pr-1.5 py-0.5 text-[11px] font-medium text-[#166CCA]">
-                          {channelFilterOptions.find(o => o.value === ch)?.label}
-                          <button type="button" onClick={() => { const n = new Set(channelFilters); n.delete(ch); setChannelFilters(n); }} className="flex h-3.5 w-3.5 items-center justify-center rounded-full hover:bg-[#BFDBFE] transition-colors"><X className="h-2.5 w-2.5" /></button>
-                        </span>
-                      ))}
-                      {[...priorityFilters].map((p) => (
-                        <span key={p} className="inline-flex items-center gap-1 rounded-full border border-[#BFDBFE] bg-[#EBF4FD] pl-2.5 pr-1.5 py-0.5 text-[11px] font-medium text-[#166CCA]">
-                          {p}
-                          <button type="button" onClick={() => { const n = new Set(priorityFilters); n.delete(p); setPriorityFilters(n); }} className="flex h-3.5 w-3.5 items-center justify-center rounded-full hover:bg-[#BFDBFE] transition-colors"><X className="h-2.5 w-2.5" /></button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div key={viewMode} className={cn("flex-1 min-h-0 animate-view-crossfade", viewMode === "card" ? "overflow-y-auto" : "overflow-y-auto")}>
-                  {assignedRows.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full gap-3 text-center p-8">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#EBF4FD]">
-                        <Check className="h-5 w-5 text-[#166CCA]" />
-                      </div>
-                      <p className="text-[14px] font-semibold text-[#333333]">No assigned cases</p>
-                      <p className="text-[12px] text-[#667085] max-w-xs">Cases you take over will appear here.</p>
-                    </div>
-                  ) : viewMode === "card" ? (
-                    <QueueCardView rows={assignedRows} />
-                  ) : (
-                    (() => {
-                      const customerMap = new Map<string, typeof assignedRows>();
-                      assignedRows.forEach((a) => {
-                        const key = a.customerId ?? `anon-${a.name}`;
-                        if (!customerMap.has(key)) customerMap.set(key, []);
-                        customerMap.get(key)!.push(a);
-                      });
-                      const sortedGroups = [...customerMap.entries()].sort(([, aItems], [, bItems]) => {
-                        const statusRankLocal: Record<string, number> = { escalated: 0, open: 1, pending: 2, resolved: 3 };
-                        const aHighest = Math.min(...aItems.map((i) => statusRankLocal[i.status] ?? 99));
-                        const bHighest = Math.min(...bItems.map((i) => statusRankLocal[i.status] ?? 99));
-                        return aHighest - bHighest;
-                      });
-                      return sortedGroups.map(([key, items]) => {
-                        const sortedItems = [...items].sort((a, b) => {
-                          const statusRankLocal: Record<string, number> = { escalated: 0, open: 1, pending: 2, resolved: 3 };
-                          return (statusRankLocal[a.status] ?? 99) - (statusRankLocal[b.status] ?? 99);
-                        });
-                        if (sortedItems.length === 1) {
-                          return <IssueRow key={key} {...sortedItems[0]} isMonitored={false} isSelected={selectedCaseId === sortedItems[0].id} onSelect={setSelectedCaseId} />;
-                        }
-                        const customerRecord = sortedItems[0]?.customerRecordId ? getCustomerRecord(sortedItems[0].customerRecordId) : null;
-                        return (
-                          <CustomerGroup
-                            key={key}
-                            customerRecord={customerRecord}
-                            caseCustomerName={sortedItems[0]?.name}
-                            items={sortedItems}
-                            monitoredCaseId={null}
-                            onResolveAll={() => setBulkResolvedIds((prev) => new Set([...prev, ...sortedItems.map((i) => i.id)]))}
-                            selectedCaseId={selectedCaseId}
-                            onSelectCase={setSelectedCaseId}
-                          />
-                        );
-                      });
-                    })()
-                  )}
-                </div>
-              </div>
-
-              {/* Detail panel */}
-              <AnimatedCaseDetailPanel
-                caseData={assignedRows.find((r) => r.id === selectedCaseId) ?? null}
-                onClose={() => setSelectedCaseId(null)}
-              />
-            </div>
-          </div>
-        );
-      })()}
+      {/* ── Contact History tab ──────────────────────────────────────────────── */}
+      {mode !== "inbox" && controlCenterTab === "assigned" && (
+        <ContactHistoryTab resolvedAssignments={resolvedAssignments} toggleCallPopunder={toggleCallPopunder} />
+      )}
 
       {/* ── Queue tab ─────────────────────────────────────────────────────────── */}
       {mode === "inbox" && <div className="min-h-0 flex-1 overflow-hidden flex flex-col">
