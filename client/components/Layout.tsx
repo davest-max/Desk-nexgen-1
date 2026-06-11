@@ -15,6 +15,7 @@ import {
   type ChatCoParticipant,
 } from "@/components/layout-context";
 import { ParticipantBar } from "@/components/ParticipantBar";
+import { OutcomePanel } from "@/components/OutcomePanel";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
@@ -476,6 +477,7 @@ function CallControlsPopunder({
   isJoiningCall = false,
   joiningCallCustomerName = "",
   initialAccountNumber = "",
+  activeCallCustomerRecordId,
 }: {
   position: CallPopunderPosition;
   size: CallPopunderSize;
@@ -493,6 +495,8 @@ function CallControlsPopunder({
   joiningCallCustomerName?: string;
   /** Pre-populates the Account Number field on open (e.g. for inbound lead callbacks). */
   initialAccountNumber?: string;
+  /** customerRecordId of the active call assignment — used to seed AI suggestions in the outcome panel. */
+  activeCallCustomerRecordId?: string;
 }) {
   const dragOffsetRef = useRef({ x: 0, y: 0 });
   const resizeStartRef = useRef({ mouseX: 0, mouseY: 0, width: 360, height: 520 });
@@ -761,136 +765,25 @@ function CallControlsPopunder({
             </Button>
           </div>
         ) : (
-          <div className="-mx-3 overflow-y-auto" style={{ maxHeight: 420 }}>
-            {/* ── Status ── */}
-            <div className="px-3 pb-3">
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[#98A2B3]">Status</p>
-              <div className="flex flex-wrap gap-1.5">
-                {CALL_DISPOSITION_OPTIONS.map((option) => {
-                  const isActive = selectedStatus === option;
-                  return (
-                    <button
-                      key={option}
-                      type="button"
-                      onClick={() => setSelectedStatus(isActive ? null : option)}
-                      className={cn(
-                        "rounded-full border px-3 py-1 text-[11px] font-medium transition-colors",
-                        isActive
-                          ? "border-[#166CCA]/40 bg-[#EBF4FD] text-[#166CCA]"
-                          : "border-[#E4E7EC] bg-white text-[#344054] hover:border-[#166CCA]/30 hover:bg-[#F5F9FF]",
-                      )}
-                    >
-                      {option}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="mx-0 border-t border-[#F2F4F7]" />
-
-            {/* ── Tags ── */}
-            <div className="px-3 py-3">
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[#98A2B3]">Tags</p>
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  "Billing", "Refund", "Subscription", "Technical", "Account",
-                  "Fraud", "Escalated", "VIP", "Callback", "First Contact",
-                ].map((tag) => {
-                  const isActive = selectedTags.has(tag);
-                  return (
-                    <button
-                      key={tag}
-                      type="button"
-                      onClick={() => {
-                        setSelectedTags((prev) => {
-                          const next = new Set(prev);
-                          isActive ? next.delete(tag) : next.add(tag);
-                          return next;
-                        });
-                      }}
-                      className={cn(
-                        "rounded-full border px-3 py-1 text-[11px] font-medium transition-colors",
-                        isActive
-                          ? "border-[#6941C6]/30 bg-[#F4F0FF] text-[#6941C6]"
-                          : "border-[#E4E7EC] bg-white text-[#344054] hover:border-[#6941C6]/20 hover:bg-[#FAF8FF]",
-                      )}
-                    >
-                      {tag}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="mx-0 border-t border-[#F2F4F7]" />
-
-            {/* ── Disposition ── */}
-            <div className="px-3 py-3">
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[#98A2B3]">Disposition</p>
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  "Issue Resolved",
-                  "Partial Resolution",
-                  "Pending Follow-up",
-                  "Transferred to Tier 2",
-                  "Transferred to Billing",
-                  "Supervisor Override",
-                  "Refund Issued",
-                  "Credit Applied",
-                  "Information Provided",
-                  "No Action Required",
-                  "Customer Declined",
-                  "Callback Scheduled",
-                ].map((code) => {
-                  const isActive = selectedDispositionCode === code;
-                  return (
-                    <button
-                      key={code}
-                      type="button"
-                      onClick={() => setSelectedDispositionCode(isActive ? null : code)}
-                      className={cn(
-                        "rounded-full border px-3 py-1 text-[11px] font-medium transition-colors",
-                        isActive
-                          ? "border-[#027A48]/30 bg-[#ECFDF3] text-[#027A48]"
-                          : "border-[#E4E7EC] bg-white text-[#344054] hover:border-[#027A48]/20 hover:bg-[#F6FEF9]",
-                      )}
-                    >
-                      {code}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* ── Submit ── */}
-            <div className="border-t border-[#F2F4F7] px-3 py-3">
-              <button
-                type="button"
-                disabled={!selectedStatus}
-                onClick={() => {
-                  if (!selectedStatus) return;
-                  const disposition = selectedStatus as (typeof CALL_DISPOSITION_OPTIONS)[number];
-                  setSelectedDisposition(disposition);
-                  setTimeout(() => {
-                    onSelectDisposition(disposition);
-                    setSelectedDisposition(null);
-                    setSelectedStatus(null);
-                    setSelectedTags(new Set());
-                    setSelectedDispositionCode(null);
-                  }, 700);
-                }}
-                className={cn(
-                  "w-full rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors",
-                  selectedStatus
-                    ? "bg-[#166CCA] text-white hover:bg-[#1260B0]"
-                    : "bg-[#F2F4F7] text-[#98A2B3] cursor-not-allowed",
-                )}
-              >
-                {selectedStatus ? `Complete — ${selectedStatus}` : "Select a status to complete"}
-              </button>
-            </div>
-          </div>
+          <OutcomePanel
+            channel="voice"
+            customerInfo={joiningCallCustomerName ? {
+              name: joiningCallCustomerName,
+              customerId: "",
+              customerRecordId: activeCallCustomerRecordId,
+              preview: "",
+            } : undefined}
+            initialPosition={position ? { x: position.x, y: position.y } : undefined}
+            onClose={() => onCancelDisposition?.()}
+            onConfirm={(result) => {
+              const disposition = result.status as (typeof CALL_DISPOSITION_OPTIONS)[number];
+              setSelectedDisposition(disposition);
+              setTimeout(() => {
+                onSelectDisposition(disposition);
+                setSelectedDisposition(null);
+              }, 700);
+            }}
+          />
         )}
       </div>
 
@@ -2885,6 +2778,7 @@ function DockedConversationPanel({
                   }}
                   onOutcome={() => onRemoveAssignment?.(undefined)}
                   customerInfo={customerRecord ? { name: customerRecord.name, customerId: customerRecord.customerId, preview: casePreview ?? "" } : undefined}
+                  customerRecordId={customerRecordId}
                 />
               )}
 
@@ -5711,6 +5605,7 @@ function DeskCanvasPopunder({
 }) {
   const [inlineCustomerId, setInlineCustomerId] = useState<string | null>(null);
   const [inlineAddOpen, setInlineAddOpen] = useState(false);
+  const [isExpandedPanelOpen, setIsExpandedPanelOpen] = useState(false);
   const dragOffsetRef = useRef({ x: 0, y: 0 });
   const resizeStartRef = useRef({ mouseX: 0, mouseY: 0, width: size.width, height: size.height });
   const isDraggingRef = useRef(false);
@@ -5796,11 +5691,52 @@ function DeskCanvasPopunder({
     };
   }, [minWidth, onPositionChange, onSizeChange, position.x, position.y, size.height, size.width]);
 
+  const collapsedToPill = view === "copilot" && isExpandedPanelOpen;
+
   return (
+    <>
+      {/* Collapsed pill — always rendered alongside CopilotContent so the portal stays mounted */}
+      {collapsedToPill && (
+        <div
+          className="fixed flex items-center gap-2 rounded-full border border-[#166CCA]/30 bg-white shadow-[0_4px_16px_rgba(0,0,0,0.14)] px-3 py-2 cursor-grab active:cursor-grabbing"
+          style={{ left: position.x, top: position.y, zIndex: zIndex + 140 }}
+          onMouseDown={(e) => {
+            onInteractStart?.();
+            isDraggingRef.current = true;
+            dragOffsetRef.current = { x: e.clientX - position.x, y: e.clientY - position.y };
+            document.body.style.userSelect = "none";
+          }}
+        >
+          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#EBF4FD]">
+            <Sparkles className="h-3.5 w-3.5 text-[#166CCA]" />
+          </div>
+          <span className="text-[12px] font-semibold text-[#166CCA] pr-1">AI Assistant</span>
+          <div className="flex items-center gap-0.5" onMouseDown={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setIsExpandedPanelOpen(false)}
+              className="flex h-6 w-6 items-center justify-center rounded-full text-[#667085] hover:bg-[#F2F4F7] hover:text-[#166CCA] transition-colors"
+              title="Return to chat"
+              aria-label="Return to chat"
+            >
+              <ChevronDown className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-6 w-6 items-center justify-center rounded-full text-[#667085] hover:bg-[#F2F4F7] transition-colors"
+              aria-label="Close AI Assistant"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
     <div
       className={cn(
         "fixed flex min-h-[420px] flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-[0_20px_50px_rgba(0,0,0,0.18)] transition-[opacity,transform] duration-[280ms] ease-[cubic-bezier(0.16,1,0.3,1)] will-change-[opacity,transform]",
-        visible ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-[0.97] translate-y-1",
+        collapsedToPill ? "opacity-0 pointer-events-none scale-95" : (visible ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-[0.97] translate-y-1"),
       )}
       style={{
         left: position.x,
@@ -5883,7 +5819,7 @@ function DeskCanvasPopunder({
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {view === "copilot"
-          ? <CopilotContent />
+          ? <CopilotContent onExpandedPanelChange={setIsExpandedPanelOpen} />
           : view === "add"
             ? <AddPanelContent />
             : view === "customer"
@@ -5915,6 +5851,7 @@ function DeskCanvasPopunder({
         <span className="absolute bottom-1 right-1 h-2.5 w-2.5 rounded-sm border-b-2 border-r-2 border-[#A1A1AA]" />
       </button>
     </div>
+    </>
   );
 }
 
@@ -6327,11 +6264,13 @@ function DigitalContactControls({
   onTransfer,
   onOutcome,
   customerInfo,
+  customerRecordId,
 }: {
   onConsult: (rect: DOMRect) => void;
   onTransfer: () => void;
   onOutcome: () => void;
   customerInfo?: { name: string; customerId: string; preview: string };
+  customerRecordId?: string;
 }) {
   const [showTransfer, setShowTransfer] = useState(false);
   const [showDisposition, setShowDisposition] = useState(false);
@@ -6391,157 +6330,41 @@ function DigitalContactControls({
         />
       )}
 
-      {showDisposition && typeof document !== "undefined" && createPortal(
+      {showDisposition && (
         <DigitalOutcomePopup
           anchorRef={outcomeBtnRef}
           customerInfo={customerInfo}
+          customerRecordId={customerRecordId}
           onClose={() => setShowDisposition(false)}
           onConfirm={() => { setShowDisposition(false); onOutcome(); }}
-        />,
-        document.body,
+        />
       )}
     </div>
   );
 }
 
-// ─── Digital outcome (disposition) popup ─────────────────────────────────────
+// ─── Digital outcome (disposition) popup — delegates to OutcomePanel ──────────
 function DigitalOutcomePopup({
   anchorRef,
   customerInfo,
+  customerRecordId,
   onClose,
   onConfirm,
 }: {
   anchorRef: React.RefObject<HTMLButtonElement | null>;
   customerInfo?: { name: string; customerId: string; preview: string };
+  customerRecordId?: string;
   onClose: () => void;
   onConfirm: () => void;
 }) {
-  const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
-  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
-  const [selectedDispositionCode, setSelectedDispositionCode] = useState<string | null>(null);
-  const [pos, setPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
-
-  useEffect(() => {
-    if (!anchorRef.current) return;
-    const r = anchorRef.current.getBoundingClientRect();
-    setPos({ x: Math.max(8, r.right - 360), y: Math.max(8, r.top - 520) });
-  }, [anchorRef]);
-
-  const statusOptions = ["Resolved", "Follow-up needed", "Transferred", "Duplicate case", "Escalated"];
-  const tagOptions = ["Billing", "Refund", "Subscription", "Technical", "Account", "Fraud", "Escalated", "VIP", "First Contact"];
-  const dispositionOptions = [
-    "Issue Resolved", "Partial Resolution", "Pending Follow-up",
-    "Transferred to Tier 2", "Transferred to Billing", "Refund Issued",
-    "Credit Applied", "Information Provided", "No Action Required",
-    "Customer Declined", "Callback Scheduled",
-  ];
-
   return (
-    <div
-      className="fixed z-[9999] w-[360px] rounded-xl border border-black/10 bg-white shadow-[0_20px_50px_rgba(0,0,0,0.18)] overflow-hidden"
-      style={{ left: pos.x, top: pos.y }}
-    >
-      {/* Header */}
-      <div
-        className="flex cursor-grab items-center justify-between border-b border-black/[0.06] bg-[#F8F8F9] px-4 py-3 select-none active:cursor-grabbing"
-        onMouseDown={(e) => {
-          if ((e.target as HTMLElement).closest("button")) return;
-          dragRef.current = { startX: e.clientX, startY: e.clientY, origX: pos.x, origY: pos.y };
-          const onMove = (me: MouseEvent) => {
-            if (!dragRef.current) return;
-            setPos({ x: Math.max(0, dragRef.current.origX + me.clientX - dragRef.current.startX), y: Math.max(0, dragRef.current.origY + me.clientY - dragRef.current.startY) });
-          };
-          const onUp = () => { dragRef.current = null; window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
-          window.addEventListener("mousemove", onMove);
-          window.addEventListener("mouseup", onUp);
-        }}
-      >
-        <div className="flex items-center gap-2">
-          <GripHorizontal className="h-3.5 w-3.5 text-[#98A2B3]" />
-          <span className="text-[13px] font-semibold text-[#333333]">Outcome</span>
-          {customerInfo && <span className="text-[11px] text-[#98A2B3]">· {customerInfo.name}</span>}
-        </div>
-        <button type="button" onClick={onClose} className="flex h-6 w-6 items-center justify-center rounded-full text-[#98A2B3] hover:bg-black/[0.06] hover:text-[#344054] transition-colors">
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </div>
-
-      <div className="overflow-y-auto" style={{ maxHeight: 440 }}>
-        {/* Status */}
-        <div className="px-4 pt-3 pb-2">
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[#98A2B3]">Status</p>
-          <div className="flex flex-wrap gap-1.5">
-            {statusOptions.map((opt) => (
-              <button key={opt} type="button"
-                onClick={() => setSelectedStatus(selectedStatus === opt ? null : opt)}
-                className={cn("rounded-full border px-3 py-1 text-[11px] font-medium transition-colors",
-                  selectedStatus === opt
-                    ? "border-[#166CCA]/40 bg-[#EBF4FD] text-[#166CCA]"
-                    : "border-[#E4E7EC] bg-white text-[#344054] hover:border-[#166CCA]/30 hover:bg-[#F5F9FF]",
-                )}>
-                {opt}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="mx-4 border-t border-[#F2F4F7]" />
-        {/* Tags */}
-        <div className="px-4 py-3">
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[#98A2B3]">Tags</p>
-          <div className="flex flex-wrap gap-1.5">
-            {tagOptions.map((tag) => {
-              const on = selectedTags.has(tag);
-              return (
-                <button key={tag} type="button"
-                  onClick={() => setSelectedTags((prev) => { const n = new Set(prev); on ? n.delete(tag) : n.add(tag); return n; })}
-                  className={cn("rounded-full border px-3 py-1 text-[11px] font-medium transition-colors",
-                    on
-                      ? "border-[#6941C6]/30 bg-[#F4F0FF] text-[#6941C6]"
-                      : "border-[#E4E7EC] bg-white text-[#344054] hover:border-[#6941C6]/20 hover:bg-[#FAF8FF]",
-                  )}>
-                  {tag}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        <div className="mx-4 border-t border-[#F2F4F7]" />
-        {/* Disposition */}
-        <div className="px-4 py-3">
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[#98A2B3]">Disposition</p>
-          <div className="flex flex-wrap gap-1.5">
-            {dispositionOptions.map((code) => (
-              <button key={code} type="button"
-                onClick={() => setSelectedDispositionCode(selectedDispositionCode === code ? null : code)}
-                className={cn("rounded-full border px-3 py-1 text-[11px] font-medium transition-colors",
-                  selectedDispositionCode === code
-                    ? "border-[#027A48]/30 bg-[#ECFDF3] text-[#027A48]"
-                    : "border-[#E4E7EC] bg-white text-[#344054] hover:border-[#027A48]/20 hover:bg-[#F6FEF9]",
-                )}>
-                {code}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Footer */}
-      <div className="border-t border-[#F2F4F7] px-4 py-3 flex gap-2">
-        <button type="button" onClick={onClose}
-          className="flex-1 rounded-lg border border-black/10 py-2 text-[12px] font-medium text-[#344054] hover:bg-[#F9FAFB] transition-colors">
-          Cancel
-        </button>
-        <button type="button" disabled={!selectedStatus} onClick={onConfirm}
-          className={cn("flex-1 rounded-lg py-2 text-[12px] font-semibold transition-colors",
-            selectedStatus
-              ? "bg-[#166CCA] text-white hover:bg-[#1260B0]"
-              : "bg-[#F2F4F7] text-[#98A2B3] cursor-not-allowed",
-          )}>
-          {selectedStatus ? `Complete · ${selectedStatus}` : "Select a status"}
-        </button>
-      </div>
-    </div>
+    <OutcomePanel
+      channel="digital"
+      anchorRef={anchorRef}
+      customerInfo={customerInfo ? { ...customerInfo, customerRecordId } : undefined}
+      onClose={onClose}
+      onConfirm={onConfirm}
+    />
   );
 }
 
@@ -15440,7 +15263,6 @@ export default function Layout({ children }: LayoutProps) {
           onPositionChange={setCallPopunderPosition}
           onSizeChange={setCallPopunderSize}
           isJoiningCall={isJoiningCallPopunder}
-          joiningCallCustomerName={joiningCallCustomerName}
           initialAccountNumber={pendingCallAccountNumber}
           onClose={() => {
             if (callConnectTimeoutRef.current !== null) {
@@ -15548,6 +15370,17 @@ export default function Layout({ children }: LayoutProps) {
             setIsTakeoverInfoOpen(false);
           }}
           onInteractStart={() => bringFloatingPanelToFront("call")}
+          activeCallCustomerRecordId={
+            activeCallAssignmentId
+              ? (assignmentItemsById[activeCallAssignmentId]?.customerRecordId ?? selectedAssignment.customerRecordId)
+              : selectedAssignment.customerRecordId
+          }
+          joiningCallCustomerName={
+            joiningCallCustomerName ||
+            (activeCallAssignmentId
+              ? (assignmentItemsById[activeCallAssignmentId]?.name ?? selectedAssignment.name)
+              : selectedAssignment.name)
+          }
         />
       )}
 

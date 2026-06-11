@@ -26,6 +26,7 @@ import {
   SlidersHorizontal,
   Send,
   Sparkles,
+  Search,
   Star,
   TrendingUp,
   X,
@@ -2026,6 +2027,7 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
   const [channelFilters, setChannelFilters] = useState<Set<ChannelFilterValue>>(() => new Set(persistedState.channelFilters));
   const [agentTypeFilter, setAgentTypeFilter] = useState<"all" | "virtual" | "human">(() => persistedState.agentTypeFilter);
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"list" | "card" | "carousel">(() => persistedState.viewMode);
   const [carouselIndex, setCarouselIndex] = useState(() => persistedState.carouselIndex);
   const [carouselDir, setCarouselDir] = useState<"next" | "prev">("next");
@@ -2164,7 +2166,7 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
 
   // Reset carousel to first item whenever any filter changes in carousel mode
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { if (viewMode === "carousel") setCarouselIndex(0); }, [issueTab, priorityFilters, channelFilters, agentTypeFilter]);
+  useEffect(() => { if (viewMode === "carousel") setCarouselIndex(0); }, [issueTab, priorityFilters, channelFilters, agentTypeFilter, searchQuery]);
 
   // Nadia Petrov / Payments Bot — auto-trigger disabled for now, kept for future use.
   // setEscalatedOverrides((prev) => new Set([...prev, "static-13"]));
@@ -2460,6 +2462,17 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
       );
     })
     .sort((a, b) => (priorityRank[a.priority] ?? 99) - (priorityRank[b.priority] ?? 99));
+
+  const searchedRows = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return allRows;
+    return allRows.filter((r) =>
+      [r.name, r.customerId, r.company, r.preview, r.caseType]
+        .join(" ")
+        .toLowerCase()
+        .includes(q)
+    );
+  }, [allRows, searchQuery]);
 
   // If the currently-selected case is no longer visible after a filter change,
   // fall back to the first row in the filtered list.
@@ -3093,6 +3106,27 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
         {/* ── Contacts page header ── */}
         <div className="shrink-0 border-b border-[#E4E7EC] dark:border-[#1C2536] bg-white dark:bg-[#0F1629] px-5 py-3">
           <h1 className="text-sm font-semibold tracking-tight text-[#333333] dark:text-white">Contacts</h1>
+          {/* Search bar */}
+          <div className="relative mt-2">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#98A2B3] pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search contacts…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full rounded-md border border-[#E4E7EC] bg-white py-1.5 pl-8 pr-8 text-[12px] text-[#344054] placeholder:text-[#98A2B3] outline-none focus:border-[#166CCA] focus:ring-1 focus:ring-[#166CCA]/30 dark:bg-[#0F1629] dark:border-[#1C2536] dark:text-white transition-colors"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-[#98A2B3] hover:text-[#667085]"
+                aria-label="Clear search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="flex gap-0 flex-1 min-h-0 overflow-hidden">
@@ -3151,7 +3185,7 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
 
                 {/* Right side: carousel pagination + filter */}
                 <div className="flex items-center gap-2 ml-auto">
-                  {viewMode === "carousel" && allRows.length > 0 && (
+                  {viewMode === "carousel" && searchedRows.length > 0 && (
                     <div className="flex items-center gap-1">
                       <button
                         type="button"
@@ -3163,12 +3197,12 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
                         <ChevronLeft className="h-3.5 w-3.5" />
                       </button>
                       <span className="text-[10px] font-medium text-[#98A2B3] tabular-nums min-w-[32px] text-center">
-                        {carouselIndex + 1}/{allRows.length}
+                        {carouselIndex + 1}/{searchedRows.length}
                       </span>
                       <button
                         type="button"
-                        onClick={() => { setCarouselDir("next"); setCarouselIndex((i) => Math.min(allRows.length - 1, i + 1)); }}
-                        disabled={carouselIndex >= allRows.length - 1}
+                        onClick={() => { setCarouselDir("next"); setCarouselIndex((i) => Math.min(searchedRows.length - 1, i + 1)); }}
+                        disabled={carouselIndex >= searchedRows.length - 1}
                         className="flex h-6 w-6 items-center justify-center rounded-md border border-border bg-white text-[#667085] hover:bg-[#F9FAFB] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
                         aria-label="Next case"
                       >
@@ -3359,8 +3393,8 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
             </div>
 
             <div key={viewMode} className={cn("flex-1 min-h-0 animate-view-crossfade", viewMode === "carousel" ? "flex flex-col overflow-hidden" : "overflow-y-auto")}>
-              {viewMode === "card" && <QueueCardView rows={allRows} />}
-              {viewMode === "carousel" && <QueueCarouselView rows={allRows} index={carouselIndex} onIndexChange={(i) => { setCarouselDir(i > carouselIndex ? "next" : "prev"); setCarouselIndex(i); }} />}
+              {viewMode === "card" && <QueueCardView rows={searchedRows} />}
+              {viewMode === "carousel" && <QueueCarouselView rows={searchedRows} index={carouselIndex} onIndexChange={(i) => { setCarouselDir(i > carouselIndex ? "next" : "prev"); setCarouselIndex(i); }} />}
               {viewMode === "list" && (() => {
                 const renderRows = (rows: typeof allRows) => {
                   if (groupMode === "case") {
@@ -3424,16 +3458,16 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
                   });
                 };
 
-                if (allRows.length === 0) {
+                if (searchedRows.length === 0) {
                   return (
                     <div className="flex flex-col items-center justify-center py-12 text-center">
                       <CheckCircle className="h-8 w-8 text-[#D0D5DD] mb-3" />
                       <p className="text-sm font-medium text-[#7A7A7A] capitalize">No {issueTab.size === 0 ? "" : [...issueTab].join("/") + " "}tasks</p>
-                      <p className="text-xs text-[#B0B7C3] mt-1">No tasks match the selected filter.</p>
+                      <p className="text-xs text-[#B0B7C3] mt-1">{searchQuery ? "No contacts match your search." : "No tasks match the selected filter."}</p>
                     </div>
                   );
                 }
-                return renderRows(allRows);
+                return renderRows(searchedRows);
               })()}
             </div>
 

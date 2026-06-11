@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, Eye, FileDown, FilePlus2, Pin, PinOff, Sparkles, Ticket, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Eye, FileDown, FilePlus2, MessageSquare, Mic, Phone, Pin, PinOff, Send, Sparkles, Ticket, User, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -20,6 +20,371 @@ import {
   getStatusBadgeClasses,
 } from "@/lib/ticket-data";
 import { TicketsDataGrid } from "@/components/notes/TicketsDataGrid";
+
+// ─── Contact History POC ───────────────────────────────────────────────────────
+
+type ContactChannel = "chat" | "voice" | "email" | "system" | "web" | "ticket";
+type OutcomeVariant = "resolved" | "escalated" | "pending" | "info";
+
+interface ContactInteraction {
+  id: string;
+  date: string;
+  channel: ContactChannel;
+  title: string;
+  agent: string;
+  summary: string;
+  outcome?: string;
+  outcomeVariant?: OutcomeVariant;
+  linkedTo?: string[];
+  messages?: { role: "customer" | "agent"; text: string }[];
+}
+
+const CHANNEL_STYLE: Record<ContactChannel, { icon: React.ReactNode; label: string; color: string; border: string }> = {
+  chat:   { icon: <MessageSquare className="h-3.5 w-3.5" />, label: "Chat",    color: "text-[#166CCA]", border: "border-l-[#166CCA]" },
+  voice:  { icon: <Phone className="h-3.5 w-3.5" />,          label: "Voice",   color: "text-[#027A48]", border: "border-l-[#027A48]" },
+  email:  { icon: <MessageSquare className="h-3.5 w-3.5" />,  label: "Email",   color: "text-[#B54708]", border: "border-l-[#B54708]" },
+  system: { icon: <AlertCircle className="h-3.5 w-3.5" />,    label: "System",  color: "text-[#D92D20]", border: "border-l-[#D92D20]" },
+  web:    { icon: <User className="h-3.5 w-3.5" />,            label: "Web",     color: "text-[#667085]", border: "border-l-[#667085]" },
+  ticket: { icon: <AlertCircle className="h-3.5 w-3.5" />,    label: "Ticket",  color: "text-[#6941C6]", border: "border-l-[#6941C6]" },
+};
+
+const OUTCOME_CHIP: Record<OutcomeVariant, string> = {
+  resolved:  "bg-[#ECFDF3] text-[#027A48]",
+  escalated: "bg-[#FFF4ED] text-[#B54708]",
+  pending:   "bg-[#F9FAFB] text-[#344054]",
+  info:      "bg-[#EBF4FD] text-[#166CCA]",
+};
+
+const MARCUS_INTERACTIONS: ContactInteraction[] = [
+  {
+    id: "h-signup",
+    date: "Apr 2023",
+    channel: "web",
+    title: "Account created — first order",
+    agent: "System (self-service)",
+    summary: "Marcus created his account via westbrook.com checkout. Shipping address on file: 419 Elm St, Denver, CO 80203. First order: Navy Crewneck Sweater ($89).",
+    outcome: "Account active",
+    outcomeVariant: "resolved",
+  },
+  {
+    id: "h-address",
+    date: "Jan 14, 2025 · 2:18 PM",
+    channel: "chat",
+    title: "Chat — address change request",
+    agent: "Jeff Comstock",
+    summary: "Marcus initiated a chat to confirm his shipping address had been updated following his move from Denver to Austin. Jeff verified the profile update and confirmed the new address was saved. No label cache purge was triggered at the time.",
+    outcome: "Address updated — label cache not cleared",
+    outcomeVariant: "pending",
+    linkedTo: ["h-shipped"],
+    messages: [
+      { role: "customer", text: "Hi, I moved to Austin about two weeks ago and want to make sure my shipping address is updated before I place any new orders." },
+      { role: "agent",    text: "Hi Marcus! Happy to help. I can see your account — you have 419 Elm St, Denver on file. I'll update that now. What's the new address?" },
+      { role: "customer", text: "It's 2847 Ridgewood Ave, Austin, TX 78704." },
+      { role: "agent",    text: "Done — I've updated your default shipping address to 2847 Ridgewood Ave, Austin, TX 78704. You're all set for future orders." },
+      { role: "customer", text: "Perfect, thank you!" },
+    ],
+  },
+  {
+    id: "h-order",
+    date: "Apr 18, 2026 · 2:31 PM",
+    channel: "web",
+    title: "Order #WB-88214 placed — Charcoal Merino Sweater",
+    agent: "System",
+    summary: "1× Charcoal Merino Sweater (Size L) — $129.00. Mastercard ****7731. Estimated delivery Apr 22. Customer note: \"It's a gift for my dad's birthday party.\" Stale Denver address pulled at checkout.",
+    outcome: "Order confirmed",
+    outcomeVariant: "info",
+    linkedTo: ["h-address", "h-shipped"],
+  },
+  {
+    id: "h-shipped",
+    date: "Apr 19, 2026 · 9:42 AM",
+    channel: "email",
+    title: "Email — shipping confirmation to wrong address",
+    agent: "marcus.webb@email.com",
+    summary: "Automated shipping confirmation sent for order #WB-88214. Confirmation listed 419 Elm St, Denver — Marcus's old address. Marcus replied immediately flagging the error. No agent response was sent before he escalated via chat.",
+    outcome: "Wrong address flagged by customer",
+    outcomeVariant: "escalated",
+    linkedTo: ["h-address", "h-order", "h-chat"],
+    messages: [
+      { role: "agent",    text: "Hi Marcus, your order #WB-88214 (Charcoal Merino Sweater, Size L) has shipped!\n\nShipping to: 419 Elm St, Denver, CO 80203\nCarrier: UPS · Tracking: 1Z9F8R460346243817" },
+      { role: "customer", text: "This is wrong. I updated my address to Austin, TX over a year ago. Why did this ship to Denver? I need this by Saturday for my dad's birthday." },
+      { role: "customer", text: "I haven't heard back. I'm going to contact support via chat." },
+    ],
+  },
+  {
+    id: "h-chat",
+    date: "Today · 10:07 AM",
+    channel: "chat",
+    title: "Chat — Marcus contacted support",
+    agent: "Emily (Virtual Agent)",
+    summary: "Marcus reported missing shipping confirmation and noticed wrong address in order history. Emily confirmed the address mismatch, reviewed carrier options, and determined human agent needed for carrier intercept or reship.",
+    outcome: "Escalated to human agent",
+    outcomeVariant: "escalated",
+    linkedTo: ["h-shipped", "h-escalation"],
+    messages: [
+      { role: "customer", text: "Hi — I placed an order #WB-88214 and it looks like it shipped to my old Denver address. I moved to Austin over a year ago." },
+      { role: "agent",    text: "I'm sorry about that, Marcus. I can see the order shipped to 419 Elm St, Denver. Your profile shows your Austin address — it looks like the label used a cached address. Let me check carrier intercept options." },
+      { role: "customer", text: "I need this by Saturday — it's a birthday gift for my dad." },
+      { role: "agent",    text: "Understood. I'm going to connect you with a specialist who can arrange an overnight reship or issue a full refund. One moment." },
+    ],
+  },
+  {
+    id: "h-escalation",
+    date: "Today · 10:14 AM",
+    channel: "ticket",
+    title: "Case escalated — Priya Nair assigned",
+    agent: "Priya Nair",
+    summary: "Emily escalated to Priya Nair. Case notes include three resolution paths: (1) overnight reship to Austin, (2) full refund + reorder, (3) carrier intercept if feasible. Goodwill discount code recommended for loyal customer.",
+    outcome: "Open — awaiting resolution",
+    outcomeVariant: "pending",
+    linkedTo: ["h-chat"],
+  },
+];
+
+// Map customerRecordId → interactions (only Marcus seeded for the POC)
+const CONTACT_HISTORY_BY_CUSTOMER: Record<string, ContactInteraction[]> = {
+  marcus: MARCUS_INTERACTIONS,
+};
+
+// ─── ContactHistoryCard ────────────────────────────────────────────────────────
+
+function ContactHistoryCard({ interaction, defaultOpen = false }: { interaction: ContactInteraction; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const ch = CHANNEL_STYLE[interaction.channel];
+
+  return (
+    <div className={cn("rounded-xl border border-black/[0.07] bg-white overflow-hidden border-l-[3px]", ch.border)}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-start gap-3 px-3 py-3 text-left hover:bg-[#F9FAFB] transition-colors"
+      >
+        <span className={cn("mt-0.5 shrink-0", ch.color)}>{ch.icon}</span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-[13px] font-semibold leading-snug text-[#1D2939]">{interaction.title}</p>
+            {open ? <ChevronUp className="h-3.5 w-3.5 shrink-0 mt-0.5 text-[#98A2B3]" /> : <ChevronDown className="h-3.5 w-3.5 shrink-0 mt-0.5 text-[#98A2B3]" />}
+          </div>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <span className="text-[11px] text-[#98A2B3]">{interaction.date}</span>
+            <span className="text-[11px] text-[#D0D5DD]">·</span>
+            <span className="text-[11px] text-[#667085]">{interaction.agent}</span>
+          </div>
+        </div>
+      </button>
+
+      {open && (
+        <div className="px-3 pb-3 space-y-3 border-t border-[#F2F4F7]">
+          <p className="pt-2.5 text-[12px] leading-relaxed text-[#475467]">{interaction.summary}</p>
+
+          {interaction.messages && interaction.messages.length > 0 && (
+            <div className="rounded-lg bg-[#F8F9FB] p-2.5 space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-[#98A2B3]">Conversation thread</p>
+              {interaction.messages.map((msg, i) => (
+                <div key={i} className={cn("flex gap-2", msg.role === "agent" ? "justify-start" : "justify-end")}>
+                  <div className={cn(
+                    "max-w-[85%] rounded-xl px-3 py-2 text-[11px] leading-relaxed whitespace-pre-line",
+                    msg.role === "customer"
+                      ? "bg-white border border-black/8 text-[#1D2939]"
+                      : "bg-[#EBF4FD] text-[#1260B0]",
+                  )}>
+                    {msg.text}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-2">
+            {interaction.outcome && (
+              <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium", OUTCOME_CHIP[interaction.outcomeVariant ?? "info"])}>
+                <CheckCircle2 className="h-3 w-3" />
+                {interaction.outcome}
+              </span>
+            )}
+            {interaction.linkedTo && interaction.linkedTo.length > 0 && (
+              <span className="text-[11px] text-[#98A2B3]">
+                Linked to {interaction.linkedTo.length} related {interaction.linkedTo.length === 1 ? "thread" : "threads"}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── ContactHistoryView ────────────────────────────────────────────────────────
+
+const COPILOT_STEP_DURATIONS = [700, 800, 800, 1100];
+const COPILOT_STEPS = [
+  { title: "Scanning interaction history",       desc: "Reading all threads for this customer." },
+  { title: "Cross-referencing agents & outcomes", desc: "Mapping handoffs, escalations, and resolutions." },
+  { title: "Drafting response",                   desc: "Grounding reply in customer context." },
+  { title: "Preparing answer",                    desc: "" },
+];
+
+function ContactHistoryView({ customerId }: { customerId?: string }) {
+  const interactions = customerId ? (CONTACT_HISTORY_BY_CUSTOMER[customerId] ?? []) : [];
+
+  const [input, setInput]         = useState("");
+  const [phase, setPhase]         = useState<"idle" | "thinking" | "done">("idle");
+  const [stepsDone, setStepsDone] = useState(0);
+  const [answer, setAnswer]       = useState("");
+  const inputRef                  = useRef<HTMLInputElement>(null);
+
+  const submitQuery = (text: string) => {
+    const q = text.trim();
+    if (!q) return;
+    setInput("");
+    setPhase("thinking");
+    setStepsDone(0);
+    setAnswer("");
+
+    let cancelled = false;
+    const advance = (i: number) => {
+      if (cancelled || i >= COPILOT_STEP_DURATIONS.length) return;
+      setTimeout(() => {
+        if (cancelled) return;
+        setStepsDone(i + 1);
+        if (i + 1 >= COPILOT_STEPS.length) {
+          setTimeout(() => {
+            if (cancelled) return;
+            setAnswer(
+              `Based on ${customerId === "marcus" ? "Marcus Webb's" : "this customer's"} contact history, here's what I found:\n\nThe address mismatch traces back to the Jan 2025 address update (confirmed via chat with Jeff Comstock) where the shipping label cache was not purged. When order #WB-88214 was placed in Apr 2026, the stale Denver address was used. The email confirmation flagged the error, but no agent responded before Marcus escalated via chat.\n\nRecommended action: Overnight reship to Austin, TX with a goodwill discount code given his 3-year loyalty and zero prior complaint record.`
+            );
+            setPhase("done");
+          }, 300);
+        } else {
+          advance(i + 1);
+        }
+      }, COPILOT_STEP_DURATIONS[i]);
+    };
+    advance(0);
+    return () => { cancelled = true; };
+  };
+
+  if (interactions.length === 0) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+        <Sparkles className="h-8 w-8 text-[#D0D5DD]" />
+        <p className="text-[13px] font-medium text-[#7A7A7A]">No contact history</p>
+        <p className="text-[11px] text-[#B0B7C3]">Interaction history will appear here once available.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-0 min-h-0 flex-1 flex-col overflow-hidden">
+      {/* ── Interaction timeline ── */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="p-4 space-y-3">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#98A2B3]">
+              Contact history · {interactions.length} records
+            </p>
+            <div className="flex flex-wrap gap-1">
+              {Array.from(new Set(interactions.map((i) => i.channel))).map((ch) => (
+                <span key={ch} className={cn("text-[10px] font-medium rounded-full px-2 py-0.5 border border-black/[0.07] bg-white", CHANNEL_STYLE[ch].color)}>
+                  {CHANNEL_STYLE[ch].label}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Cards */}
+          {interactions.map((interaction, i) => (
+            <ContactHistoryCard
+              key={interaction.id}
+              interaction={interaction}
+              defaultOpen={i === 4 || i === 3}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* ── Copilot assist ── */}
+      <div className="shrink-0 border-t border-[#E4E7EC] bg-white">
+        {/* Thinking / response */}
+        {phase === "thinking" && (
+          <div className="px-4 pt-3 pb-2 space-y-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Sparkles className="h-3.5 w-3.5 text-[#166CCA]" />
+              <span className="text-[11px] font-semibold text-[#166CCA]">AI Assist · Thinking…</span>
+            </div>
+            <div className="rounded-lg bg-[#EBF4FD] px-3 py-2.5 space-y-2">
+              {COPILOT_STEPS.map((step, i) => {
+                const done = i < stepsDone;
+                const active = i === stepsDone;
+                if (!done && !active) return null;
+                return (
+                  <div key={i} className="flex items-start gap-2">
+                    <div className="mt-0.5 shrink-0">
+                      {done ? (
+                        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-[#166CCA]" fill="none">
+                          <path d="M3 8.5L6.5 12L13 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      ) : (
+                        <svg className="h-3.5 w-3.5 animate-spin text-[#166CCA]" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                        </svg>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-[12px] font-semibold text-[#1260B0] leading-snug">{step.title}</p>
+                      {done && step.desc && <p className="text-[11px] text-[#667085]">{step.desc}</p>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {phase === "done" && answer && (
+          <div className="px-4 pt-3 pb-2">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <Sparkles className="h-3.5 w-3.5 text-[#166CCA]" />
+              <span className="text-[11px] font-semibold text-[#166CCA]">AI Assist</span>
+              <button type="button" onClick={() => { setPhase("idle"); setAnswer(""); }} className="ml-auto text-[10px] text-[#98A2B3] hover:text-[#667085]">Clear</button>
+            </div>
+            <div className="rounded-lg bg-[#EBF4FD] border border-[#166CCA]/20 px-3 py-2.5">
+              <p className="text-[12px] leading-relaxed text-[#1260B0] whitespace-pre-line">{answer}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Input row */}
+        <div className="px-3 py-3">
+          <div className="flex items-center gap-2 rounded-xl border border-black/10 bg-[#F8F8F9] px-3 py-2 focus-within:border-[#166CCA]/40 focus-within:bg-white transition-colors">
+            <Sparkles className="h-3.5 w-3.5 shrink-0 text-[#166CCA]" />
+            <input
+              ref={inputRef}
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitQuery(input); } }}
+              placeholder="Ask AI about this customer's history…"
+              disabled={phase === "thinking"}
+              className="min-w-0 flex-1 bg-transparent text-[12px] text-[#333333] placeholder:text-[#AAAAAA] focus:outline-none disabled:opacity-50"
+            />
+            {input.trim() ? (
+              <button type="button" onClick={() => submitQuery(input)} disabled={phase === "thinking"} className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[#166CCA] text-white hover:bg-[#1260B0] disabled:opacity-40 transition-colors">
+                <Send className="h-3 w-3" />
+              </button>
+            ) : (
+              <button type="button" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[#7A7A7A] hover:text-[#166CCA] transition-colors">
+                <Mic className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const PRIMARY_TABS = ["Overview", "Details"] as const;
 const SWITCHABLE_TABS = ["Accounts", "Tickets", "Interactions", "Directory", "Cases", "Tasks", "Emails", "Contacts", "History", "Notes"] as const;
@@ -871,7 +1236,11 @@ export default function NotesPanel({
 
       {activeTicket && <TicketRecordView ticket={activeTicket} />}
 
-      {activeTab !== "Notes" && activeTab !== "Overview" && activeTab !== "Details" && activeTab !== "Accounts" && activeTab !== "Tickets" && activeTab !== "Interactions" && activeTab !== "Copilot" && !activeTicket && (
+      {activeTab === "History" && !activeTicket && (
+        <ContactHistoryView customerId={customerId} />
+      )}
+
+      {activeTab !== "Notes" && activeTab !== "Overview" && activeTab !== "Details" && activeTab !== "Accounts" && activeTab !== "Tickets" && activeTab !== "Interactions" && activeTab !== "Copilot" && activeTab !== "History" && !activeTicket && (
         <div className="flex flex-1 items-center justify-center text-xs text-[#9CA3AF]">
           No {activeTab.toLowerCase()} to display
         </div>
