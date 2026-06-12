@@ -3520,6 +3520,7 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
 
         </div>
       </div>
+      }
 
       {/* Closed contact drill-in — takes over the full inbox panel */}
       {(() => {
@@ -3562,8 +3563,6 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
           </div>
         );
       })()}
-
-      }
 
       {/* ── Review tab ────────────────────────────────────────────────────────── */}
 
