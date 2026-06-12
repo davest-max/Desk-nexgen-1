@@ -268,17 +268,16 @@ function IssueRow({
   return (
     <div ref={rowRef} className={cn(
       "group/row border-b border-border last:border-b-0 relative",
-      isClosed ? "bg-[#FAFAFA]" : isMonitored ? "bg-[#EBF4FD] dark:bg-[#0B1E35]" : status === "escalated" ? "bg-[#FEF2F2]" : isSelected && "bg-[#F2F4F7]",
+      isMonitored ? "bg-[#EBF4FD] dark:bg-[#0B1E35]" : status === "escalated" ? "bg-[#FEF2F2]" : isSelected && "bg-[#F2F4F7]",
     )}>
-      {!isClosed && (isMonitored || isSelected || status === "escalated") && <div className={cn("absolute left-0 inset-y-0 w-[3px] rounded-r-full z-[1]", isMonitored ? "bg-[#166CCA]" : status === "escalated" ? "bg-[#E53935]" : "bg-[#166CCA]/50")} />}
-      {isClosed && <div className="absolute left-0 inset-y-0 w-[3px] rounded-r-full z-[1] bg-[#D0D5DD]" />}
+      {(isMonitored || isSelected || status === "escalated") && <div className={cn("absolute left-0 inset-y-0 w-[3px] rounded-r-full z-[1]", isMonitored ? "bg-[#166CCA]" : status === "escalated" ? "bg-[#E53935]" : "bg-[#166CCA]/50")} />}
       {/* Header row — accordion toggle + hover-reveal action buttons */}
       <div
         role="button"
         tabIndex={0}
         onClick={() => isClosed ? onReview?.(id) : onSelect?.(id)}
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); isClosed ? onReview?.(id) : onSelect?.(id); } }}
-        className={cn("relative w-full text-left flex items-center gap-3 px-5 py-4 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#166CCA]/30", isClosed ? "hover:bg-[#F2F4F7]" : isMonitored ? "hover:bg-[#D5E9F8] dark:hover:bg-[#0C2A4A]" : status === "escalated" ? "hover:bg-[#FEE2E2]" : "hover:bg-[#F9FAFB]")}
+        className={cn("relative w-full text-left flex items-center gap-3 px-5 py-4 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#166CCA]/30", isMonitored ? "hover:bg-[#D5E9F8] dark:hover:bg-[#0C2A4A]" : status === "escalated" ? "hover:bg-[#FEE2E2]" : "hover:bg-[#F9FAFB]")}
       >
         {(isLive || (isAccepted && !isClosed)) && !isParkedFromToast && (
           <div className="shrink-0 relative flex h-2 w-2">
@@ -288,16 +287,9 @@ function IssueRow({
         )}
         <div className="flex-1 min-w-0 pr-2">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={cn("text-[13px] font-semibold", isClosed ? "text-[#98A2B3]" : "text-[#1D2939]")}>{name}</span>
+            <span className="text-[13px] font-semibold text-[#1D2939]">{name}</span>
             {isClosed ? (
-              <>
-                <span className="rounded border border-[#D0D5DD] bg-[#F2F4F7] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#667085]">Closed</span>
-                {(closedStaticContacts.find((c) => c.id === id)?.resolvedAt) && (
-                  <span className="rounded border border-[#D0D5DD] bg-white px-1.5 py-0.5 text-[10px] font-medium leading-none text-[#98A2B3]">
-                    {closedStaticContacts.find((c) => c.id === id)?.resolvedAt}
-                  </span>
-                )}
-              </>
+              <span className="rounded border border-[#FDA29B] bg-[#FEF2F2] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#C71D1A]">Closed</span>
             ) : (
               <>
                 <span className={cn(
@@ -318,14 +310,14 @@ function IssueRow({
               </>
             )}
           </div>
-          <p className={cn("mt-0.5 text-[12px] leading-[1.4] truncate", isClosed ? "text-[#98A2B3]" : "text-[#475467]")}>{preview}</p>
+          <p className="mt-0.5 text-[12px] text-[#475467] leading-[1.4] truncate">{preview}</p>
           <div className="mt-1 flex items-center gap-1.5 text-[11px] text-[#98A2B3]">
-            {!isClosed && assignedTo ? (
+            {assignedTo && !isClosed ? (
               <span className="font-medium text-[#166CCA]">{assignedTo}</span>
             ) : (
               <span>{botType}</span>
             )}
-            {!isClosed && <><span>•</span><span>⏱ Wait: {waitTime}</span></>}
+            {!isClosed && waitTime && <><span>•</span><span>⏱ Wait: {waitTime}</span></>}
             <span>•</span>
             <span>{customerId}</span>
           </div>
