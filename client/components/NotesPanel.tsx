@@ -23,130 +23,27 @@ import { TicketsDataGrid } from "@/components/notes/TicketsDataGrid";
 
 // ─── Contact History POC ───────────────────────────────────────────────────────
 
-type ContactChannel = "chat" | "voice" | "email" | "system" | "web" | "ticket";
-type OutcomeVariant = "resolved" | "escalated" | "pending" | "info";
-
-interface ContactInteraction {
-  id: string;
-  date: string;
-  channel: ContactChannel;
-  title: string;
-  agent: string;
-  summary: string;
-  outcome?: string;
-  outcomeVariant?: OutcomeVariant;
-  linkedTo?: string[];
-  messages?: { role: "customer" | "agent"; text: string }[];
-}
-
-const CHANNEL_STYLE: Record<ContactChannel, { icon: React.ReactNode; label: string; color: string; border: string }> = {
-  chat:   { icon: <MessageSquare className="h-3.5 w-3.5" />, label: "Chat",    color: "text-[#166CCA]", border: "border-l-[#166CCA]" },
-  voice:  { icon: <Phone className="h-3.5 w-3.5" />,          label: "Voice",   color: "text-[#027A48]", border: "border-l-[#027A48]" },
-  email:  { icon: <MessageSquare className="h-3.5 w-3.5" />,  label: "Email",   color: "text-[#B54708]", border: "border-l-[#B54708]" },
-  system: { icon: <AlertCircle className="h-3.5 w-3.5" />,    label: "System",  color: "text-[#D92D20]", border: "border-l-[#D92D20]" },
-  web:    { icon: <User className="h-3.5 w-3.5" />,            label: "Web",     color: "text-[#667085]", border: "border-l-[#667085]" },
-  ticket: { icon: <AlertCircle className="h-3.5 w-3.5" />,    label: "Ticket",  color: "text-[#6941C6]", border: "border-l-[#6941C6]" },
-};
-
-const OUTCOME_CHIP: Record<OutcomeVariant, string> = {
-  resolved:  "bg-[#ECFDF3] text-[#027A48]",
-  escalated: "bg-[#FFF4ED] text-[#B54708]",
-  pending:   "bg-[#F9FAFB] text-[#344054]",
-  info:      "bg-[#EBF4FD] text-[#166CCA]",
-};
-
-const MARCUS_INTERACTIONS: ContactInteraction[] = [
-  {
-    id: "h-signup",
-    date: "Apr 2023",
-    channel: "web",
-    title: "Account created — first order",
-    agent: "System (self-service)",
-    summary: "Marcus created his account via westbrook.com checkout. Shipping address on file: 419 Elm St, Denver, CO 80203. First order: Navy Crewneck Sweater ($89).",
-    outcome: "Account active",
-    outcomeVariant: "resolved",
-  },
-  {
-    id: "h-address",
-    date: "Jan 14, 2025 · 2:18 PM",
-    channel: "chat",
-    title: "Chat — address change request",
-    agent: "Jeff Comstock",
-    summary: "Marcus initiated a chat to confirm his shipping address had been updated following his move from Denver to Austin. Jeff verified the profile update and confirmed the new address was saved. No label cache purge was triggered at the time.",
-    outcome: "Address updated — label cache not cleared",
-    outcomeVariant: "pending",
-    linkedTo: ["h-shipped"],
-    messages: [
-      { role: "customer", text: "Hi, I moved to Austin about two weeks ago and want to make sure my shipping address is updated before I place any new orders." },
-      { role: "agent",    text: "Hi Marcus! Happy to help. I can see your account — you have 419 Elm St, Denver on file. I'll update that now. What's the new address?" },
-      { role: "customer", text: "It's 2847 Ridgewood Ave, Austin, TX 78704." },
-      { role: "agent",    text: "Done — I've updated your default shipping address to 2847 Ridgewood Ave, Austin, TX 78704. You're all set for future orders." },
-      { role: "customer", text: "Perfect, thank you!" },
-    ],
-  },
-  {
-    id: "h-order",
-    date: "Apr 18, 2026 · 2:31 PM",
-    channel: "web",
-    title: "Order #WB-88214 placed — Charcoal Merino Sweater",
-    agent: "System",
-    summary: "1× Charcoal Merino Sweater (Size L) — $129.00. Mastercard ****7731. Estimated delivery Apr 22. Customer note: \"It's a gift for my dad's birthday party.\" Stale Denver address pulled at checkout.",
-    outcome: "Order confirmed",
-    outcomeVariant: "info",
-    linkedTo: ["h-address", "h-shipped"],
-  },
-  {
-    id: "h-shipped",
-    date: "Apr 19, 2026 · 9:42 AM",
-    channel: "email",
-    title: "Email — shipping confirmation to wrong address",
-    agent: "marcus.webb@email.com",
-    summary: "Automated shipping confirmation sent for order #WB-88214. Confirmation listed 419 Elm St, Denver — Marcus's old address. Marcus replied immediately flagging the error. No agent response was sent before he escalated via chat.",
-    outcome: "Wrong address flagged by customer",
-    outcomeVariant: "escalated",
-    linkedTo: ["h-address", "h-order", "h-chat"],
-    messages: [
-      { role: "agent",    text: "Hi Marcus, your order #WB-88214 (Charcoal Merino Sweater, Size L) has shipped!\n\nShipping to: 419 Elm St, Denver, CO 80203\nCarrier: UPS · Tracking: 1Z9F8R460346243817" },
-      { role: "customer", text: "This is wrong. I updated my address to Austin, TX over a year ago. Why did this ship to Denver? I need this by Saturday for my dad's birthday." },
-      { role: "customer", text: "I haven't heard back. I'm going to contact support via chat." },
-    ],
-  },
-  {
-    id: "h-chat",
-    date: "Today · 10:07 AM",
-    channel: "chat",
-    title: "Chat — Marcus contacted support",
-    agent: "Emily (Virtual Agent)",
-    summary: "Marcus reported missing shipping confirmation and noticed wrong address in order history. Emily confirmed the address mismatch, reviewed carrier options, and determined human agent needed for carrier intercept or reship.",
-    outcome: "Escalated to human agent",
-    outcomeVariant: "escalated",
-    linkedTo: ["h-shipped", "h-escalation"],
-    messages: [
-      { role: "customer", text: "Hi — I placed an order #WB-88214 and it looks like it shipped to my old Denver address. I moved to Austin over a year ago." },
-      { role: "agent",    text: "I'm sorry about that, Marcus. I can see the order shipped to 419 Elm St, Denver. Your profile shows your Austin address — it looks like the label used a cached address. Let me check carrier intercept options." },
-      { role: "customer", text: "I need this by Saturday — it's a birthday gift for my dad." },
-      { role: "agent",    text: "Understood. I'm going to connect you with a specialist who can arrange an overnight reship or issue a full refund. One moment." },
-    ],
-  },
-  {
-    id: "h-escalation",
-    date: "Today · 10:14 AM",
-    channel: "ticket",
-    title: "Case escalated — Priya Nair assigned",
-    agent: "Priya Nair",
-    summary: "Emily escalated to Priya Nair. Case notes include three resolution paths: (1) overnight reship to Austin, (2) full refund + reorder, (3) carrier intercept if feasible. Goodwill discount code recommended for loyal customer.",
-    outcome: "Open — awaiting resolution",
-    outcomeVariant: "pending",
-    linkedTo: ["h-chat"],
-  },
-];
-
-// Map customerRecordId → interactions (only Marcus seeded for the POC)
-const CONTACT_HISTORY_BY_CUSTOMER: Record<string, ContactInteraction[]> = {
-  marcus: MARCUS_INTERACTIONS,
-};
+import {
+  CHANNEL_STYLE,
+  OUTCOME_CHIP,
+  CONTACT_HISTORY_BY_CUSTOMER,
+  type ContactChannel,
+  type ContactInteraction,
+} from "@/lib/contact-history-data";
 
 // ─── ContactHistoryCard ────────────────────────────────────────────────────────
+
+function NotesPanelChannelIcon({ channel }: { channel: ContactChannel }) {
+  const cls = "h-3.5 w-3.5";
+  switch (channel) {
+    case "chat":   return <MessageSquare className={cls} />;
+    case "voice":  return <Phone className={cls} />;
+    case "email":  return <MessageSquare className={cls} />;
+    case "ticket": return <AlertCircle className={cls} />;
+    case "system": return <AlertCircle className={cls} />;
+    default:       return <MessageSquare className={cls} />;
+  }
+}
 
 function ContactHistoryCard({ interaction, defaultOpen = false }: { interaction: ContactInteraction; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -159,7 +56,7 @@ function ContactHistoryCard({ interaction, defaultOpen = false }: { interaction:
         onClick={() => setOpen((o) => !o)}
         className="flex w-full items-start gap-3 px-3 py-3 text-left hover:bg-[#F9FAFB] transition-colors"
       >
-        <span className={cn("mt-0.5 shrink-0", ch.color)}>{ch.icon}</span>
+        <span className={cn("mt-0.5 shrink-0", ch.color)}><NotesPanelChannelIcon channel={interaction.channel} /></span>
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <p className="text-[13px] font-semibold leading-snug text-[#1D2939]">{interaction.title}</p>

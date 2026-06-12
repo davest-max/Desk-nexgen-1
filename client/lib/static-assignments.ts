@@ -78,6 +78,8 @@ export interface StaticAssignment {
   assignedTo: string | null;
   /** Present only for Sales Lead cases — surface AI-gathered intelligence for the incoming callback. */
   leadIntelligence?: LeadIntelligenceData;
+  /** ISO-style resolved date shown in the Closed contact row (e.g. "Mar 4, 2026"). */
+  resolvedAt?: string;
 }
 
 // ─── Static assignments ───────────────────────────────────────────────────────
@@ -1767,5 +1769,94 @@ export const staticAssignments: StaticAssignment[] = [
       ],
     },
     assignedTo: null,
+  },
+];
+
+// ─── Pre-seeded closed contacts ────────────────────────────────────────────────
+// These are always visible when the "Closed" filter is active.
+// They are NOT in staticAssignments (which is for the live queue).
+// ControlPanelPage merges them directly into resolvedNormalised.
+
+export const closedStaticContacts: StaticAssignment[] = [
+  {
+    id: "closed-1",
+    name: "Sandra Okafor",
+    customerId: "CST-30411",
+    customerRecordId: "sandra_okafor",
+    company: "Apex Financial Group",
+    botType: "Billing Bot",
+    caseType: "Billing Dispute",
+    agentType: "virtual",
+    channel: "chat",
+    priority: "High",
+    status: "resolved",
+    preview: "Duplicate $249 charge on Feb statement — refund issued by Tom Adeyemi",
+    waitTime: "",
+    resolvedAt: "Mar 4, 2026",
+    customerContext: "2-year client. No prior billing disputes. Responded quickly and politely throughout. Sentiment: Satisfied.",
+    aiOverview: {
+      actions: [
+        "Identified duplicate charge caused by payment gateway retry timeout on Feb 28.",
+        "Cross-referenced transaction logs — both charges cleared successfully.",
+        "Tom Adeyemi issued $249 refund and applied $25 goodwill credit.",
+      ],
+      whyNeeded: "Case fully resolved. Duplicate charge refunded. Goodwill credit applied. No further action required.",
+      nextSteps: ["Confirm refund appeared within 3–5 business days"],
+    },
+    assignedTo: "Tom Adeyemi",
+  },
+  {
+    id: "closed-2",
+    name: "James Tran",
+    customerId: "CST-18823",
+    customerRecordId: "james_tran",
+    company: "Summit Healthcare Inc.",
+    botType: "Account Bot",
+    caseType: "Account Locked",
+    agentType: "virtual",
+    channel: "voice",
+    priority: "Medium",
+    status: "resolved",
+    preview: "Account locked after 5 failed logins — identity verified, access restored",
+    waitTime: "",
+    resolvedAt: "Feb 17, 2026",
+    customerContext: "3-year enterprise client. This is his first account-access incident. Sentiment: Relieved after resolution.",
+    aiOverview: {
+      actions: [
+        "IVR routed to security team after 5 failed login attempts triggered lockout.",
+        "Anya Sharma completed 3-factor identity verification (DOB, billing address, card last 4).",
+        "Account unlocked, temporary password reset link sent and confirmed.",
+      ],
+      whyNeeded: "Case resolved. No security breach detected. Two-factor authentication recommended.",
+      nextSteps: ["Suggest enabling 2FA in account settings"],
+    },
+    assignedTo: "Anya Sharma",
+  },
+  {
+    id: "closed-3",
+    name: "Priya Mehta",
+    customerId: "CST-27156",
+    customerRecordId: "priya_mehta",
+    company: "Independent",
+    botType: "Lena (Virtual Agent)",
+    caseType: "Order Issue",
+    agentType: "virtual",
+    channel: "chat",
+    priority: "Low",
+    status: "resolved",
+    preview: "Received wrong size sweater — exchange for size L confirmed, prepaid label sent",
+    waitTime: "",
+    resolvedAt: "Apr 10, 2026",
+    customerContext: "1-year customer. First return request. Single purchase history. Sentiment: Very happy with resolution.",
+    aiOverview: {
+      actions: [
+        "Priya received size M instead of ordered size L for Charcoal Merino Sweater.",
+        "Lena confirmed the order mismatch and issued a prepaid return label.",
+        "Express exchange for size L initiated — no charge to customer.",
+      ],
+      whyNeeded: "Case resolved. Exchange confirmed. Customer expressed satisfaction. No follow-up required.",
+      nextSteps: ["Confirm size L shipped after return is received"],
+    },
+    assignedTo: "Lena (Virtual Agent)",
   },
 ];

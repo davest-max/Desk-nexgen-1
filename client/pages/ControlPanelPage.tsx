@@ -34,7 +34,8 @@ import {
 import { useLayoutContext, type QueueAssignmentStatus, type AcceptIssueData, type ResolvedAssignment, type AssignmentChannel } from "@/components/layout-context";
 import { buildTakeoverConversation, getCustomerRecord, createConversationState } from "@/lib/customer-database";
 import type { SharedConversationData } from "@/components/ConversationPanel";
-import { staticAssignments, type Channel, type Priority, type AiOverview, type StaticAssignment } from "@/lib/static-assignments";
+import { staticAssignments, closedStaticContacts, type Channel, type Priority, type AiOverview, type StaticAssignment } from "@/lib/static-assignments";
+import { ClosedContactPanel, type ClosedRowSummary } from "@/components/ClosedContactPanel";
 import { EscalatedCaseModal, type EscalatedCaseModalData } from "@/components/EscalatedCaseModal";
 import { pendingQueueRejections, pendingResolvedIds, pendingEscalatedIds, acceptedStaticsStore, pendingHandoffConversations } from "@/lib/queue-state";
 import { getEscalationStart } from "@/lib/escalation-timers";
@@ -182,6 +183,7 @@ function IssueRow({
   isMonitored = false,
   isSelected = false,
   onSelect,
+  onReview,
 }: {
   id: string;
   name: string;
@@ -211,6 +213,7 @@ function IssueRow({
   isMonitored?: boolean;
   isSelected?: boolean;
   onSelect?: (id: string | null) => void;
+  onReview?: (id: string) => void;
 }) {
   const { selectAssignment, pushTransferredToast } = useLayoutContext();
   const navigate = useNavigate();
@@ -263,15 +266,19 @@ function IssueRow({
   }, [isMonitored]);
 
   return (
-    <div ref={rowRef} className={cn("group/row border-b border-border last:border-b-0 relative", isMonitored ? "bg-[#EBF4FD] dark:bg-[#0B1E35]" : status === "escalated" ? "bg-[#FEF2F2]" : isSelected && "bg-[#F2F4F7]")}>
-      {(isMonitored || isSelected || status === "escalated") && <div className={cn("absolute left-0 inset-y-0 w-[3px] rounded-r-full z-[1]", isMonitored ? "bg-[#166CCA]" : status === "escalated" ? "bg-[#E53935]" : "bg-[#166CCA]/50")} />}
+    <div ref={rowRef} className={cn(
+      "group/row border-b border-border last:border-b-0 relative",
+      isClosed ? "bg-[#FAFAFA]" : isMonitored ? "bg-[#EBF4FD] dark:bg-[#0B1E35]" : status === "escalated" ? "bg-[#FEF2F2]" : isSelected && "bg-[#F2F4F7]",
+    )}>
+      {!isClosed && (isMonitored || isSelected || status === "escalated") && <div className={cn("absolute left-0 inset-y-0 w-[3px] rounded-r-full z-[1]", isMonitored ? "bg-[#166CCA]" : status === "escalated" ? "bg-[#E53935]" : "bg-[#166CCA]/50")} />}
+      {isClosed && <div className="absolute left-0 inset-y-0 w-[3px] rounded-r-full z-[1] bg-[#D0D5DD]" />}
       {/* Header row — accordion toggle + hover-reveal action buttons */}
       <div
         role="button"
         tabIndex={0}
-        onClick={() => onSelect?.(id)}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect?.(id); } }}
-        className={cn("relative w-full text-left flex items-center gap-3 px-5 py-4 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#166CCA]/30", isMonitored ? "hover:bg-[#D5E9F8] dark:hover:bg-[#0C2A4A]" : status === "escalated" ? "hover:bg-[#FEE2E2]" : "hover:bg-[#F9FAFB]")}
+        onClick={() => isClosed ? onReview?.(id) : onSelect?.(id)}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); isClosed ? onReview?.(id) : onSelect?.(id); } }}
+        className={cn("relative w-full text-left flex items-center gap-3 px-5 py-4 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#166CCA]/30", isClosed ? "hover:bg-[#F2F4F7]" : isMonitored ? "hover:bg-[#D5E9F8] dark:hover:bg-[#0C2A4A]" : status === "escalated" ? "hover:bg-[#FEE2E2]" : "hover:bg-[#F9FAFB]")}
       >
         {(isLive || (isAccepted && !isClosed)) && !isParkedFromToast && (
           <div className="shrink-0 relative flex h-2 w-2">
@@ -281,32 +288,44 @@ function IssueRow({
         )}
         <div className="flex-1 min-w-0 pr-2">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[13px] font-semibold text-[#1D2939]">{name}</span>
-            <span className={cn(
-              "rounded border px-1.5 py-0.5 text-[10px] font-semibold leading-none",
-              status === "open"      && "border-[#B9E0B4] bg-[#F0FAF0] text-[#1E7B1E] dark:border-[#1E4A1E] dark:bg-[#0A2010] dark:text-[#4CAF50]",
-              status === "pending"   && "border-[#D0D5DD] bg-[#F9FAFB] text-[#667085] dark:border-[#2A3448] dark:bg-[#151F30] dark:text-[#8898AB]",
-              status === "resolved"  && "border-[#BFDBFE] bg-[#EBF4FD] text-[#166CCA] dark:border-[#0C3D7A] dark:bg-[#0B1E35] dark:text-[#BFDBFE]",
-              status === "escalated" && "border-[#E53935] bg-[#FDEAEA] text-[#C71D1A] dark:border-[#6B1A1A] dark:bg-[#2E0D0D] dark:text-[#F87171]",
-            )}>
-              {status}
-            </span>
-            {assignedTo && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-[#BFDBFE] bg-[#EBF4FD] px-2 py-0.5 text-[10px] font-semibold text-[#166CCA]">
-                <span className="h-1.5 w-1.5 rounded-full bg-[#166CCA]" />
-                Assigned — {assignedTo}
-              </span>
+            <span className={cn("text-[13px] font-semibold", isClosed ? "text-[#98A2B3]" : "text-[#1D2939]")}>{name}</span>
+            {isClosed ? (
+              <>
+                <span className="rounded border border-[#D0D5DD] bg-[#F2F4F7] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#667085]">Closed</span>
+                {(closedStaticContacts.find((c) => c.id === id)?.resolvedAt) && (
+                  <span className="rounded border border-[#D0D5DD] bg-white px-1.5 py-0.5 text-[10px] font-medium leading-none text-[#98A2B3]">
+                    {closedStaticContacts.find((c) => c.id === id)?.resolvedAt}
+                  </span>
+                )}
+              </>
+            ) : (
+              <>
+                <span className={cn(
+                  "rounded border px-1.5 py-0.5 text-[10px] font-semibold leading-none",
+                  status === "open"      && "border-[#B9E0B4] bg-[#F0FAF0] text-[#1E7B1E] dark:border-[#1E4A1E] dark:bg-[#0A2010] dark:text-[#4CAF50]",
+                  status === "pending"   && "border-[#D0D5DD] bg-[#F9FAFB] text-[#667085] dark:border-[#2A3448] dark:bg-[#151F30] dark:text-[#8898AB]",
+                  status === "resolved"  && "border-[#BFDBFE] bg-[#EBF4FD] text-[#166CCA] dark:border-[#0C3D7A] dark:bg-[#0B1E35] dark:text-[#BFDBFE]",
+                  status === "escalated" && "border-[#E53935] bg-[#FDEAEA] text-[#C71D1A] dark:border-[#6B1A1A] dark:bg-[#2E0D0D] dark:text-[#F87171]",
+                )}>
+                  {status}
+                </span>
+                {assignedTo && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-[#BFDBFE] bg-[#EBF4FD] px-2 py-0.5 text-[10px] font-semibold text-[#166CCA]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#166CCA]" />
+                    Assigned — {assignedTo}
+                  </span>
+                )}
+              </>
             )}
           </div>
-          <p className="mt-0.5 text-[12px] text-[#475467] leading-[1.4] truncate">{preview}</p>
+          <p className={cn("mt-0.5 text-[12px] leading-[1.4] truncate", isClosed ? "text-[#98A2B3]" : "text-[#475467]")}>{preview}</p>
           <div className="mt-1 flex items-center gap-1.5 text-[11px] text-[#98A2B3]">
-            {assignedTo ? (
+            {!isClosed && assignedTo ? (
               <span className="font-medium text-[#166CCA]">{assignedTo}</span>
             ) : (
               <span>{botType}</span>
             )}
-            <span>•</span>
-            <span>⏱ Wait: {waitTime}</span>
+            {!isClosed && <><span>•</span><span>⏱ Wait: {waitTime}</span></>}
             <span>•</span>
             <span>{customerId}</span>
           </div>
@@ -347,10 +366,10 @@ function IssueRow({
           ) : isClosed ? (
             <button
               type="button"
-              onClick={() => onReopen()}
+              onClick={() => onReview?.(id)}
               className="rounded-md border border-[#D0D5DD] bg-white px-3 py-1 text-[11px] font-semibold text-[#344054] hover:bg-[#F9FAFB] transition-colors"
             >
-              View
+              Review →
             </button>
           ) : status !== "resolved" && (
             <>
@@ -1569,6 +1588,7 @@ function IssueGroup({
   onResolveAll,
   selectedCaseId,
   onSelectCase,
+  onReviewCase,
 }: {
   label: string;
   items: RowData[];
@@ -1576,6 +1596,7 @@ function IssueGroup({
   onResolveAll: () => void;
   selectedCaseId?: string | null;
   onSelectCase?: (id: string | null) => void;
+  onReviewCase?: (id: string) => void;
 }) {
   const [isOpen, setIsOpen] = useState(true);
   const [showBulkModal, setShowBulkModal] = useState(false);
@@ -1622,7 +1643,7 @@ function IssueGroup({
       <div className={cn("grid transition-all duration-200 ease-out", isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
         <div className="overflow-hidden">
           {items.map((a) => (
-            <IssueRow key={a.id} {...a} isMonitored={monitoredCaseId === a.id} isSelected={selectedCaseId === a.id} onSelect={onSelectCase} />
+            <IssueRow key={a.id} {...a} isMonitored={monitoredCaseId === a.id} isSelected={selectedCaseId === a.id} onSelect={onSelectCase} onReview={onReviewCase} />
           ))}
         </div>
       </div>
@@ -1640,6 +1661,7 @@ function CustomerGroup({
   onResolveAll,
   selectedCaseId,
   onSelectCase,
+  onReviewCase,
 }: {
   customerRecord: ReturnType<typeof getCustomerRecord> | null;
   caseCustomerName?: string;
@@ -1649,6 +1671,7 @@ function CustomerGroup({
   onResolveAll: () => void;
   selectedCaseId?: string | null;
   onSelectCase?: (id: string | null) => void;
+  onReviewCase?: (id: string) => void;
 }) {
   const [isOpen, setIsOpen] = useState(true);
   const [showBulkModal, setShowBulkModal] = useState(false);
@@ -1730,7 +1753,7 @@ function CustomerGroup({
       <div className={cn("grid transition-all duration-200 ease-out", isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
         <div className="overflow-hidden">
           {items.map((a) => (
-            <IssueRow key={a.id} {...a} isMonitored={monitoredCaseId === a.id} isSelected={selectedCaseId === a.id} onSelect={onSelectCase} />
+            <IssueRow key={a.id} {...a} isMonitored={monitoredCaseId === a.id} isSelected={selectedCaseId === a.id} onSelect={onSelectCase} onReview={onReviewCase} />
           ))}
         </div>
       </div>
@@ -2054,6 +2077,7 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
     return () => document.removeEventListener("mousedown", handler);
   }, [isFilterPanelOpen]);
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
+  const [closedPanelRowId, setClosedPanelRowId] = useState<string | null>(null);
   const [rejectedIds, setRejectedIds] = useState<Set<string>>(new Set());
 
   // Drain any cross-page rejections queued by the global Layout modal.
@@ -2450,7 +2474,23 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
   // Status rank for within-group and group-level sorting: escalated first, resolved last
   const statusRank: Record<string, number> = { escalated: 0, open: 1, pending: 2, resolved: 3 };
 
-  const allRows = [...baseRows, ...resolvedNormalised]
+  // Pre-seeded closed contacts — always visible under the "Closed" filter.
+  const staticClosedNormalised: RowData[] = closedStaticContacts.map((a) => ({
+    ...a,
+    isLive: false,
+    isAccepted: true,
+    isClosed: true,
+    isParkedFromToast: false,
+    liveAssignmentId: null,
+    onAccept: () => {},
+    onReject: () => {},
+    onReopen: () => {},
+    onMonitor: () => {},
+    onSupervise: () => {},
+    onTakeoverAccept: () => {},
+  }));
+
+  const allRows = [...baseRows, ...resolvedNormalised, ...staticClosedNormalised]
     .filter((a) => {
       if (issueTab.size === 0) return true;
       return (
@@ -3414,6 +3454,7 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
                         onResolveAll={() => setBulkResolvedIds((prev) => new Set([...prev, ...items.map((i) => i.id)]))}
                         selectedCaseId={selectedCaseId}
                         onSelectCase={setSelectedCaseId}
+                        onReviewCase={setClosedPanelRowId}
                       />
                     ));
                   }
@@ -3437,7 +3478,7 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
                     );
                     // Only wrap in accordion when there are 2+ cases for this customer
                     if (sortedItems.length === 1) {
-                      return <IssueRow key={key} {...sortedItems[0]} isMonitored={false} isSelected={selectedCaseId === sortedItems[0].id} onSelect={setSelectedCaseId} />;
+                      return <IssueRow key={key} {...sortedItems[0]} isMonitored={false} isSelected={selectedCaseId === sortedItems[0].id} onSelect={setSelectedCaseId} onReview={setClosedPanelRowId} />;
                     }
                     const customerRecord = sortedItems[0]?.customerRecordId
                       ? getCustomerRecord(sortedItems[0].customerRecordId)
@@ -3453,6 +3494,7 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
                         onResolveAll={() => setBulkResolvedIds((prev) => new Set([...prev, ...sortedItems.map((i) => i.id)]))}
                         selectedCaseId={selectedCaseId}
                         onSelectCase={setSelectedCaseId}
+                        onReviewCase={setClosedPanelRowId}
                       />
                     );
                   });
@@ -3480,6 +3522,53 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
                 onClose={() => setSelectedCaseId(null)}
               />
             )}
+
+            {/* Closed contact drill-in panel */}
+            {(() => {
+              const closedRow = closedPanelRowId ? allRows.find((r) => r.id === closedPanelRowId) : null;
+              if (!closedRow) return null;
+              const panelRow: ClosedRowSummary = {
+                id: closedRow.id,
+                name: closedRow.name,
+                customerId: closedRow.customerId,
+                customerRecordId: closedRow.customerRecordId,
+                company: closedRow.company,
+                channel: closedRow.channel,
+                caseType: closedRow.caseType,
+                preview: closedRow.preview,
+                resolvedAt: closedStaticContacts.find((c) => c.id === closedRow.id)?.resolvedAt,
+                onReopen: closedRow.onReopen,
+              };
+              const allPanelRows: ClosedRowSummary[] = allRows
+                .filter((r) => r.isClosed)
+                .map((r) => ({
+                  id: r.id,
+                  name: r.name,
+                  customerId: r.customerId,
+                  customerRecordId: r.customerRecordId,
+                  company: r.company,
+                  channel: r.channel,
+                  caseType: r.caseType,
+                  preview: r.preview,
+                  resolvedAt: closedStaticContacts.find((c) => c.id === r.id)?.resolvedAt,
+                  onReopen: r.onReopen,
+                }));
+              return (
+                <div
+                  className={cn(
+                    "fixed inset-y-0 right-0 z-[200] flex flex-col overflow-hidden bg-white shadow-[−4px_0_32px_rgba(0,0,0,0.12)] transition-transform duration-300 ease-out",
+                    closedRow ? "translate-x-0" : "translate-x-full",
+                  )}
+                  style={{ width: 540 }}
+                >
+                  <ClosedContactPanel
+                    row={panelRow}
+                    allClosedRows={allPanelRows}
+                    onClose={() => setClosedPanelRowId(null)}
+                  />
+                </div>
+              );
+            })()}
           </div>
 
 
