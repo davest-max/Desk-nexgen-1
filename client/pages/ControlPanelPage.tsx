@@ -2532,7 +2532,7 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
   const totalTasks = tabCounts.open + tabCounts.pending + tabCounts.closed + tabCounts.escalated;
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="relative flex h-full flex-col">
 
       {/* ── Top-level Review / Queue tabs ────────────────────────────────────── */}
       {mode !== "inbox" && (
@@ -3515,57 +3515,53 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
               />
             )}
 
-            {/* Closed contact drill-in panel */}
-            {(() => {
-              const closedRow = closedPanelRowId ? allRows.find((r) => r.id === closedPanelRowId) : null;
-              if (!closedRow) return null;
-              const panelRow: ClosedRowSummary = {
-                id: closedRow.id,
-                name: closedRow.name,
-                customerId: closedRow.customerId,
-                customerRecordId: closedRow.customerRecordId,
-                company: closedRow.company,
-                channel: closedRow.channel,
-                caseType: closedRow.caseType,
-                preview: closedRow.preview,
-                resolvedAt: closedStaticContacts.find((c) => c.id === closedRow.id)?.resolvedAt,
-                onReopen: closedRow.onReopen,
-              };
-              const allPanelRows: ClosedRowSummary[] = allRows
-                .filter((r) => r.isClosed)
-                .map((r) => ({
-                  id: r.id,
-                  name: r.name,
-                  customerId: r.customerId,
-                  customerRecordId: r.customerRecordId,
-                  company: r.company,
-                  channel: r.channel,
-                  caseType: r.caseType,
-                  preview: r.preview,
-                  resolvedAt: closedStaticContacts.find((c) => c.id === r.id)?.resolvedAt,
-                  onReopen: r.onReopen,
-                }));
-              return (
-                <div
-                  className={cn(
-                    "fixed inset-y-0 right-0 z-[200] flex flex-col overflow-hidden bg-white shadow-[−4px_0_32px_rgba(0,0,0,0.12)] transition-transform duration-300 ease-out",
-                    closedRow ? "translate-x-0" : "translate-x-full",
-                  )}
-                  style={{ width: 540 }}
-                >
-                  <ClosedContactPanel
-                    row={panelRow}
-                    allClosedRows={allPanelRows}
-                    onClose={() => setClosedPanelRowId(null)}
-                  />
-                </div>
-              );
-            })()}
           </div>
 
 
         </div>
       </div>
+
+      {/* Closed contact drill-in — takes over the full inbox panel */}
+      {(() => {
+        if (!closedPanelRowId) return null;
+        const closedRow = allRows.find((r) => r.id === closedPanelRowId);
+        if (!closedRow) return null;
+        const panelRow: ClosedRowSummary = {
+          id: closedRow.id,
+          name: closedRow.name,
+          customerId: closedRow.customerId,
+          customerRecordId: closedRow.customerRecordId,
+          company: closedRow.company,
+          channel: closedRow.channel,
+          caseType: closedRow.caseType,
+          preview: closedRow.preview,
+          resolvedAt: closedStaticContacts.find((c) => c.id === closedRow.id)?.resolvedAt,
+          onReopen: closedRow.onReopen,
+        };
+        const allPanelRows: ClosedRowSummary[] = allRows
+          .filter((r) => r.isClosed)
+          .map((r) => ({
+            id: r.id,
+            name: r.name,
+            customerId: r.customerId,
+            customerRecordId: r.customerRecordId,
+            company: r.company,
+            channel: r.channel,
+            caseType: r.caseType,
+            preview: r.preview,
+            resolvedAt: closedStaticContacts.find((c) => c.id === r.id)?.resolvedAt,
+            onReopen: r.onReopen,
+          }));
+        return (
+          <div className="absolute inset-0 z-50 flex flex-col overflow-hidden bg-white">
+            <ClosedContactPanel
+              row={panelRow}
+              allClosedRows={allPanelRows}
+              onClose={() => setClosedPanelRowId(null)}
+            />
+          </div>
+        );
+      })()}
 
       }
 
