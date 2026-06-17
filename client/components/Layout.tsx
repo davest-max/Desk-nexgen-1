@@ -85,6 +85,8 @@ import {
   Star,
   LayoutList,
   UserPlus,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
 
 import {
@@ -8655,10 +8657,10 @@ function IncomingAssignmentCard({
             <>
               <button
                 type="button"
-                onClick={() => onReviewLead?.(item)}
+                onClick={() => handleDismiss()}
                 className="flex-1 rounded-lg border border-[#D0D5DD] bg-white py-1.5 text-[12px] font-semibold text-[#344054] transition-colors hover:bg-[#F9FAFB]"
               >
-                Review
+                Cancel
               </button>
               <button
                 type="button"
@@ -9731,21 +9733,21 @@ function LeftQueueRail({
           aria-hidden={isOpen}
         >
           <div className="flex h-full w-full flex-col items-center">
-            {/* + New Assignment button — pinned top */}
+            {/* + New Assignment button */}
             <div className="flex w-full shrink-0 flex-col items-center pt-2 pb-1 px-1">
               <TooltipProvider delayDuration={300}>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
                       type="button"
-                      aria-label="Add New Case"
+                      aria-label="New Outbound Contact"
                       onClick={(e) => onAddNewAssignment(e.currentTarget.getBoundingClientRect())}
                       className="flex h-8 w-8 items-center justify-center rounded-lg border border-black/[0.14] bg-white text-[#344054] shadow-[0_1px_2px_rgba(16,24,40,0.05)] transition-colors hover:bg-[#F9FAFB] hover:text-[#1D2939]"
                     >
                       <Plus className="h-4 w-4 stroke-[1.5]" />
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent side="right">Add New Case</TooltipContent>
+                  <TooltipContent side="right">New Outbound Contact</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             </div>
@@ -9756,10 +9758,10 @@ function LeftQueueRail({
               {([
                 { icon: Monitor,       path: "/control-center", label: "Control Center" },
                 { icon: FileSearch,    path: "/queue",         label: "Contacts"       },
-                { icon: FlaskConical,  path: "/scenarios",     label: "Scenarios"      },
                 { icon: BookUser,      path: "/directory",     label: "Directory"      },
                 { icon: CalendarCheck, path: "/schedule",      label: "Schedule"       },
                 { icon: Settings,      path: "/settings",      label: "Settings"       },
+                { icon: FlaskConical,  path: "/scenarios",     label: "Scenarios"      },
               ] as const).map(({ icon: Icon, path, label }) => {
                 const sideKey = SIDE_PANEL_PATHS[path];
                 const isActive = location.pathname === path || (sideKey ? sideNavPanel === sideKey : false);
@@ -9979,14 +9981,23 @@ function LeftQueueRail({
             </div>
           )}
 
-          {/* App logo mark — always pinned to bottom of collapsed rail */}
-          <div className="flex w-full shrink-0 items-center justify-center pb-3">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <path
-                d="M23.7188 5.89062C23.8757 5.89077 24.0015 6.01655 24 6.17188C23.8494 15.8941 15.9182 23.7747 6.13379 23.9238C5.97839 23.9255 5.85077 23.7999 5.85059 23.6445V19.3848C5.85059 19.2325 5.97502 19.1097 6.12891 19.1064C13.2448 18.9606 19.0048 13.236 19.1523 6.16602C19.1556 6.01217 19.2788 5.88872 19.4326 5.88867L23.7188 5.89062ZM12.2559 0.0771484C13.8714 0.0772122 15.1804 1.37836 15.1807 2.98242C15.1807 4.58668 13.8716 5.88861 12.2559 5.88867C10.6401 5.88867 9.33008 4.58672 9.33008 2.98242C9.33031 1.37832 10.6402 0.0771484 12.2559 0.0771484ZM2.92578 0.0761719C4.5412 0.0763851 5.85033 1.3775 5.85059 2.98145C5.85059 4.58561 4.54135 5.88748 2.92578 5.8877C1.31003 5.8877 0 4.58574 0 2.98145C0.000253194 1.37736 1.31018 0.0761719 2.92578 0.0761719Z"
-                fill="#2196F3"
-              />
-            </svg>
+          {/* Expand toggle — pinned to bottom of collapsed rail */}
+          <div className="flex w-full shrink-0 flex-col items-center pb-3 px-1 mt-auto">
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Open navigation"
+                    onClick={onToggle}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-[#667085] transition-colors hover:bg-[#EBEBEC] hover:text-[#1D2939]"
+                  >
+                    <ChevronsRight className="h-4 w-4 stroke-[1.5]" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">Open navigation</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
           </div>
         </aside>
@@ -10013,17 +10024,71 @@ function LeftQueueRail({
                 : "opacity 120ms ease-out, transform 120ms ease-out",              /* closing: fade out immediately */
             }}
           >
-            {/* Assignments section — static at top */}
+            {/* New Case button */}
             <div className="shrink-0 px-3 pb-2 pt-3">
               <button
                 type="button"
                 onClick={(e) => onAddNewAssignment(e.currentTarget.getBoundingClientRect())}
-                className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-black/[0.14] dark:border-border bg-white dark:bg-[#1C2A3A] px-3 py-1.5 text-[13px] font-medium text-[#344054] dark:text-[#CBD5E1] transition-colors hover:bg-[#F9FAFB] dark:hover:bg-[#243041]"
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-black/[0.14] dark:border-border bg-white dark:bg-[#1C2A3A] px-3 py-1.5 text-[13px] font-medium text-[#344054] dark:text-[#CBD5E1] transition-colors hover:bg-[#F9FAFB] dark:hover:bg-[#243041]"
               >
                 <Plus className="h-4 w-4 stroke-[1.5]" />
                 New Case
               </button>
             </div>
+
+            {/* Jordan Davis — incoming + queue cards pinned above nav */}
+            {incomingItems.filter((i) => i.customerRecordId === "jordan").length > 0 && (
+              <>
+                <div className="mx-3 border-t border-black/[0.08]" />
+                <div className="shrink-0 pb-2 pt-3">
+                  <div className="flex items-center gap-1.5 px-3 pb-2">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#E32926] animate-pulse" />
+                    <h3 className="text-[11px] font-semibold uppercase tracking-wider text-[#E32926]">
+                      Incoming · {incomingItems.filter((i) => i.customerRecordId === "jordan").length}
+                    </h3>
+                  </div>
+                  <div className="space-y-2 px-2">
+                    {incomingItems.filter((i) => i.customerRecordId === "jordan").map((item) => (
+                      <IncomingAssignmentCard
+                        key={item.id}
+                        item={item}
+                        isInline
+                        dismissDirection="left"
+                        onTakeover={onIncomingTakeover ?? (() => {})}
+                        onMonitor={onIncomingMonitor ?? (() => {})}
+                        onTransfer={onIncomingTransfer ?? (() => {})}
+                        onDismiss={onIncomingDismiss ?? (() => {})}
+                        onApprove={onIncomingApprove}
+                        onApproveResolved={onIncomingApproveResolved}
+                        onDismissResolved={onIncomingDismissResolved}
+                        onLaunchCall={onIncomingLaunchCall}
+                        onReviewLead={onIncomingReviewLead}
+                        isLaunching={launchingAssignmentId === item.id}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+            {groupedQueueItems.filter((g) => g.customerRecordId === "jordan").length > 0 && (
+              <>
+                {incomingItems.filter((i) => i.customerRecordId === "jordan").length === 0 && (
+                  <div className="mx-3 border-t border-black/[0.08]" />
+                )}
+                <QueueOverlayList
+                  groups={groupedQueueItems.filter((g) => g.customerRecordId === "jordan")}
+                  queueStatuses={queueStatuses}
+                  onStatusChange={onStatusChange}
+                  onRemove={handleRemoveQueueItem}
+                  onRemoveAll={handleRemoveGroupedQueueItems}
+                  onCloseChannelKeepTask={closeChannelKeepTask}
+                  taskSummaryIds={taskSummaryIds}
+                  isOpen={isOpen}
+                  onSelectAssignment={selectAssignment}
+                  onDeselect={onDeselect}
+                />
+              </>
+            )}
 
             <div className="mx-3 border-t border-black/[0.08]" />
 
@@ -10033,10 +10098,10 @@ function LeftQueueRail({
                 {[
                   { label: "Control Center", icon: Monitor, path: "/control-center" },
                   { label: "Contacts",   icon: FileSearch,    path: "/queue"         },
-                  { label: "Scenarios",  icon: FlaskConical,  path: "/scenarios"     },
                   { label: "Directory",  icon: BookUser,      path: "/directory"     },
                   { label: "Schedule",   icon: CalendarCheck, path: "/schedule"      },
                   { label: "Settings",   icon: Settings,      path: "/settings"      },
+                  { label: "Scenarios",  icon: FlaskConical,  path: "/scenarios"     },
                 ].map(({ label, icon: Icon, path }) => {
                   const sideKeyExp = SIDE_PANEL_PATHS[path];
                   const isActive = location.pathname === path || (sideKeyExp ? sideNavPanel === sideKeyExp : false);
@@ -10073,19 +10138,19 @@ function LeftQueueRail({
               </nav>
             </div>
 
-            {incomingItems.length > 0 && <div className="mx-3 border-t border-black/[0.08]" />}
+            {incomingItems.filter((i) => i.customerRecordId !== "jordan").length > 0 && <div className="mx-3 border-t border-black/[0.08]" />}
 
-            {/* Incoming assignments section */}
-            {incomingItems.length > 0 && (
+            {/* Incoming assignments section — non-Jordan items only */}
+            {incomingItems.filter((i) => i.customerRecordId !== "jordan").length > 0 && (
               <div className="shrink-0 pb-2 pt-3">
                 <div className="flex items-center gap-1.5 px-3 pb-2">
                   <span className="h-1.5 w-1.5 rounded-full bg-[#E32926] animate-pulse" />
                   <h3 className="text-[11px] font-semibold uppercase tracking-wider text-[#E32926]">
-                    Incoming · {incomingItems.length}
+                    Incoming · {incomingItems.filter((i) => i.customerRecordId !== "jordan").length}
                   </h3>
                 </div>
                 <div className="space-y-2 px-2">
-                  {incomingItems.map((item) => (
+                  {incomingItems.filter((i) => i.customerRecordId !== "jordan").map((item) => (
                     <IncomingAssignmentCard
                       key={item.id}
                       item={item}
@@ -10107,9 +10172,9 @@ function LeftQueueRail({
               </div>
             )}
 
-            {groupedQueueItems.length > 0 && (
+            {groupedQueueItems.filter((g) => g.customerRecordId !== "jordan").length > 0 && (
               <QueueOverlayList
-                groups={groupedQueueItems}
+                groups={groupedQueueItems.filter((g) => g.customerRecordId !== "jordan")}
                 queueStatuses={queueStatuses}
                 onStatusChange={onStatusChange}
                 onRemove={handleRemoveQueueItem}
@@ -10122,9 +10187,19 @@ function LeftQueueRail({
               />
             )}
 
-            {/* CXone logo — pinned footer of open rail */}
-            <div className="mt-auto shrink-0 px-4 py-3">
-              {/* Light mode logo */}
+            {/* Collapse toggle — pinned to bottom of open rail */}
+            <div className="mt-auto shrink-0 px-3 pb-3 pt-2">
+              <button
+                type="button"
+                onClick={onToggle}
+                aria-label="Collapse navigation"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-[#667085] transition-colors hover:bg-[#EBEBEC] hover:text-[#1D2939]"
+              >
+                <ChevronsLeft className="h-4 w-4 stroke-[1.5]" />
+              </button>
+            </div>
+
+            {false && <div className="mt-auto shrink-0 px-4 py-3">
               <svg viewBox="0 0 1953 277.14" xmlns="http://www.w3.org/2000/svg" aria-label="NICE CXone" className="block h-[18px] w-auto dark:hidden">
                 <defs>
                   <linearGradient id="cxone-gradient-light" x1="1327.72" y1="146.68" x2="1953" y2="146.68" gradientUnits="userSpaceOnUse">
@@ -10164,7 +10239,7 @@ function LeftQueueRail({
                   <path fill="#fff" d="M541.63,178.19h-53.36c-1.44,0-2.7,1.02-2.96,2.44-2.47,13.59-7.12,24.42-13.94,32.5-7.69,9.1-18.56,13.65-32.63,13.65-10.83,0-20.13-3.31-27.92-9.93-7.79-6.61-13.8-15.96-18.02-28.01-4.22-12.06-6.33-26.36-6.33-42.91s2-30.25,6.01-42.55c4-12.29,9.95-21.86,17.86-28.72,7.9-6.86,17.48-10.28,28.74-10.28,12.77,0,23.16,4.26,31.17,12.77,7.01,7.46,11.87,17.46,14.57,29.99.3,1.37,1.53,2.35,2.94,2.35h53.16c1.89,0,3.3-1.72,2.96-3.58-5.29-28.91-16.13-51.27-32.55-67.06-17.21-16.54-41.29-24.82-72.24-24.82-22.52,0-42.11,5.44-58.77,16.31-16.67,10.87-29.5,26.18-38.48,45.92-8.98,19.74-13.47,42.97-13.47,69.67s4.71,51.24,14.12,70.74c9.42,19.5,22.4,34.46,38.96,44.85,16.56,10.4,35.44,15.6,56.66,15.6s38.2-3.9,52.93-11.7c14.72-7.8,26.62-19.09,35.72-33.87,8.52-13.85,14.48-30.46,17.86-49.83.33-1.85-1.08-3.56-2.96-3.56"/>
                 </g>
               </svg>
-            </div>
+            </div>}
           </div>
         </div>
       </div>
@@ -13921,9 +13996,11 @@ export default function Layout({ children }: LayoutProps) {
               onClick={() => setIsLeftRailOpen((v) => !v)}
               aria-label={isLeftRailOpen ? "Collapse cases rail" : "Expand cases rail"}
               aria-pressed={isLeftRailOpen}
-              className="flex h-10 w-[30px] items-center justify-center rounded-xl text-[#333333] transition-colors hover:text-[#166CCA]"
+              className="flex h-10 w-[30px] items-center justify-center rounded-xl transition-opacity hover:opacity-70"
             >
-              <PanelLeft className="h-4 w-4" />
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M23.7188 5.89062C23.8757 5.89077 24.0015 6.01655 24 6.17188C23.8494 15.8941 15.9182 23.7747 6.13379 23.9238C5.97839 23.9255 5.85077 23.7999 5.85059 23.6445V19.3848C5.85059 19.2325 5.97502 19.1097 6.12891 19.1064C13.2448 18.9606 19.0048 13.236 19.1523 6.16602C19.1556 6.01217 19.2788 5.88872 19.4326 5.88867L23.7188 5.89062ZM12.2559 0.0771484C13.8714 0.0772122 15.1804 1.37836 15.1807 2.98242C15.1807 4.58668 13.8716 5.88861 12.2559 5.88867C10.6401 5.88867 9.33008 4.58672 9.33008 2.98242C9.33031 1.37832 10.6402 0.0771484 12.2559 0.0771484ZM2.92578 0.0761719C4.5412 0.0763851 5.85033 1.3775 5.85059 2.98145C5.85059 4.58561 4.54135 5.88748 2.92578 5.8877C1.31003 5.8877 0 4.58574 0 2.98145C0.000253194 1.37736 1.31018 0.0761719 2.92578 0.0761719Z" fill="#2196F3"/>
+              </svg>
             </button>
             <div className="pointer-events-none absolute left-full top-1/2 z-[9999] ml-2 -translate-y-1/2 whitespace-nowrap rounded-lg border border-[#E4E7EC] bg-white px-3 py-1.5 text-xs font-medium text-[#344054] opacity-0 shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-opacity duration-150 group-hover:opacity-100">
               {isLeftRailOpen ? "Close navigation" : "Open navigation"}
@@ -15724,108 +15801,99 @@ export default function Layout({ children }: LayoutProps) {
           briefingClosing ? "opacity-0" : "animate-in fade-in duration-200",
         )}>
           <div className={cn(
-            "w-[400px] rounded-2xl border border-black/[0.08] bg-white shadow-[0_8px_32px_rgba(0,0,0,0.10),0_2px_8px_rgba(0,0,0,0.06)] transition-all duration-280",
+            "w-[400px] rounded-[12px] bg-white shadow-[0px_20px_40px_0px_rgba(0,0,0,0.12)] overflow-clip transition-all duration-280",
             briefingClosing
               ? "opacity-0 scale-95 translate-y-2"
               : "animate-in fade-in zoom-in-95 slide-in-from-bottom-3 duration-300",
           )}>
 
             {/* Header */}
-            <div className="px-6 pt-6 pb-4 border-b border-[#F2F4F7] dark:border-border">
-              <div className="flex items-center gap-3">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M23.7188 5.89062C23.8757 5.89077 24.0015 6.01655 24 6.17188C23.8494 15.8941 15.9182 23.7747 6.13379 23.9238C5.97839 23.9255 5.85077 23.7999 5.85059 23.6445V19.3848C5.85059 19.2325 5.97502 19.1097 6.12891 19.1064C13.2448 18.9606 19.0048 13.236 19.1523 6.16602C19.1556 6.01217 19.2788 5.88872 19.4326 5.88867L23.7188 5.89062ZM12.2559 0.0771484C13.8714 0.0772122 15.1804 1.37836 15.1807 2.98242C15.1807 4.58668 13.8716 5.88861 12.2559 5.88867C10.6401 5.88867 9.33008 4.58672 9.33008 2.98242C9.33031 1.37832 10.6402 0.0771484 12.2559 0.0771484ZM2.92578 0.0761719C4.5412 0.0763851 5.85033 1.3775 5.85059 2.98145C5.85059 4.58561 4.54135 5.88748 2.92578 5.8877C1.31003 5.8877 0 4.58574 0 2.98145C0.000253194 1.37736 1.31018 0.0761719 2.92578 0.0761719Z" fill="#2196F3"/>
-                </svg>
-                <div>
-                  <p className="text-[15px] font-semibold text-[#101828] dark:text-[#E2E8F0]">Good morning, Jeff</p>
-                  <p className="text-[12px] text-[#667085] dark:text-[#8898AB]">Here's what's waiting for you today</p>
-                </div>
+            <div className="flex items-center gap-3 px-6 py-5">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
+                <path d="M23.7188 5.89062C23.8757 5.89077 24.0015 6.01655 24 6.17188C23.8494 15.8941 15.9182 23.7747 6.13379 23.9238C5.97839 23.9255 5.85077 23.7999 5.85059 23.6445V19.3848C5.85059 19.2325 5.97502 19.1097 6.12891 19.1064C13.2448 18.9606 19.0048 13.236 19.1523 6.16602C19.1556 6.01217 19.2788 5.88872 19.4326 5.88867L23.7188 5.89062ZM12.2559 0.0771484C13.8714 0.0772122 15.1804 1.37836 15.1807 2.98242C15.1807 4.58668 13.8716 5.88861 12.2559 5.88867C10.6401 5.88867 9.33008 4.58672 9.33008 2.98242C9.33031 1.37832 10.6402 0.0771484 12.2559 0.0771484ZM2.92578 0.0761719C4.5412 0.0763851 5.85033 1.3775 5.85059 2.98145C5.85059 4.58561 4.54135 5.88748 2.92578 5.8877C1.31003 5.8877 0 4.58574 0 2.98145C0.000253194 1.37736 1.31018 0.0761719 2.92578 0.0761719Z" fill="#2196F3"/>
+              </svg>
+              <div className="flex flex-col gap-1 min-w-0 flex-1">
+                <p className="text-[20px] font-semibold leading-6 tracking-[-0.3px] text-[rgba(0,0,0,0.8)]">Good morning, Jeff</p>
+                <p className="text-[14px] leading-5 text-[rgba(0,0,0,0.6)]">Here's what's waiting for you today</p>
               </div>
             </div>
 
-            {/* Stats */}
-            <div className="px-6 pt-4 pb-3 space-y-3">
-              {/* Escalated Cases */}
-              <div className="flex items-center justify-between rounded-xl border border-[#FECACA]/60 dark:border-[#7F1D1D]/60 bg-[#FEF2F2] dark:bg-[#2A0A0A] px-4 py-3">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FEE2E2] dark:bg-[#450A0A]">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-                    </svg>
-                  </div>
-                  <span className="text-[13px] font-medium text-[#991B1B] dark:text-[#FCA5A5]">Escalated Cases</span>
+            {/* Content */}
+            <div className="flex flex-col gap-4 px-6 pb-6">
+              {/* Critical Alert */}
+              <div className="flex flex-col gap-3 rounded-[8px] border border-[#bd2a2a] bg-[#fff0f0] p-4">
+                <div className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
+                    <circle cx="8" cy="8" r="8" fill="#bd2a2a"/>
+                    <path d="M8 4.5v4" stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
+                    <circle cx="8" cy="10.5" r="0.75" fill="white"/>
+                  </svg>
+                  <p className="text-[12px] font-bold uppercase tracking-[0.2px] text-[#bd2a2a]">Critical Alert</p>
                 </div>
-                <span className="rounded-full bg-[#EF4444] px-2.5 py-0.5 text-[12px] font-semibold text-white">{queuePreviewItems.filter(i => i.statusLabel === "Escalated").length}</span>
-              </div>
-
-              {/* Pending Cases */}
-              <div className="flex items-center justify-between rounded-xl border border-[#E4E7EC] dark:border-[#2A3448] bg-[#F9FAFB] dark:bg-[#1C2A3A] px-4 py-3">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#F2F4F7] dark:bg-[#1C2A3A]">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#667085" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                    </svg>
-                  </div>
-                  <span className="text-[13px] font-medium text-[#344054] dark:text-[#CBD5E1]">Pending Cases</span>
-                </div>
-                <span className="rounded-full bg-[#475467] px-2.5 py-0.5 text-[12px] font-semibold text-white">{staticAssignments.filter(a => a.status === "pending" && a.channel !== "email").length}</span>
-              </div>
-            </div>
-
-            {/* Trend Detection carousel */}
-            {(() => {
-              const trendSlides = [
-                "Login failure rates are up 18% compared to yesterday. Most failures are occurring between 08:00–10:00. Consider pre-emptively routing authentication cases to your fastest agents during this window.",
-                "Average handle time for billing cases has dropped by 22 seconds this week. Your team is resolving payment disputes faster — keep reinforcing the current approach.",
-                "3 cases have been waiting over 45 minutes without agent contact. Prioritise these immediately to avoid SLA breaches and escalation risk.",
-                "Customer satisfaction scores for chat interactions are trending 8% higher than voice this month. Consider channel-routing lower-complexity cases to chat where possible.",
-                "Peak case volume typically hits between 11:00–13:00. Ensure full agent coverage during this window to prevent queue build-up.",
-              ];
-              return (
-                <div className="mx-6 mb-4 rounded-xl border border-[#E4E7EC] dark:border-[#2A3448] bg-white dark:bg-[#0F1629] p-4">
-                  <div className="mb-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#98A2B3] dark:text-[#64748B]">Trend Detection</p>
-                  </div>
-                  <p className="text-[12px] leading-[1.65] text-[#344054] dark:text-[#CBD5E1] min-h-[72px]">
-                    {trendSlides[trendSlide]}
+                <div className="flex flex-col gap-2">
+                  <p className="text-[16px] font-medium leading-5 tracking-[-0.16px] text-[#bd2a2a]">
+                    Winter Snow Storm — Minneapolis–Saint Paul Metro
                   </p>
-                  {/* Pagination dots */}
-                  <div className="flex items-center gap-1.5 mt-3">
-                    {trendSlides.map((_, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        onClick={() => setTrendSlide(i)}
-                        className={cn(
-                          "rounded-full transition-all duration-200",
-                          i === trendSlide ? "h-1.5 w-5 bg-[#166CCA]" : "h-1.5 w-1.5 bg-[#D0D5DD] dark:bg-[#2A3448] hover:bg-[#BFDBFE]"
-                        )}
-                      />
-                    ))}
-                  </div>
+                  <p className="text-[14px] leading-5 text-[#bd2a2a]">
+                    A major winter snow storm across the MSP metro area is affecting 84,000+ stranded passengers. Ground operations are severely limited — expect extended delays on all outbound flights. 142 Voyager departures canceled.
+                  </p>
                 </div>
-              );
-            })()}
+              </div>
 
-            {/* Actions */}
-            <div className="flex gap-2.5 px-6 pb-6">
-              <button
-                type="button"
+              {/* Trend Detection */}
+              {(() => {
+                const trendSlides = [
+                  "Hotel availability near MSP has dropped to 2%. Partner hotels are fully booked within a 15-mile radius. Issue vouchers proactively for properties in Bloomington and Eagan before remaining rooms fill.",
+                  "Login failure rates are up 18% compared to yesterday. Most failures are occurring between 08:00–10:00. Consider pre-emptively routing authentication cases to your fastest agents during this window.",
+                  "Average handle time for billing cases has dropped by 22 seconds this week. Your team is resolving payment disputes faster — keep reinforcing the current approach.",
+                  "3 cases have been waiting over 45 minutes without agent contact. Prioritise these immediately to avoid SLA breaches and escalation risk.",
+                  "Peak case volume typically hits between 11:00–13:00. Ensure full agent coverage during this window to prevent queue build-up.",
+                ];
+                return (
+                  <div className="flex flex-col gap-3 rounded-[8px] border border-[rgba(0,0,0,0.16)] p-4">
+                    <p className="text-[12px] font-semibold uppercase tracking-[0.2px] text-[#5d6a79]">Trend Detection</p>
+                    <div className="flex flex-col gap-4">
+                      <p className="text-[14px] leading-5 text-[rgba(0,0,0,0.8)]">
+                        {trendSlides[trendSlide]}
+                      </p>
+                      <div className="flex items-center justify-center gap-1.5">
+                        {trendSlides.map((_, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => setTrendSlide(i)}
+                            className={cn(
+                              "rounded-full transition-all duration-200",
+                              i === trendSlide ? "h-1.5 w-5 bg-[#166CCA]" : "h-1.5 w-1.5 bg-[#D0D5DD] hover:bg-[#BFDBFE]"
+                            )}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-center gap-4 border-t border-[rgba(0,0,0,0.1)] px-6 py-6">
+              <Button
+                variant="default"
+                className="flex-1"
                 onClick={() => closeBriefing(() => {
                   setStatus("Available");
                   setStatusStartedAt(Date.now());
                 })}
-                className="flex-1 rounded-xl bg-[#166CCA] py-2.5 text-[14px] font-semibold text-white shadow-[0_1px_3px_rgba(22,108,202,0.20)] hover:bg-[#1260B0] active:bg-[#0D4F9A] transition-colors"
               >
                 Go Available
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="secondary"
+                className="flex-1"
                 onClick={() => closeBriefing()}
-                className="flex-1 rounded-xl border border-[#D0D5DD] dark:border-[#2A3448] bg-white dark:bg-[#1C2A3A] py-2.5 text-[14px] font-semibold text-[#344054] dark:text-[#CBD5E1] hover:bg-[#F9FAFB] dark:hover:bg-[#243041] active:bg-[#F2F4F7] transition-colors"
               >
                 Start Offline
-              </button>
+              </Button>
             </div>
           </div>
         </div>

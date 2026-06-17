@@ -1,13 +1,15 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   ArrowLeft,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
   MessageSquare,
+  Mail,
   Phone,
   AlertCircle,
   Send,
+  Search,
   Sparkles,
   X,
   RotateCcw,
@@ -48,15 +50,16 @@ export interface ClosedRowSummary {
 
 // ─── Channel icons (rendered at runtime, not in data) ─────────────────────────
 
-function ChannelIcon({ channel, className }: { channel: ContactChannel; className?: string }) {
+function ChannelIcon({ channel, className }: { channel: ContactChannel | string; className?: string }) {
   const cls = cn("h-3.5 w-3.5", className);
   switch (channel) {
-    case "chat":   return <MessageSquare className={cls} />;
-    case "voice":  return <Phone className={cls} />;
-    case "email":  return <MessageSquare className={cls} />;
-    case "ticket": return <AlertCircle className={cls} />;
-    case "system": return <AlertCircle className={cls} />;
-    default:       return <MessageSquare className={cls} />;
+    case "chat":   return <MessageSquare className={cn(cls, "text-[#0EA5E9]")} />;
+    case "voice":  return <Phone className={cn(cls, "text-[#16A34A]")} />;
+    case "email":  return <Mail className={cn(cls, "text-[#F59E0B]")} />;
+    case "sms":    return <MessageSquare className={cn(cls, "text-[#8B5CF6]")} />;
+    case "ticket": return <AlertCircle className={cn(cls, "text-[#667085]")} />;
+    case "system": return <AlertCircle className={cn(cls, "text-[#667085]")} />;
+    default:       return <MessageSquare className={cn(cls, "text-[#667085]")} />;
   }
 }
 
@@ -141,20 +144,22 @@ export function ClosedContactPanel({
   allClosedRows: ClosedRowSummary[];
   onClose: () => void;
 }) {
-  const interactions = CONTACT_HISTORY_BY_CUSTOMER[row.customerRecordId ?? ""] ?? [];
-  const meta = CLOSED_CONTACT_META[row.customerRecordId ?? ""];
   const noteRef = useRef<HTMLInputElement>(null);
 
+  const [activeRowId, setActiveRowId] = useState(row.id);
+  const [search, setSearch] = useState("");
   const [channelTab, setChannelTab] = useState("all");
   const [note, setNote] = useState("");
   const [savedNote, setSavedNote] = useState("");
 
-  // Related contacts from same customerRecordId (other closed rows)
-  const relatedRows = allClosedRows.filter(
-    (r) => r.id !== row.id && r.customerRecordId === row.customerRecordId,
-  );
+  const activeRow = allClosedRows.find((r) => r.id === activeRowId) ?? row;
 
-  // Unique channels present in the interactions
+  // Reset channel tab when switching contacts
+  useEffect(() => { setChannelTab("all"); setNote(""); setSavedNote(""); }, [activeRowId]);
+
+  const interactions = CONTACT_HISTORY_BY_CUSTOMER[activeRow.customerRecordId ?? ""] ?? [];
+  const meta = CLOSED_CONTACT_META[activeRow.customerRecordId ?? ""];
+
   const presentChannels = Array.from(new Set(interactions.map((i) => i.channel)));
 
   const filteredInteractions =
@@ -162,7 +167,13 @@ export function ClosedContactPanel({
       ? interactions
       : interactions.filter((i) => i.channel === channelTab);
 
-  const initials = row.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+  const initials = activeRow.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+
+  const filteredList = allClosedRows.filter((r) =>
+    search.trim() === "" ||
+    r.name.toLowerCase().includes(search.toLowerCase()) ||
+    (r.caseType ?? "").toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-[#F9FAFB]">
@@ -174,10 +185,10 @@ export function ClosedContactPanel({
         </button>
         <Separator orientation="vertical" className="h-4" />
         <div className="flex flex-1 min-w-0 items-center gap-2">
-          <span className="text-[13px] font-semibold text-[#1D2939] truncate">{row.name}</span>
-          <Badge variant="outline" className="text-[10px] shrink-0">{row.customerId}</Badge>
+          <span className="text-[13px] font-semibold text-[#1D2939] truncate">{activeRow.name}</span>
+          <Badge variant="outline" className="text-[10px] shrink-0">{activeRow.customerId}</Badge>
           <Badge variant="secondary" className="text-[10px] shrink-0">
-            Closed {row.resolvedAt ?? meta?.resolvedAt ?? ""}
+            Closed {activeRow.resolvedAt ?? meta?.resolvedAt ?? ""}
           </Badge>
         </div>
         <button type="button" onClick={onClose} className="ml-auto text-[#98A2B3] hover:text-[#667085] transition-colors">
@@ -185,10 +196,68 @@ export function ClosedContactPanel({
         </button>
       </div>
 
-      {/* ── Body — two columns ── */}
+      {/* ── Body — three columns ── */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
 
-        {/* ── LEFT SIDEBAR ── */}
+        {/* ── CONTACT LIST ── */}
+        <div className="flex w-[240px] shrink-0 flex-col border-r border-[#E4E7EC] bg-white">
+          {/* Search */}
+          <div className="shrink-0 px-3 py-2.5 border-b border-[#F2F4F7]">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-[#98A2B3]" />
+              <input
+                type="text"
+                placeholder="Search contacts…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full rounded-md border border-[#E4E7EC] bg-[#F9FAFB] py-1.5 pl-7 pr-2.5 text-[11px] text-[#344054] placeholder:text-[#98A2B3] focus:outline-none focus:ring-1 focus:ring-[#166CCA]/40"
+              />
+            </div>
+          </div>
+
+          {/* Scrollable list */}
+          <div className="flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {filteredList.length === 0 ? (
+              <p className="px-3 py-4 text-[11px] text-[#B0B7C3]">No contacts match.</p>
+            ) : (
+              filteredList.map((r) => {
+                const isActive = r.id === activeRowId;
+                const rowInitials = r.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+                return (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => setActiveRowId(r.id)}
+                    className={cn(
+                      "flex w-full items-start gap-2.5 px-3 py-2.5 text-left transition-colors border-b border-[#F2F4F7] last:border-b-0",
+                      isActive ? "bg-[#EBF4FD]" : "hover:bg-[#F9FAFB]",
+                    )}
+                  >
+                    <div className={cn(
+                      "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[9px] font-bold",
+                      isActive ? "bg-[#166CCA] text-white" : "bg-[#EBF4FD] text-[#166CCA]",
+                    )}>
+                      {rowInitials}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className={cn("text-[12px] font-semibold truncate", isActive ? "text-[#166CCA]" : "text-[#1D2939]")}>
+                          {r.name}
+                        </span>
+                        <ChannelIcon channel={r.channel} />
+                      </div>
+                      <p className="mt-0.5 truncate text-[10px] text-[#667085]">{r.caseType}</p>
+                      <p className="text-[10px] text-[#98A2B3]">{r.resolvedAt}</p>
+                    </div>
+                    {isActive && <div className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#166CCA]" />}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* ── CENTER SIDEBAR — customer info ── */}
         <div className="flex w-[200px] shrink-0 flex-col overflow-y-auto border-r border-[#E4E7EC] bg-white">
           <div className="flex flex-col gap-4 p-4">
 
@@ -198,8 +267,8 @@ export function ClosedContactPanel({
                 {initials}
               </div>
               <div>
-                <p className="text-[13px] font-semibold text-[#1D2939] leading-tight">{row.name}</p>
-                <p className="text-[11px] text-[#667085]">{row.company}</p>
+                <p className="text-[13px] font-semibold text-[#1D2939] leading-tight">{activeRow.name}</p>
+                <p className="text-[11px] text-[#667085]">{activeRow.company}</p>
               </div>
               <div className="flex flex-wrap justify-center gap-1">
                 {meta?.tenure && <Badge variant="outline" className="text-[10px]">{meta.tenure}</Badge>}
@@ -228,31 +297,6 @@ export function ClosedContactPanel({
 
             <Separator />
 
-            {/* Related contacts */}
-            <div>
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-[#98A2B3]">
-                Related contacts
-              </p>
-              {relatedRows.length === 0 ? (
-                <p className="text-[11px] text-[#B0B7C3]">No other cases from this customer.</p>
-              ) : (
-                <div className="space-y-1.5">
-                  {relatedRows.map((r) => (
-                    <div key={r.id} className="flex items-center gap-1.5 rounded-lg border border-[#E4E7EC] bg-[#F9FAFB] p-2">
-                      <ChannelIcon channel={r.channel as ContactChannel} className="text-[#98A2B3]" />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[11px] font-medium text-[#344054]">{r.caseType}</p>
-                        <p className="text-[10px] text-[#98A2B3]">{r.resolvedAt}</p>
-                      </div>
-                      <Badge variant="secondary" className="text-[9px] shrink-0">Closed</Badge>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <Separator />
-
             {/* Quick actions */}
             <div>
               <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-[#98A2B3]">
@@ -263,16 +307,12 @@ export function ClosedContactPanel({
                   variant="secondary"
                   size="sm"
                   className="w-full justify-start gap-1.5 text-[11px]"
-                  onClick={() => { row.onReopen(); onClose(); }}
+                  onClick={() => { activeRow.onReopen(); onClose(); }}
                 >
                   <RotateCcw className="h-3 w-3" />
                   Reopen case
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full justify-start gap-1.5 text-[11px]"
-                >
+                <Button variant="ghost" size="sm" className="w-full justify-start gap-1.5 text-[11px]">
                   <Plus className="h-3 w-3" />
                   Create follow-up
                 </Button>
@@ -293,25 +333,23 @@ export function ClosedContactPanel({
         {/* ── RIGHT — Interaction timeline ── */}
         <div className="flex flex-1 min-w-0 flex-col overflow-hidden">
           <Tabs value={channelTab} onValueChange={setChannelTab} className="flex flex-1 min-h-0 flex-col">
-            {/* Channel tabs */}
             <div className="shrink-0 border-b border-[#E4E7EC] bg-white px-4 pt-3 pb-0">
               <TabsList className="h-8">
                 <TabsTrigger value="all" className="text-[11px]">All</TabsTrigger>
                 {presentChannels.map((ch) => (
                   <TabsTrigger key={ch} value={ch} className="text-[11px] capitalize">
-                    {CHANNEL_STYLE[ch].label}
+                    {CHANNEL_STYLE[ch]?.label ?? ch}
                   </TabsTrigger>
                 ))}
               </TabsList>
             </div>
 
-            {/* Timeline content */}
             <TabsContent value={channelTab} className="flex-1 overflow-y-auto mt-0 border-0">
               <div className="p-4 space-y-3">
                 {filteredInteractions.length === 0 ? (
                   <Alert variant="default">
                     <AlertDescription className="text-[12px]">
-                      No {channelTab} interactions recorded for this case.
+                      No {channelTab === "all" ? "" : channelTab + " "}interactions recorded for this contact.
                     </AlertDescription>
                   </Alert>
                 ) : (
@@ -323,7 +361,6 @@ export function ClosedContactPanel({
                   ))
                 )}
 
-                {/* Saved note display */}
                 {savedNote && (
                   <div className="rounded-xl border border-[#E4E7EC] bg-[#FFFAEB] p-3">
                     <p className="text-[10px] font-semibold uppercase tracking-widest text-[#B54708] mb-1">Agent note</p>
@@ -334,7 +371,6 @@ export function ClosedContactPanel({
             </TabsContent>
           </Tabs>
 
-          {/* ── Pinned note input ── */}
           <div className="shrink-0 border-t border-[#E4E7EC] bg-white px-4 py-3">
             <div className="flex items-center gap-2">
               <Input

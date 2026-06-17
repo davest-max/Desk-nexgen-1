@@ -312,6 +312,12 @@ function IssueRow({
           </div>
           <p className="mt-0.5 text-[12px] text-[#475467] leading-[1.4] truncate">{preview}</p>
           <div className="mt-1 flex items-center gap-1.5 text-[11px] text-[#98A2B3]">
+            {channel === "chat"  && <MessageCircle className="h-3 w-3 shrink-0 text-[#0EA5E9]" />}
+            {channel === "voice" && <Phone className="h-3 w-3 shrink-0 text-[#16A34A]" />}
+            {channel === "email" && <Mail className="h-3 w-3 shrink-0 text-[#F59E0B]" />}
+            {channel === "sms"   && <MessageSquare className="h-3 w-3 shrink-0 text-[#8B5CF6]" />}
+            <span className="capitalize">{channel}</span>
+            <span>•</span>
             {assignedTo && !isClosed ? (
               <span className="font-medium text-[#166CCA]">{assignedTo}</span>
             ) : (
@@ -1770,7 +1776,7 @@ const persistedState = {
   // Tracks which static case IDs have been manually resolved via the modal.
   resolvedIds: new Set<string>(),
   // Top-level tab inside the Control Center (Review vs Queue).
-  controlCenterTab: "monitor" as "monitor" | "assigned" | "queue",
+  controlCenterTab: "assigned" as "monitor" | "assigned" | "queue",
 };
 
 // ─── Contact History Tab ──────────────────────────────────────────────────────
@@ -2031,11 +2037,11 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
     const id = setInterval(() => setHomeTrendSlide((s) => (s + 1) % homeTrendSlideCount), 8000);
     return () => clearInterval(id);
   }, []);
-  const [activePageTab, setActivePageTab] = useState<DeskPageTab>("queue");
+  const [activePageTab, setActivePageTab] = useState<DeskPageTab>("contact-history");
   const [controlCenterTab, setControlCenterTab] = useState<"monitor" | "assigned" | "queue">(() => {
     if (mode === "inbox") return "queue";
-    // Restore the last active tab, defaulting to Home ("monitor")
-    return persistedState.controlCenterTab === "queue" ? "monitor" : persistedState.controlCenterTab;
+    // Restore the last active tab, defaulting to Contact History ("assigned")
+    return persistedState.controlCenterTab === "queue" ? "assigned" : persistedState.controlCenterTab;
   });
   const [issueTab, setIssueTab] = useState<Set<StatusFilter>>(() => new Set(persistedState.issueTab));
   const [priorityFilters, setPriorityFilters] = useState<Set<Priority>>(() => new Set(persistedState.priorityFilters));
@@ -3468,9 +3474,12 @@ export default function ControlCenterPage({ mode }: { mode?: "inbox" | "control-
                     const sortedItems = [...items].sort(
                       (a, b) => (statusRank[a.status] ?? 99) - (statusRank[b.status] ?? 99)
                     );
-                    // Only wrap in accordion when there are 2+ cases for this customer
-                    if (sortedItems.length === 1) {
-                      return <IssueRow key={key} {...sortedItems[0]} isMonitored={false} isSelected={selectedCaseId === sortedItems[0].id} onSelect={setSelectedCaseId} onReview={setClosedPanelRowId} />;
+                    // Closed contacts always render individually (no grouping accordion)
+                    const allClosed = sortedItems.every((i) => i.isClosed);
+                    if (sortedItems.length === 1 || allClosed) {
+                      return sortedItems.map((item) => (
+                        <IssueRow key={item.id} {...item} isMonitored={false} isSelected={selectedCaseId === item.id} onSelect={setSelectedCaseId} onReview={setClosedPanelRowId} />
+                      ));
                     }
                     const customerRecord = sortedItems[0]?.customerRecordId
                       ? getCustomerRecord(sortedItems[0].customerRecordId)

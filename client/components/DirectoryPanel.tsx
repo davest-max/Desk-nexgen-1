@@ -616,7 +616,7 @@ export default function DirectoryPanel({
                       </div>
                       <span className={cn("absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-white dark:border-[#0F1629]", AVAILABILITY_DOT[agent.availability])} />
                     </div>
-                    <div className="min-w-0 flex-1">
+                    <div className="w-[300px] min-w-0 shrink-0">
                       <p className="text-[13px] font-semibold text-[#1D2939] dark:text-[#E2E8F0] leading-tight">{agent.name}</p>
                       <p className="text-[11px] text-[#667085] dark:text-[#6B7FA0]">
                         {agent.role} · <span className={cn("font-medium", AVAILABILITY_LABEL_COLOR[agent.availability])}>{AVAILABILITY_LABEL[agent.availability]}</span>
