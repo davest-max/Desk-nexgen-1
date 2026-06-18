@@ -10032,7 +10032,7 @@ function LeftQueueRail({
                 className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-black/[0.14] dark:border-border bg-white dark:bg-[#1C2A3A] px-3 py-1.5 text-[13px] font-medium text-[#344054] dark:text-[#CBD5E1] transition-colors hover:bg-[#F9FAFB] dark:hover:bg-[#243041]"
               >
                 <Plus className="h-4 w-4 stroke-[1.5]" />
-                New Case
+                New Outbound
               </button>
             </div>
 
