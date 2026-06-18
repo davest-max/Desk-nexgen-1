@@ -11141,14 +11141,13 @@ export default function Layout({ children }: LayoutProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, isControllerConnected]);
 
-  // Auto-open the Scenario Controller tab once per browser session.
-  useEffect(() => {
-    if (sessionStorage.getItem("desk-controller-opened")) return;
-    sessionStorage.setItem("desk-controller-opened", "1");
-    const base = (import.meta.env.BASE_URL as string).replace(/\/$/, "");
-    window.open(`${window.location.origin}${base}/controller`, "desk-nexgen-controller");
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Auto-open the Scenario Controller tab — disabled for user testing deployment
+  // useEffect(() => {
+  //   if (sessionStorage.getItem("desk-controller-opened")) return;
+  //   sessionStorage.setItem("desk-controller-opened", "1");
+  //   const base = (import.meta.env.BASE_URL as string).replace(/\/$/, "");
+  //   window.open(`${window.location.origin}${base}/controller`, "desk-nexgen-controller");
+  // }, []);
 
   useEffect(() => {
     if (autoAssignTimerRef.current !== null) {
