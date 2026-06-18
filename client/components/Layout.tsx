@@ -2774,9 +2774,8 @@ function DockedConversationPanel({
                     openChatPopover(syntheticRect, undefined, undefined, 575);
                   }}
                   onTransfer={() => {
-                    const cardEl = document.querySelector("[data-conversation-panel-header]");
-                    const rect = cardEl?.getBoundingClientRect() ?? null;
-                    openChatPopover(rect, customerRecord ? { id: customerRecord.customerId, name: customerRecord.name, initials: (customerRecord.name.split(" ").map((w: string) => w[0]).join("").slice(0, 2)), role: "", avatarColor: "", status: "online" as const } : undefined);
+                    // Transfer complete — just remove the assignment, do not open chat popover
+                    onRemoveAssignment?.(undefined);
                   }}
                   onOutcome={() => onRemoveAssignment?.(undefined)}
                   customerInfo={customerRecord ? { name: customerRecord.name, customerId: customerRecord.customerId, preview: casePreview ?? "" } : undefined}
@@ -6846,6 +6845,8 @@ function ConnectedAppsFlyout({
 function AddNewAssignmentFlowPopover({
   anchorRect,
   onClose,
+  onOpenCustomerConversation,
+  onOpenCall,
 }: {
   anchorRect: DOMRect;
   onClose: () => void;
@@ -6858,6 +6859,7 @@ function AddNewAssignmentFlowPopover({
   const [step, setStep] = useState<AddNewFlowStep>("channel");
   const [selectedChannel, setSelectedChannel] = useState<AddNewFlowChannel | null>(null);
   const [contactValue, setContactValue] = useState("");
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [selectedSkill, setSelectedSkill] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
@@ -6892,9 +6894,10 @@ function AddNewAssignmentFlowPopover({
     return rec.contact?.phone ?? "";
   };
 
-  const openForm = (ch: AddNewFlowChannel, prefill = "") => {
+  const openForm = (ch: AddNewFlowChannel, prefill = "", customerId: string | null = null) => {
     setSelectedChannel(ch);
     setContactValue(prefill);
+    setSelectedCustomerId(customerId);
     setStep("form");
     setSearch("");
   };
@@ -6990,7 +6993,7 @@ function AddNewAssignmentFlowPopover({
                         key={ch}
                         type="button"
                         title={label}
-                        onClick={() => openForm(ch, getCustomerContact(customer.id, ch))}
+                        onClick={() => openForm(ch, getCustomerContact(customer.id, ch), customer.id)}
                         className="flex h-6 w-6 items-center justify-center rounded-md text-[#667085] transition-colors hover:bg-[#EBF4FD] hover:text-[#166CCA]"
                       >
                         <Icon className="h-3.5 w-3.5" />
@@ -7069,7 +7072,15 @@ function AddNewAssignmentFlowPopover({
             <button
               type="button"
               disabled={!canInitiate}
-              onClick={onClose}
+              onClick={() => {
+                if (!selectedCustomerId) { onClose(); return; }
+                if (selectedChannel === "voice") {
+                  onOpenCall(selectedCustomerId);
+                } else if (selectedChannel === "email" || selectedChannel === "sms" || selectedChannel === "whatsapp") {
+                  onOpenCustomerConversation(selectedCustomerId, selectedChannel);
+                }
+                onClose();
+              }}
               className="flex-1 rounded-lg bg-[#166CCA] px-3 py-2 text-[12px] font-semibold text-white hover:bg-[#1260B0] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {initiateLabel}
