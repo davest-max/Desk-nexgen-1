@@ -9982,7 +9982,7 @@ function LeftQueueRail({
           )}
 
           {/* Expand toggle — pinned to bottom of collapsed rail */}
-          <div className="flex w-full shrink-0 flex-col items-center pb-3 px-1 mt-auto">
+          <div className="mt-auto w-full shrink-0">
             <TooltipProvider delayDuration={300}>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -9990,7 +9990,7 @@ function LeftQueueRail({
                     type="button"
                     aria-label="Open navigation"
                     onClick={onToggle}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg text-[#667085] transition-colors hover:bg-[#EBEBEC] hover:text-[#1D2939]"
+                    className="flex h-16 w-full items-center justify-center text-[#667085] transition-colors hover:bg-[#EBEBEC] hover:text-[#1D2939]"
                   >
                     <ChevronsRight className="h-4 w-4 stroke-[1.5]" />
                   </button>
