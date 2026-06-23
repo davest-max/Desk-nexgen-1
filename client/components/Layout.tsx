@@ -15763,6 +15763,8 @@ export default function Layout({ children }: LayoutProps) {
             } else {
               layoutContextValue.toggleCallPopunder(null, customerRecordId);
             }
+            // Skip the setup modal — go straight to connecting for outbound calls
+            setCallPopunderMode("connecting");
             navigate("/activity");
           }}
         />
