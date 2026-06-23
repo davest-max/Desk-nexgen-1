@@ -15779,7 +15779,9 @@ export default function Layout({ children }: LayoutProps) {
               navigate("/activity");
               setCopilotPopunderPosition(getAnchoredCopilotPopunderPosition());
               setIsCopilotPopoverOpen(true);
-              setIsTranscriptPopunderOpen(true);
+              // Dock transcript inside the conversation panel instead of floating
+              setIsTranscriptDockedToConversation(true);
+              setIsConversationDockedPanelOpen(true);
               callConnectTimeoutRef.current = null;
             }, 2000);
           }}
