@@ -5041,6 +5041,26 @@ const MOCK_TRANSCRIPT_LINES: Omit<TranscriptLine, "id">[] = [
   { speaker: "agent",    text: "You're very welcome. Have a great day!",                                                              elapsed: 104 },
 ];
 
+const MOCK_OUTBOUND_TRANSCRIPT_LINES: Omit<TranscriptLine, "id">[] = [
+  { speaker: "agent",    text: "Hi, this is Jeff Comstock calling from customer support. Am I speaking with the account holder?",        elapsed: 3  },
+  { speaker: "customer", text: "Yes, this is them. What's this about?",                                                                  elapsed: 9  },
+  { speaker: "agent",    text: "I'm reaching out because we noticed some unusual activity on your account and wanted to check in with you.", elapsed: 15 },
+  { speaker: "customer", text: "Oh, really? What kind of activity?",                                                                     elapsed: 21 },
+  { speaker: "agent",    text: "There were a couple of login attempts from an unrecognized device in the last 24 hours. Have you been accessing your account from a new device?", elapsed: 28 },
+  { speaker: "customer", text: "No, I haven't. That's concerning.",                                                                      elapsed: 35 },
+  { speaker: "agent",    text: "Completely understandable. As a precaution, I'd like to temporarily secure your account. Is that okay?", elapsed: 42 },
+  { speaker: "customer", text: "Yes, please. What does that involve?",                                                                   elapsed: 48 },
+  { speaker: "agent",    text: "We'll reset your credentials and send a verification link to your email on file. It only takes a moment.", elapsed: 55 },
+  { speaker: "customer", text: "Okay, that sounds good. How long will it take?",                                                         elapsed: 62 },
+  { speaker: "agent",    text: "You should receive the email within the next 5 minutes. Let me initiate that now.",                      elapsed: 68 },
+  { speaker: "customer", text: "Got it. Should I be worried about any charges?",                                                         elapsed: 74 },
+  { speaker: "agent",    text: "No unauthorized charges appear on your account at this time. We caught this early.",                     elapsed: 80 },
+  { speaker: "customer", text: "That's a relief. Thank you for calling.",                                                                elapsed: 86 },
+  { speaker: "agent",    text: "Of course — that's what we're here for. Is there anything else I can help you with today?",             elapsed: 92 },
+  { speaker: "customer", text: "No, that's all. I appreciate the quick response.",                                                       elapsed: 98 },
+  { speaker: "agent",    text: "Happy to help. Keep an eye out for that email, and don't hesitate to call us back if you need anything.", elapsed: 104 },
+];
+
 function formatElapsed(seconds: number) {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
@@ -12090,7 +12110,8 @@ export default function Layout({ children }: LayoutProps) {
       // Record the wall-clock time when the demo began (only on first activation).
       if (transcriptCallStartRef.current === null) {
         transcriptCallStartRef.current = Date.now();
-        transcriptScriptRef.current = isTerryCall ? TERRY_TRANSCRIPT_LINES : MOCK_TRANSCRIPT_LINES;
+        const isOutboundCall = selectedAssignment.customerRecordId.startsWith("outbound-voice-");
+        transcriptScriptRef.current = isTerryCall ? TERRY_TRANSCRIPT_LINES : isOutboundCall ? MOCK_OUTBOUND_TRANSCRIPT_LINES : MOCK_TRANSCRIPT_LINES;
         // For Terry, seed the greeting + Jeff's first response immediately on click.
         // For other calls, reset to empty.
         if (!isTerryCall) {
