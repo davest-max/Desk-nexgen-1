@@ -14914,7 +14914,7 @@ export default function Layout({ children }: LayoutProps) {
                   );
                 })()}
               voiceContentOverlay={
-                selectedAssignment.customerRecordId === "terry" && transcriptLines.length > 0 && !isTranscriptVisible
+                activeCallAssignmentId === selectedAssignment.id && transcriptLines.length > 0 && !isTranscriptVisible
                   ? (
                     <button
                       type="button"
@@ -14928,12 +14928,12 @@ export default function Layout({ children }: LayoutProps) {
                   : undefined
               }
               voiceRightPanel={
-                selectedAssignment.customerRecordId === "terry" && transcriptLines.length > 0
+                activeCallAssignmentId === selectedAssignment.id && transcriptLines.length > 0
                   ? (
                     <TerryTranscriptPanel
                       transcriptLines={transcriptLines}
                       isVisible={isTranscriptVisible}
-                      isLive={status === "In a Call" && activeCallAssignmentId === selectedAssignment.id}
+                      isLive={status === "In a Call"}
                       customerName={selectedAssignment.name}
                       scriptLength={transcriptScriptRef.current.length}
                       onClose={() => setIsTranscriptVisible(false)}
@@ -14945,16 +14945,8 @@ export default function Layout({ children }: LayoutProps) {
                 setTerryDemoStarted(true);
               } : undefined}
               extraHistoryItems={selectedAssignment.customerRecordId === "terry" ? dynamicHistoryItems : []}
-              isTranscriptOpen={selectedAssignment.customerRecordId !== "terry" && (isTranscriptPopunderOpen || isConversationDockedTranscriptVisible)}
-              onOpenTranscript={selectedAssignment.customerRecordId !== "terry" ? () => {
-                if (isTranscriptInConversationDockMode) {
-                  // Transcript is docked — toggle its open/closed state.
-                  setIsConversationDockedPanelOpen((prev) => !prev);
-                } else {
-                  bringFloatingPanelToFront("transcript");
-                  setIsTranscriptPopunderOpen((prev) => !prev);
-                }
-              } : undefined}
+              isTranscriptOpen={false}
+              onOpenTranscript={undefined}
               onConversationStatusChange={handleConversationStatusChange}
               onResolveAssignment={handleResolveAssignment}
               overviewIsOpen={overviewOpenByAssignmentId[selectedAssignment.id] ?? true}
@@ -15779,9 +15771,7 @@ export default function Layout({ children }: LayoutProps) {
               navigate("/activity");
               setCopilotPopunderPosition(getAnchoredCopilotPopunderPosition());
               setIsCopilotPopoverOpen(true);
-              // Dock transcript inside the conversation panel instead of floating
-              setIsTranscriptDockedToConversation(true);
-              setIsConversationDockedPanelOpen(true);
+              setIsTranscriptVisible(true);
               callConnectTimeoutRef.current = null;
             }, 2000);
           }}
