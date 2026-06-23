@@ -6851,7 +6851,7 @@ function AddNewAssignmentFlowPopover({
   anchorRect: DOMRect;
   onClose: () => void;
   onOpenCustomerConversation: (customerRecordId: string, channel: "email" | "sms" | "whatsapp") => void;
-  onOpenCall: (customerRecordId: string) => void;
+  onOpenCall: (customerRecordId: string, phoneNumber?: string) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -7073,10 +7073,9 @@ function AddNewAssignmentFlowPopover({
               type="button"
               disabled={!canInitiate}
               onClick={() => {
-                if (!selectedCustomerId) { onClose(); return; }
                 if (selectedChannel === "voice") {
-                  onOpenCall(selectedCustomerId);
-                } else if (selectedChannel === "email" || selectedChannel === "sms" || selectedChannel === "whatsapp") {
+                  onOpenCall(selectedCustomerId ?? "", selectedCustomerId ? undefined : contactValue.trim());
+                } else if (selectedCustomerId && (selectedChannel === "email" || selectedChannel === "sms" || selectedChannel === "whatsapp")) {
                   onOpenCustomerConversation(selectedCustomerId, selectedChannel);
                 }
                 onClose();
@@ -15732,8 +15731,38 @@ export default function Layout({ children }: LayoutProps) {
             openCustomerConversation(customerRecordId, channel);
             navigate("/activity");
           }}
-          onOpenCall={(customerRecordId) => {
-            layoutContextValue.toggleCallPopunder(null, customerRecordId);
+          onOpenCall={(customerRecordId, phoneNumber) => {
+            if (phoneNumber) {
+              // Phone-number-only outbound call — create a synthetic assignment
+              const ts = new Date();
+              const isoTs = ts.toISOString();
+              const syntheticId = `outbound-voice-${ts.getTime()}`;
+              const syntheticAssignment: QueuePreviewItem = {
+                id: syntheticId,
+                customerRecordId: syntheticId,
+                channel: "voice",
+                name: phoneNumber,
+                initials: "#",
+                customerId: "",
+                lastUpdated: "Now",
+                time: "Now",
+                preview: "New outbound voice call",
+                priority: "Medium",
+                priorityClassName: "",
+                badgeColor: "#16A34A",
+                icon: launchedAssignmentIconMap["voice"],
+                isActive: false,
+                createdAt: isoTs,
+                updatedAt: isoTs,
+              };
+              setAssignmentItemsById((prev) => ({ ...prev, [syntheticId]: syntheticAssignment }));
+              setVisibleAssignmentIds((prev) => [syntheticId, ...prev]);
+              setAssignmentStatusesById((prev) => ({ ...prev, [syntheticId]: "open" }));
+              setSelectedAssignmentId(syntheticId);
+              layoutContextValue.toggleCallPopunder(null, syntheticId);
+            } else {
+              layoutContextValue.toggleCallPopunder(null, customerRecordId);
+            }
             navigate("/activity");
           }}
         />
