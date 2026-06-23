@@ -15732,8 +15732,9 @@ export default function Layout({ children }: LayoutProps) {
             navigate("/activity");
           }}
           onOpenCall={(customerRecordId, phoneNumber) => {
+            let resolvedId = customerRecordId;
             if (phoneNumber) {
-              // Phone-number-only outbound call — create a synthetic assignment
+              // Phone-number-only outbound — create a synthetic assignment
               const ts = new Date();
               const isoTs = ts.toISOString();
               const syntheticId = `outbound-voice-${ts.getTime()}`;
@@ -15758,14 +15759,29 @@ export default function Layout({ children }: LayoutProps) {
               setAssignmentItemsById((prev) => ({ ...prev, [syntheticId]: syntheticAssignment }));
               setVisibleAssignmentIds((prev) => [syntheticId, ...prev]);
               setAssignmentStatusesById((prev) => ({ ...prev, [syntheticId]: "open" }));
-              setSelectedAssignmentId(syntheticId);
-              layoutContextValue.toggleCallPopunder(null, syntheticId);
-            } else {
-              layoutContextValue.toggleCallPopunder(null, customerRecordId);
+              resolvedId = syntheticId;
             }
-            // Skip the setup modal — go straight to connecting for outbound calls
+            // Skip setup modal — connect immediately like onLaunchCall does
+            setPendingCallCustomerRecordId(resolvedId);
             setCallPopunderMode("connecting");
-            navigate("/activity");
+            setIsCallPopunderOpen(true);
+            setCallPopunderPosition(getAnchoredCallPopunderPosition(null));
+            bringFloatingPanelToFront("call");
+            if (callConnectTimeoutRef.current !== null) window.clearTimeout(callConnectTimeoutRef.current);
+            callConnectTimeoutRef.current = window.setTimeout(() => {
+              layoutContextValue.startCallStatus();
+              setSelectedAssignmentId(resolvedId);
+              openConversationPanel();
+              setActiveCallAssignmentId(resolvedId);
+              setIsCallPopunderOpen(false);
+              setCallPopunderMode("controls");
+              setIsLeftRailOpen(true);
+              navigate("/activity");
+              setCopilotPopunderPosition(getAnchoredCopilotPopunderPosition());
+              setIsCopilotPopoverOpen(true);
+              setIsTranscriptPopunderOpen(true);
+              callConnectTimeoutRef.current = null;
+            }, 2000);
           }}
         />
       )}
