@@ -4515,7 +4515,7 @@ function TerryTranscriptPanel({
             <div key={line.id} className={cn("flex flex-col gap-0.5", line.speaker === "agent" ? "items-end" : "items-start")}>
               <div className="flex items-center gap-1.5">
                 <span className={cn("text-[10px] font-semibold uppercase tracking-wide", line.speaker === "agent" ? "text-[#166CCA]" : "text-[#667085]")}>
-                  {line.speaker === "agent" ? "Jeff Comstock" : customerName}
+                  {line.speaker === "agent" ? "Jeff Common" : customerName}
                 </span>
                 <span className="text-[10px] text-[#98A2B3]">{formatElapsed(line.elapsed)}</span>
               </div>
@@ -5042,7 +5042,7 @@ const MOCK_TRANSCRIPT_LINES: Omit<TranscriptLine, "id">[] = [
 ];
 
 const MOCK_OUTBOUND_TRANSCRIPT_LINES: Omit<TranscriptLine, "id">[] = [
-  { speaker: "agent",    text: "Hi, this is Jeff Comstock calling from customer support. Am I speaking with the account holder?",        elapsed: 3  },
+  { speaker: "agent",    text: "Hi, this is Jeff Common calling from customer support. Am I speaking with the account holder?",        elapsed: 3  },
   { speaker: "customer", text: "Yes, this is them. What's this about?",                                                                  elapsed: 9  },
   { speaker: "agent",    text: "I'm reaching out because we noticed some unusual activity on your account and wanted to check in with you.", elapsed: 15 },
   { speaker: "customer", text: "Oh, really? What kind of activity?",                                                                     elapsed: 21 },
@@ -5270,7 +5270,7 @@ function TranscriptPopunder({
                   <div key={line.id} className={cn("flex flex-col gap-0.5", line.speaker === "agent" ? "items-end" : "items-start")}>
                     <div className="flex items-center gap-1.5">
                       <span className={cn("text-[10px] font-semibold uppercase tracking-wide", line.speaker === "agent" ? "text-[#166CCA]" : "text-[#667085]")}>
-                        {line.speaker === "agent" ? "Jeff Comstock" : customerName}
+                        {line.speaker === "agent" ? "Jeff Common" : customerName}
                       </span>
                       <span className="text-[10px] text-[#98A2B3]">{formatElapsed(line.elapsed)}</span>
                     </div>
@@ -5456,7 +5456,7 @@ function DockedTranscriptPanel({
                       <div key={line.id} className={cn("flex flex-col gap-0.5", line.speaker === "agent" ? "items-end" : "items-start")}>
                         <div className="flex items-center gap-1.5">
                           <span className={cn("text-[10px] font-semibold uppercase tracking-wide", line.speaker === "agent" ? "text-[#166CCA]" : "text-[#667085]")}>
-                            {line.speaker === "agent" ? "Jeff Comstock" : customerName}
+                            {line.speaker === "agent" ? "Jeff Common" : customerName}
                           </span>
                           <span className="text-[10px] text-[#98A2B3]">{formatElapsed(line.elapsed)}</span>
                         </div>
@@ -6477,7 +6477,7 @@ function QueueAssignmentCard({
 // ─── Inline agent roster (for the Reject → Assign popover) ───────────────────
 
 const inlineAgents = [
-  { id: "a1", name: "Jeff Comstock",     initials: "JC", availability: "Available" as const, active: 2 },
+  { id: "a1", name: "Jeff Common",     initials: "JC", availability: "Available" as const, active: 2 },
   { id: "a2", name: "Priya Mehra",    initials: "PM", availability: "Available" as const, active: 1 },
   { id: "a3", name: "Sam Torres",     initials: "ST", availability: "Available" as const, active: 3 },
   { id: "a4", name: "Kenji Watanabe", initials: "KW", availability: "In a Call" as const, active: 4 },
@@ -7574,7 +7574,7 @@ type NotifAgentAvailability = "Available" | "In a Call" | "Away" | "Offline";
 type NotifAgent = { id: string; name: string; initials: string; availability: NotifAgentAvailability; skills: string[]; activeCount: number };
 
 const notifAgentRoster: NotifAgent[] = [
-  { id: "agent-1", name: "Jeff Comstock",   initials: "JC", availability: "Available",  skills: ["Billing", "Account Management", "Escalations"],        activeCount: 2 },
+  { id: "agent-1", name: "Jeff Common",   initials: "JC", availability: "Available",  skills: ["Billing", "Account Management", "Escalations"],        activeCount: 2 },
   { id: "agent-2", name: "Priya Mehra",     initials: "PM", availability: "Available",  skills: ["Technical Support", "API Integration", "Security"],    activeCount: 1 },
   { id: "agent-3", name: "Sam Torres",      initials: "ST", availability: "Available",  skills: ["Compliance", "Data Exports", "Contract Renewals"],     activeCount: 3 },
   { id: "agent-4", name: "Kenji Watanabe",  initials: "KW", availability: "In a Call", skills: ["Payments", "Fraud", "Wire Transfers"],                  activeCount: 4 },

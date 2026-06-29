@@ -3,6 +3,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "../popover";
 import { Button } from "../button";
 
 figma.connect(Popover, "https://www.figma.com/design/qyCq4jUOrpYcpHhpNCdgA5?node-id=17015:33010", {
+  links: [
+    { name: "Storybook", url: "http://localhost:6006/?path=/story/components-ui-popover--default" },
+  ],
+
   props: {
     side: figma.enum("Arrow location", {
       up: "bottom",

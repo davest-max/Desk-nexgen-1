@@ -170,9 +170,9 @@ export default function ConversationPanel({
 }: ConversationPanelProps) {
   const customerFirstName = conversation.customerName.split(" ")[0] ?? conversation.customerName;
   const customerRecord = customerId ? getCustomerRecord(customerId) : null;
-  // Always show Jeff Comstock as the agent — the logged-in user is always JC regardless
+  // Always show Jeff Common as the agent — the logged-in user is always JC regardless
   // of which agent the customer database has listed as the assigned agent.
-  const agentFullName = "Jeff Comstock";
+  const agentFullName = "Jeff Common";
 
   const isVoiceChannel = activeChannel === "voice";
   const isEmailChannel = activeChannel === "email";

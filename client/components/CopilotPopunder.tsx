@@ -134,10 +134,10 @@ const MARCUS_HISTORY_RESPONSE: CopilotHistoryResponse = {
     tenure: "3 years (Apr 2023)",
     totalContacts: 6,
     channelCount: 4,
-    agentsInvolved: ["Emily (Virtual)", "Priya Nair", "Jeff Comstock"],
+    agentsInvolved: ["Emily (Virtual)", "Priya Nair", "Jeff Common"],
   },
   aiSummary:
-    "Marcus is a loyal 3-year customer with zero prior complaints. The current issue traces to a cached shipping label not refreshed after his Jan 2025 address change (confirmed via chat with Jeff Comstock). Six interaction points across web, chat, email, and ticket — the shipping confirmation email went to his old Denver address, he flagged it by email reply, then escalated via chat with virtual agent Emily to Priya Nair. Recommend expedited resolution with goodwill gesture given his tenure.",
+    "Marcus is a loyal 3-year customer with zero prior complaints. The current issue traces to a cached shipping label not refreshed after his Jan 2025 address change (confirmed via chat with Jeff Common). Six interaction points across web, chat, email, and ticket — the shipping confirmation email went to his old Denver address, he flagged it by email reply, then escalated via chat with virtual agent Emily to Priya Nair. Recommend expedited resolution with goodwill gesture given his tenure.",
   interactions: [
     {
       id: "h-signup",
@@ -154,7 +154,7 @@ const MARCUS_HISTORY_RESPONSE: CopilotHistoryResponse = {
       date: "Jan 14, 2025 · 2:18 PM",
       channel: "chat",
       title: "Chat — address change request",
-      agent: "Jeff Comstock",
+      agent: "Jeff Common",
       summary: "Marcus initiated a chat to confirm his shipping address had been updated following his move from Denver to Austin. Jeff verified the profile update and confirmed the new address was saved. No label cache purge was triggered at the time.",
       outcome: "Address updated — label cache not cleared",
       outcomeVariant: "pending",

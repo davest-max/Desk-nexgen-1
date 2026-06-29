@@ -2,7 +2,7 @@
 
 import type { Channel, Priority, AiOverview } from "@/lib/static-assignments";
 
-export const CURRENT_AGENT_NAME = "Jeff Comstock";
+export const CURRENT_AGENT_NAME = "Jeff Common";
 
 export const priorityStyles: Record<Priority, string> = {
   Critical: "border-[#E53935] bg-[#FDEAEA] text-[#C71D1A]",

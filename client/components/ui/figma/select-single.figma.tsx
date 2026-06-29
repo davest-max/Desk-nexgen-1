@@ -10,7 +10,11 @@ import {
 // Lyra Select Dropdown (Type=single select) → shadcn Select
 // This is the single-select variant — the primary usage pattern in the codebase.
 // Show Search has no direct code equivalent in the base Select component.
-figma.connect(Select, "https://www.figma.com/design/qyCq4jUOrpYcpHhpNCdgA5?node-id=17015:32875", {
+figma.connect(Select, "https://www.figma.com/design/qyCq4jUOrpYcpHhpNCdgA5?node-id=17015:32856", {
+  links: [
+    { name: "Storybook", url: "http://localhost:6006/?path=/story/components-ui-select--default" },
+  ],
+
   props: {},
   example: () => (
     <Select>

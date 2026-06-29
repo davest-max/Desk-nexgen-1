@@ -51,7 +51,7 @@ export const MARCUS_INTERACTIONS: ContactInteraction[] = [
     date: "Jan 14, 2025 · 2:18 PM",
     channel: "chat",
     title: "Chat — address change request",
-    agent: "Jeff Comstock",
+    agent: "Jeff Common",
     summary: "Marcus initiated a chat to confirm his shipping address had been updated following his move from Denver to Austin. Jeff verified the profile update and confirmed the new address was saved. No label cache purge was triggered at the time.",
     outcome: "Address updated — label cache not cleared",
     outcomeVariant: "pending",

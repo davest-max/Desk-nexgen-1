@@ -3,7 +3,11 @@ import { Slider } from "../slider";
 
 // Lyra Slider (Type=Single) → shadcn Slider
 // Show Marks and Show Label have no direct code prop equivalents in the base Slider
-figma.connect(Slider, "https://www.figma.com/design/qyCq4jUOrpYcpHhpNCdgA5?node-id=16926:21329", {
+figma.connect(Slider, "https://www.figma.com/design/qyCq4jUOrpYcpHhpNCdgA5?node-id=16926:21328", {
+  links: [
+    { name: "Storybook", url: "http://localhost:6006/?path=/story/components-ui-slider--default" },
+  ],
+
   props: {},
   example: () => (
     <Slider

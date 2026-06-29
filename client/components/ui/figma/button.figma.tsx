@@ -2,6 +2,9 @@ import figma from "@figma/code-connect";
 import { Button } from "../button";
 
 figma.connect(Button, "https://www.figma.com/design/qyCq4jUOrpYcpHhpNCdgA5?node-id=16939:25782", {
+  links: [
+    { name: "Storybook", url: "http://localhost:6006/?path=/story/components-ui-button--default" },
+  ],
   props: {
     variant: figma.enum("Type", {
       primary: "default",

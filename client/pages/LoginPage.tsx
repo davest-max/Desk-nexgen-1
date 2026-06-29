@@ -63,7 +63,7 @@ export default function LoginPage() {
             <div className="absolute inset-0 rounded-[6px] bg-[#fbfcfe]" style={{ zIndex: 0 }} />
             <div className="relative">
               <p className="text-[16px] font-semibold leading-6 text-[rgba(0,0,0,0.8)]">
-                Welcome back, Jeff Comstock
+                Welcome back, Jeff Common
               </p>
               <p className="text-[12px] leading-4 tracking-[0.2px] text-[rgba(0,0,0,0.6)]">
                 Last login {lastLogin}

@@ -5,7 +5,10 @@ import { Checkbox } from "../checkbox";
 // Checked: "yes"/"no" maps to the checked boolean prop
 // State (default/hover/pressed/read-only/disabled) and Focus frame have no direct code prop equivalents
 // With Label maps to wrapping with a <label> element in code
-figma.connect(Checkbox, "https://www.figma.com/design/qyCq4jUOrpYcpHhpNCdgA5?node-id=16926:21018", {
+figma.connect(Checkbox, "https://www.figma.com/design/qyCq4jUOrpYcpHhpNCdgA5?node-id=16926:21017", {
+  links: [
+    { name: "Storybook", url: "http://localhost:6006/?path=/story/components-ui-checkbox--default" },
+  ],
   props: {
     checked: figma.enum("Checked", {
       yes: true,

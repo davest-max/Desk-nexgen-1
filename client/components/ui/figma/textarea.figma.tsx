@@ -2,6 +2,10 @@ import figma from "@figma/code-connect";
 import { Textarea } from "../textarea";
 
 figma.connect(Textarea, "https://www.figma.com/design/qyCq4jUOrpYcpHhpNCdgA5?node-id=16926:20918", {
+  links: [
+    { name: "Storybook", url: "http://localhost:6006/?path=/story/components-ui-textarea--default" },
+  ],
+
   props: {
     disabled: figma.enum("State", {
       disabled: true,

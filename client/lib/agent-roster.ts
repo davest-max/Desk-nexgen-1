@@ -11,12 +11,12 @@ export interface Agent {
   activeCount: number; // current assignment count
 }
 
-export const CURRENT_AGENT_NAME = "Jeff Comstock";
+export const CURRENT_AGENT_NAME = "Jeff Common";
 
 export const agentRoster: Agent[] = [
   {
     id: "agent-1",
-    name: "Jeff Comstock",
+    name: "Jeff Common",
     initials: "JC",
     availability: "Available",
     skills: ["Billing", "Account Management", "Escalations"],

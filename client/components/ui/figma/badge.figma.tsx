@@ -5,6 +5,9 @@ import { Badge } from "../badge";
 // Color mapping: blue→default, gray→secondary, red→destructive, all others→outline
 // Note: Lyra has 10 colors; code only has 4 variants. Inversed and Size have no direct code equivalent.
 figma.connect(Badge, "https://www.figma.com/design/qyCq4jUOrpYcpHhpNCdgA5?node-id=17780:58157", {
+  links: [
+    { name: "Storybook", url: "http://localhost:6006/?path=/story/components-ui-badge--default" },
+  ],
   props: {
     variant: figma.enum("Color", {
       blue:   "default",

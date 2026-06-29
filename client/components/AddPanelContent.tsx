@@ -58,7 +58,7 @@ const addNewFieldConfig: Record<
   ],
   "work-item": [
     { key: "name", label: "Work Item Name", placeholder: "Resolve billing mismatch", type: "input" },
-    { key: "assignee", label: "Assignee", placeholder: "Jeff Comstock", type: "input" },
+    { key: "assignee", label: "Assignee", placeholder: "Jeff Common", type: "input" },
     { key: "dueDate", label: "Due Date", placeholder: "03/15/26", type: "input" },
     { key: "relatedTo", label: "Related To", placeholder: "Ticket TCK-2091", type: "input" },
     { key: "details", label: "Details", placeholder: "Add work item details", type: "textarea" },

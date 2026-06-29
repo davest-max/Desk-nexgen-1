@@ -148,7 +148,7 @@ function ContactHistoryView({ customerId }: { customerId?: string }) {
           setTimeout(() => {
             if (cancelled) return;
             setAnswer(
-              `Based on ${customerId === "marcus" ? "Marcus Webb's" : "this customer's"} contact history, here's what I found:\n\nThe address mismatch traces back to the Jan 2025 address update (confirmed via chat with Jeff Comstock) where the shipping label cache was not purged. When order #WB-88214 was placed in Apr 2026, the stale Denver address was used. The email confirmation flagged the error, but no agent responded before Marcus escalated via chat.\n\nRecommended action: Overnight reship to Austin, TX with a goodwill discount code given his 3-year loyalty and zero prior complaint record.`
+              `Based on ${customerId === "marcus" ? "Marcus Webb's" : "this customer's"} contact history, here's what I found:\n\nThe address mismatch traces back to the Jan 2025 address update (confirmed via chat with Jeff Common) where the shipping label cache was not purged. When order #WB-88214 was placed in Apr 2026, the stale Denver address was used. The email confirmation flagged the error, but no agent responded before Marcus escalated via chat.\n\nRecommended action: Overnight reship to Austin, TX with a goodwill discount code given his 3-year loyalty and zero prior complaint record.`
             );
             setPhase("done");
           }, 300);
@@ -302,7 +302,7 @@ export type { CustomerTicket };
 export { getCustomerTickets, getRelevantCustomerTicket, getCustomerTicketById };
 
 const DEFAULT_NOTE_AGENT = {
-  name: "Jeff Comstock",
+  name: "Jeff Common",
   id: "AGT-10984",
 };
 

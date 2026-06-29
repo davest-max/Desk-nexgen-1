@@ -632,7 +632,7 @@ export function getEmailAddress(name: string) {
     .replace(/[^a-z0-9]+/g, ".")
     .replace(/^\.+|\.+$/g, "");
 
-  return `${localPart || "support"}@nice.com`;
+  return `${localPart || "support"}@email.com`;
 }
 
 export function getEmailThreadContent(content: string) {

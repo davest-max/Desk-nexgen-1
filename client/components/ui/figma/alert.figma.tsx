@@ -5,6 +5,10 @@ import { Alert, AlertDescription } from "../alert";
 // Status: warning/error map to destructive; info/success map to default
 // Show dismiss Button has no direct code equivalent in the base Alert component
 figma.connect(Alert, "https://www.figma.com/design/qyCq4jUOrpYcpHhpNCdgA5?node-id=17022:34138", {
+  links: [
+    { name: "Storybook", url: "http://localhost:6006/?path=/story/components-ui-alert--default" },
+  ],
+
   props: {
     variant: figma.enum("Status", {
       error:   "destructive",

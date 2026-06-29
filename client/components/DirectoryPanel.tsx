@@ -43,7 +43,7 @@ type AgentTeam = {
 // ─── Seed data ────────────────────────────────────────────────────────────────
 
 export const directoryAgents: DirectoryAgent[] = [
-  { id: "agent-1", name: "Jeff Comstock",   initials: "JC", role: "Agent",      team: "Billing Support",    availability: "Available",  skills: ["Billing", "Account Management", "Escalations"],       activeCount: 2, avatarColor: "#166CCA" },
+  { id: "agent-1", name: "Jeff Common",   initials: "JC", role: "Agent",      team: "Billing Support",    availability: "Available",  skills: ["Billing", "Account Management", "Escalations"],       activeCount: 2, avatarColor: "#166CCA" },
   { id: "agent-2", name: "Priya Mehra",     initials: "PM", role: "Agent",      team: "Digital Care",       availability: "Available",  skills: ["Technical Support", "API Integration", "Security"],   activeCount: 1, avatarColor: "#7C3AED" },
   { id: "agent-3", name: "Sam Torres",      initials: "ST", role: "Agent",      team: "Compliance Team",    availability: "Available",  skills: ["Compliance", "Data Exports", "Contract Renewals"],    activeCount: 3, avatarColor: "#059669" },
   { id: "agent-4", name: "Kenji Watanabe",  initials: "KW", role: "Agent",      team: "Risk Response",      availability: "In a Call",  skills: ["Payments", "Fraud", "Wire Transfers"],                activeCount: 4, avatarColor: "#BE123C" },

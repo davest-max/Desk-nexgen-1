@@ -11,6 +11,10 @@ import {
 // Note: Lyra has a multi-select variant; the code Select is single-select only.
 // Show Search, Show Footer, Show select all bar have no direct code equivalents.
 figma.connect(Select, "https://www.figma.com/design/qyCq4jUOrpYcpHhpNCdgA5?node-id=17015:32856", {
+  links: [
+    { name: "Storybook", url: "http://localhost:6006/?path=/story/components-ui-select--default" },
+  ],
+
   props: {},
   example: () => (
     <Select>
